@@ -11,8 +11,10 @@ repository.workspace = true
 homepage.workspace = true
 
 [features]
-default = []
-term = ["crossterm"]
+default = ["dap_lsp", "term", "vcs"]
+dap_lsp = ["dep:helix-lsp", "dep:helix-dap"]
+term = ["dep:crossterm"]
+vcs = ["dep:helix-vcs"]
 unicode-lines = []
 
 [dependencies]
@@ -20,9 +22,9 @@ helix-stdx = { path = "../helix-stdx" }
 helix-core = { path = "../helix-core" }
 helix-event = { path = "../helix-event" }
 helix-loader = { path = "../helix-loader" }
-helix-lsp = { path = "../helix-lsp" }
-helix-dap = { path = "../helix-dap" }
-helix-vcs = { path = "../helix-vcs" }
+helix-lsp = { path = "../helix-lsp", optional = true }
+helix-dap = { path = "../helix-dap", optional = true }
+helix-vcs = { path = "../helix-vcs", optional = true }
 
 bitflags.workspace = true
 anyhow = "1"
@@ -36,7 +38,6 @@ url = "2.5.4"
 
 arc-swap = { version = "1.7.1" }
 
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "io-util", "io-std", "time", "process", "macros", "fs", "parking_lot"] }
 tokio-stream = "0.1"
 futures-util = { version = "0.3", features = ["std", "async-await"], default-features = false }
 
@@ -51,6 +52,15 @@ log = "~0.4"
 
 parking_lot.workspace = true
 thiserror.workspace = true
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+tokio = { version = "1", features = ["io-util"] }
+gloo-timers = { version = "0.3", features = ["futures"] }
+wasm-bindgen = "0.2"
+instant = { version = "0.1", features = ["wasm-bindgen"] }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "io-util", "io-std", "time", "process", "macros", "fs", "parking_lot"] }
 
 [target.'cfg(windows)'.dependencies]
 clipboard-win = { version = "5.4", features = ["std"] }
