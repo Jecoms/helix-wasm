@@ -16,8 +16,7 @@ use std::{
 use crate::env::current_working_dir;
 
 /// There is no home directory on wasm32; this always returns an error so that
-/// callers fall back to their "no home dir" path, same as `etcetera::home_dir`
-/// would on an unsupported platform.
+/// callers fall back to their "no home dir" path.
 #[cfg(target_arch = "wasm32")]
 pub fn home_dir() -> Result<PathBuf, HomeDirError> {
     Err(HomeDirError)
