@@ -1,12 +1,17 @@
 # Please see the documentation for all configuration options:
 # https://help.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
 
+# Version-update PRs are disabled (open-pull-requests-limit: 0): this repo
+# pins to a helix upstream release, so dependency bumps fight the wasm32
+# port. Security updates are governed by repo settings, not this file.
+
 version: 2
 updates:
   - package-ecosystem: "cargo"
     directory: "/"
+    open-pull-requests-limit: 0
     schedule:
-      interval: "weekly"
+      interval: "monthly"
     groups:
       rust-dependencies:
         update-types:
@@ -15,5 +20,6 @@ updates:
 
   - package-ecosystem: "github-actions"
     directory: "/"
+    open-pull-requests-limit: 0
     schedule:
-      interval: "weekly"
+      interval: "monthly"
