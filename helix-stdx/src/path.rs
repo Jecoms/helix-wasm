@@ -1,5 +1,6 @@
 //! Functions for working with [Path].
 
+#[cfg(not(target_arch = "wasm32"))]
 pub use etcetera::home_dir;
 use once_cell::sync::Lazy;
 use regex_cursor::{engines::meta::Regex, Input};
@@ -13,6 +14,28 @@ use std::{
 };
 
 use crate::env::current_working_dir;
+
+/// There is no home directory on wasm32; this always returns an error so that
+/// callers fall back to their "no home dir" path, same as `etcetera::home_dir`
+/// would on an unsupported platform.
+#[cfg(target_arch = "wasm32")]
+pub fn home_dir() -> Result<PathBuf, HomeDirError> {
+    Err(HomeDirError)
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Debug)]
+pub struct HomeDirError;
+
+#[cfg(target_arch = "wasm32")]
+impl std::fmt::Display for HomeDirError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("home directory is not available on this platform")
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl std::error::Error for HomeDirError {}
 
 /// Replaces users home directory from `path` with tilde `~` if the directory
 /// is available, otherwise returns the path unchanged.
