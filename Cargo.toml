@@ -16,6 +16,8 @@ members = [
   "xtask",
 ]
 
+exclude = ["helix-web"]
+
 default-members = [
   "helix-term"
 ]

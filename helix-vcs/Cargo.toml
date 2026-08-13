@@ -13,7 +13,6 @@ homepage.workspace = true
 helix-core = { path = "../helix-core" }
 helix-event = { path = "../helix-event" }
 
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "time", "sync", "parking_lot", "macros"] }
 parking_lot.workspace = true
 arc-swap = { version = "1.7.1" }
 
@@ -22,6 +21,12 @@ imara-diff =  "0.2.0"
 anyhow = "1"
 
 log = "0.4"
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+tokio = { version = "1", features = ["rt", "time", "sync"] }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "time", "sync", "parking_lot", "macros"] }
 
 [features]
 git = ["gix"]
