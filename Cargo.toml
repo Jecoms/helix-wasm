@@ -13,9 +13,10 @@ members = [
   "helix-vcs",
   "helix-parsec",
   "helix-stdx",
-  "helix-web",
   "xtask",
 ]
+
+exclude = ["helix-web"]
 
 default-members = [
   "helix-term"
