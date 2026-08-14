@@ -38,7 +38,8 @@ pub fn initialize_log_file(specified_file: Option<PathBuf>) {
 /// 4. `HELIX_DEFAULT_RUNTIME` (if environment variable is set *at build time*)
 /// 5. subdirectory of path to helix executable (always included)
 ///
-/// Postcondition: returns at least two paths (they might not exist).
+/// Postcondition: returns at least two paths on native targets, at least one
+/// on wasm32 (they might not exist).
 fn prioritize_runtime_dirs() -> Vec<PathBuf> {
     const RT_DIR: &str = "runtime";
     // Adding higher priority first
@@ -68,8 +69,8 @@ fn prioritize_runtime_dirs() -> Vec<PathBuf> {
 
     // fallback to location of the executable being run
     // canonicalize the path in case the executable is symlinked
-    // (no executable path exists on wasm32; the config runtime dir above
-    // keeps the postcondition)
+    // (no executable path exists on wasm32; there the config runtime dir
+    // above is the only unconditional entry)
     #[cfg(not(target_arch = "wasm32"))]
     {
         let exe_rt_dir = std::env::current_exe()
