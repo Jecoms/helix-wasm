@@ -52,3 +52,9 @@ opt-level = "s"
 [package.metadata.wasm-pack.profile.release]
 # for quicker builds
 # wasm-opt = false
+
+# Same patch as the workspace root: tree-house-bindings must be the vendored
+# copy so it compiles for wasm32 (helix-web is excluded from the workspace and
+# needs its own patch table).
+[patch.crates-io]
+tree-house-bindings = { path = "../vendor/tree-house-bindings" }

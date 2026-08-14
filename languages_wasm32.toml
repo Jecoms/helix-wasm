@@ -1,3 +1,7 @@
+# Built-in language configuration for the wasm32 build, in place of the full
+# languages.toml. The languages here must stay in sync with `helix-web/languages`:
+# their grammars are statically linked and their queries embedded at build time.
+
 [[language]]
 name = "rust"
 scope = "source.rust"

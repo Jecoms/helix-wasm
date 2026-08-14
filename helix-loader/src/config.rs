@@ -1,8 +1,16 @@
 use std::str::from_utf8;
 
 /// Default built-in languages.toml.
+///
+/// On wasm32 this is the trimmed `languages_wasm32.toml`, restricted to the
+/// languages whose grammars and queries are statically embedded in the wasm
+/// build (see `helix-web/languages`).
 pub fn default_lang_config() -> toml::Value {
+    #[cfg(not(target_arch = "wasm32"))]
     let default_config = include_bytes!("../../languages.toml");
+    #[cfg(target_arch = "wasm32")]
+    let default_config = include_bytes!("../../languages_wasm32.toml");
+
     toml::from_str(from_utf8(default_config).unwrap())
         .expect("Could not parse built-in languages.toml to valid toml")
 }

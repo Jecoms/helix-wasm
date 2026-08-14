@@ -1,13 +1,20 @@
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::Result;
+#[cfg(not(target_arch = "wasm32"))]
+use anyhow::{anyhow, bail, Context};
+#[cfg(not(target_arch = "wasm32"))]
 use serde::{Deserialize, Serialize};
+#[cfg(not(target_arch = "wasm32"))]
 use std::fs;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::SystemTime;
+#[cfg(not(target_arch = "wasm32"))]
 use std::{
     collections::HashSet,
     path::{Path, PathBuf},
     process::Command,
     sync::mpsc::channel,
 };
+#[cfg(not(target_arch = "wasm32"))]
 use tempfile::TempPath;
 use tree_house::tree_sitter::Grammar;
 
@@ -17,9 +24,7 @@ const DYLIB_EXTENSION: &str = "so";
 #[cfg(windows)]
 const DYLIB_EXTENSION: &str = "dll";
 
-#[cfg(target_arch = "wasm32")]
-const DYLIB_EXTENSION: &str = "wasm";
-
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Serialize, Deserialize)]
 struct Configuration {
     #[serde(rename = "use-grammars")]
@@ -27,6 +32,7 @@ struct Configuration {
     pub grammar: Vec<GrammarConfiguration>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase", untagged)]
 pub enum GrammarSelection {
@@ -34,6 +40,7 @@ pub enum GrammarSelection {
     Except { except: HashSet<String> },
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct GrammarConfiguration {
@@ -42,6 +49,7 @@ pub struct GrammarConfiguration {
     pub source: GrammarSource,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase", untagged)]
 pub enum GrammarSource {
@@ -57,12 +65,45 @@ pub enum GrammarSource {
     },
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 const BUILD_TARGET: &str = env!("BUILD_TARGET");
+#[cfg(not(target_arch = "wasm32"))]
 const REMOTE_NAME: &str = "origin";
 
+/// Gives the tree-sitter grammar with name `name`, from the grammar functions
+/// statically linked into the binary: wasm32-unknown-unknown has no dynamic
+/// linking. The grammars are compiled and linked by helix-web's build script
+/// and this list must stay in sync with `helix-web/languages`.
 #[cfg(target_arch = "wasm32")]
 pub fn get_language(name: &str) -> Result<Option<Grammar>> {
-    unimplemented!()
+    use anyhow::bail;
+    use tree_house::tree_sitter::{ABI_VERSION, MIN_COMPATIBLE_ABI_VERSION};
+
+    extern "C" {
+        fn tree_sitter_c() -> Grammar;
+        fn tree_sitter_java() -> Grammar;
+        fn tree_sitter_regex() -> Grammar;
+        fn tree_sitter_rust() -> Grammar;
+        fn tree_sitter_toml() -> Grammar;
+    }
+
+    // SAFETY: the entry point of a generated grammar takes no arguments,
+    // returns its static `TSLanguage`, and has no preconditions.
+    let grammar = match name {
+        "c" => unsafe { tree_sitter_c() },
+        "java" => unsafe { tree_sitter_java() },
+        "regex" => unsafe { tree_sitter_regex() },
+        "rust" => unsafe { tree_sitter_rust() },
+        "toml" => unsafe { tree_sitter_toml() },
+        // A missing grammar is not an error: highlighting degrades gracefully.
+        _ => return Ok(None),
+    };
+
+    let version = grammar.abi_version();
+    if !(MIN_COMPATIBLE_ABI_VERSION..=ABI_VERSION).contains(&version) {
+        bail!("grammar {name} has incompatible ABI version {version}");
+    }
+    Ok(Some(grammar))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -78,17 +119,25 @@ pub fn get_language(name: &str) -> Result<Option<Grammar>> {
     Ok(Some(grammar))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn ensure_git_is_available() -> Result<()> {
     helix_stdx::env::which("git")?;
     Ok(())
 }
 
-pub fn fetch_grammars() -> Result<()> {
+/// Fetches the sources of the configured grammars, or of only the `languages`
+/// subset when given (as helix-web's build script does for the grammars it
+/// statically links).
+#[cfg(not(target_arch = "wasm32"))]
+pub fn fetch_grammars(languages: Option<&[String]>) -> Result<()> {
     ensure_git_is_available()?;
 
     // We do not need to fetch local grammars.
     let mut grammars = get_grammar_configs()?;
     grammars.retain(|grammar| !matches!(grammar.source, GrammarSource::Local { .. }));
+    if let Some(languages) = languages {
+        grammars.retain(|grammar| languages.contains(&grammar.grammar_id));
+    }
 
     println!("Fetching {} grammars", grammars.len());
     let results = run_parallel(grammars, fetch_grammar);
@@ -144,6 +193,7 @@ pub fn fetch_grammars() -> Result<()> {
     Ok(())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn build_grammars(target: Option<String>) -> Result<()> {
     ensure_git_is_available()?;
 
@@ -191,6 +241,7 @@ pub fn build_grammars(target: Option<String>) -> Result<()> {
 // Grammars are configured in the default and user `languages.toml` and are
 // merged. The `grammar_selection` key of the config is then used to filter
 // down all grammars into a subset of the user's choosing.
+#[cfg(not(target_arch = "wasm32"))]
 fn get_grammar_configs() -> Result<Vec<GrammarConfiguration>> {
     let config: Configuration = crate::config::user_lang_config()
         .context("Could not parse languages.toml")?
@@ -213,6 +264,7 @@ fn get_grammar_configs() -> Result<Vec<GrammarConfiguration>> {
     Ok(grammars)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn run_parallel<F, Res>(grammars: Vec<GrammarConfiguration>, job: F) -> Vec<(String, Result<Res>)>
 where
     F: Fn(GrammarConfiguration) -> Result<Res> + Send + 'static + Clone,
@@ -237,12 +289,14 @@ where
     rx.iter().collect()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 enum FetchStatus {
     GitUpToDate,
     GitUpdated { revision: String },
     NonGit,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn fetch_grammar(grammar: GrammarConfiguration) -> Result<FetchStatus> {
     if let GrammarSource::Git {
         remote, revision, ..
@@ -292,6 +346,7 @@ fn fetch_grammar(grammar: GrammarConfiguration) -> Result<FetchStatus> {
 
 // Sets the remote for a repository to the given URL, creating the remote if
 // it does not yet exist.
+#[cfg(not(target_arch = "wasm32"))]
 fn set_remote(repository_dir: &Path, remote_url: &str) -> Result<String> {
     git(
         repository_dir,
@@ -300,16 +355,19 @@ fn set_remote(repository_dir: &Path, remote_url: &str) -> Result<String> {
     .or_else(|_| git(repository_dir, ["remote", "add", REMOTE_NAME, remote_url]))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn get_remote_url(repository_dir: &Path) -> Option<String> {
     git(repository_dir, ["remote", "get-url", REMOTE_NAME]).ok()
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn get_revision(repository_dir: &Path) -> Option<String> {
     git(repository_dir, ["rev-parse", "HEAD"]).ok()
 }
 
 // A wrapper around 'git' commands which returns stdout in success and a
 // helpful error message showing the command, stdout, and stderr in error.
+#[cfg(not(target_arch = "wasm32"))]
 fn git<I, S>(repository_dir: &Path, args: I) -> Result<String>
 where
     I: IntoIterator<Item = S>,
@@ -334,11 +392,13 @@ where
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 enum BuildStatus {
     AlreadyBuilt,
     Built,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn build_grammar(grammar: GrammarConfiguration, target: Option<&str>) -> Result<BuildStatus> {
     let grammar_dir = if let GrammarSource::Local { path } = &grammar.source {
         PathBuf::from(&path)
@@ -377,6 +437,7 @@ fn build_grammar(grammar: GrammarConfiguration, target: Option<&str>) -> Result<
     build_tree_sitter_library(&path, grammar, target)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn build_tree_sitter_library(
     src_path: &Path,
     grammar: GrammarConfiguration,
@@ -561,6 +622,7 @@ fn build_tree_sitter_library(
     Ok(BuildStatus::Built)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn needs_recompile(
     lib_path: &Path,
     parser_c_path: &Path,
@@ -581,13 +643,65 @@ fn needs_recompile(
     Ok(false)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn mtime(path: &Path) -> Result<SystemTime> {
     Ok(fs::metadata(path)?.modified()?)
 }
 
 /// Gives the contents of a file from a language's `runtime/queries/<lang>`
 /// directory
+#[cfg(not(target_arch = "wasm32"))]
 pub fn load_runtime_file(language: &str, filename: &str) -> Result<String, std::io::Error> {
     let path = crate::runtime_file(PathBuf::new().join("queries").join(language).join(filename));
     std::fs::read_to_string(path)
+}
+
+/// Gives the contents of a file from a language's `runtime/queries/<lang>`
+/// directory, embedded into the binary at compile time: there is no runtime
+/// directory on wasm32. Queries are embedded for the statically linked
+/// grammars (see [`get_language`]), including every query file that exists
+/// for the language so that `; inherits:` directives can be resolved.
+#[cfg(target_arch = "wasm32")]
+pub fn load_runtime_file(language: &str, filename: &str) -> Result<String, std::io::Error> {
+    macro_rules! embedded_queries {
+        ($($lang:literal => [$($file:literal),+ $(,)?]),+ $(,)?) => {
+            match (language, filename) {
+                $($(
+                    ($lang, $file) => Ok(include_str!(concat!(
+                        "../../runtime/queries/", $lang, "/", $file
+                    ))
+                    .to_owned()),
+                )+)+
+                _ => Err(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    format!("no embedded runtime file queries/{language}/{filename}"),
+                )),
+            }
+        };
+    }
+
+    embedded_queries! {
+        "c" => [
+            "highlights.scm",
+            "indents.scm",
+            "injections.scm",
+            "locals.scm",
+            "textobjects.scm",
+        ],
+        "java" => [
+            "highlights.scm",
+            "indents.scm",
+            "injections.scm",
+            "textobjects.scm",
+        ],
+        "regex" => ["highlights.scm"],
+        "rust" => [
+            "highlights.scm",
+            "indents.scm",
+            "injections.scm",
+            "locals.scm",
+            "textobjects.scm",
+        ],
+        "toml" => ["highlights.scm", "injections.scm", "textobjects.scm"],
+    }
 }

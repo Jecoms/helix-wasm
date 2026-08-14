@@ -62,3 +62,10 @@ repository = "https://github.com/helix-editor/helix"
 homepage = "https://helix-editor.com"
 license = "MPL-2.0"
 rust-version = "1.82"
+
+# tree-house-bindings 0.2.1 unconditionally depends on libloading, which does
+# not compile for wasm32-unknown-unknown. The vendored copy gates the dlopen
+# path to non-wasm targets and cross-compiles the vendored tree-sitter C
+# runtime for wasm32 (see vendor/tree-house-bindings/Cargo.toml).
+[patch.crates-io]
+tree-house-bindings = { path = "vendor/tree-house-bindings" }
