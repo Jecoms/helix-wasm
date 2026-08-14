@@ -70,6 +70,17 @@ const BUILD_TARGET: &str = env!("BUILD_TARGET");
 #[cfg(not(target_arch = "wasm32"))]
 const REMOTE_NAME: &str = "origin";
 
+/// Whether a grammar's ABI version falls within the window supported by the
+/// linked tree-sitter runtime.
+///
+/// Used by the wasm32 `get_language`; kept free of wasm32-only code so the
+/// check stays host-testable (see the tests module below).
+#[cfg(any(target_arch = "wasm32", test))]
+fn abi_version_compatible(version: u32) -> bool {
+    use tree_house::tree_sitter::{ABI_VERSION, MIN_COMPATIBLE_ABI_VERSION};
+    (MIN_COMPATIBLE_ABI_VERSION..=ABI_VERSION).contains(&version)
+}
+
 /// Gives the tree-sitter grammar with name `name`, from the grammar functions
 /// statically linked into the binary: wasm32-unknown-unknown has no dynamic
 /// linking. The grammars are compiled and linked by helix-web's build script
@@ -77,7 +88,6 @@ const REMOTE_NAME: &str = "origin";
 #[cfg(target_arch = "wasm32")]
 pub fn get_language(name: &str) -> Result<Option<Grammar>> {
     use anyhow::bail;
-    use tree_house::tree_sitter::{ABI_VERSION, MIN_COMPATIBLE_ABI_VERSION};
 
     extern "C" {
         fn tree_sitter_c() -> Grammar;
@@ -100,7 +110,7 @@ pub fn get_language(name: &str) -> Result<Option<Grammar>> {
     };
 
     let version = grammar.abi_version();
-    if !(MIN_COMPATIBLE_ABI_VERSION..=ABI_VERSION).contains(&version) {
+    if !abi_version_compatible(version) {
         bail!("grammar {name} has incompatible ABI version {version}");
     }
     Ok(Some(grammar))
@@ -703,5 +713,20 @@ pub fn load_runtime_file(language: &str, filename: &str) -> Result<String, std::
             "textobjects.scm",
         ],
         "toml" => ["highlights.scm", "injections.scm", "textobjects.scm"],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::abi_version_compatible;
+    use tree_house::tree_sitter::{ABI_VERSION, MIN_COMPATIBLE_ABI_VERSION};
+
+    #[test]
+    fn abi_window_accepts_supported_versions_only() {
+        assert!(abi_version_compatible(MIN_COMPATIBLE_ABI_VERSION));
+        assert!(abi_version_compatible(ABI_VERSION));
+        assert!(!abi_version_compatible(MIN_COMPATIBLE_ABI_VERSION - 1));
+        assert!(!abi_version_compatible(ABI_VERSION + 1));
+        assert!(!abi_version_compatible(0));
     }
 }
