@@ -5,6 +5,11 @@ use std::str::from_utf8;
 /// On wasm32 this is the trimmed `languages_wasm32.toml`, restricted to the
 /// languages whose grammars and queries are statically embedded in the wasm
 /// build (see `helix-web/languages`).
+///
+/// History: an earlier trimmed-config swap (8356662c2) was reverted in
+/// 3b4b5a747 over a tree-sitter parsing breakage that was never root-caused
+/// under the old dylib-loading architecture. If wasm highlighting misbehaves,
+/// this swap is a known suspect to rule out first.
 pub fn default_lang_config() -> toml::Value {
     #[cfg(not(target_arch = "wasm32"))]
     let default_config = include_bytes!("../../languages.toml");
