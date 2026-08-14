@@ -3,9 +3,10 @@
  *
  * The stdio family only backs tree-sitter's debug logging and dot-graph
  * output, which are never enabled in the wasm build, so those are no-ops.
- * The str* functions are real implementations (tree-sitter's query parser
- * relies on them); the mem* functions come from Rust's compiler-builtins at
- * link time and the allocator from vendor/tree-house-bindings/src/wasm_alloc.rs.
+ * The str* functions and memchr are real implementations here (tree-sitter's
+ * query parser relies on them); memcpy/memmove/memset/memcmp come from Rust's
+ * compiler-builtins at link time and the allocator from
+ * vendor/tree-house-bindings/src/wasm_alloc.rs.
  */
 #include <stdarg.h>
 #include <stddef.h>

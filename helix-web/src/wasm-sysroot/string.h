@@ -1,7 +1,8 @@
 /* Freestanding string shim for wasm32-unknown-unknown.
  *
- * The mem* functions are provided at link time by Rust's compiler-builtins;
- * the str* functions are implemented in shims.c. */
+ * memcpy/memmove/memset/memcmp are provided at link time by Rust's
+ * compiler-builtins; the str* functions and memchr are implemented in
+ * shims.c. */
 #ifndef _WASM_SYSROOT_STRING_H
 #define _WASM_SYSROOT_STRING_H
 
