@@ -79,7 +79,9 @@ green and CI-gated:
 - helix-view's own wasm32 fallbacks had bit-rotted upstream (noop clipboard
   provider signatures/derives, missing `get_terminal_provider`); fixed on
   `helix-patched` — upstreamable, same category as the faccess fix.
-- helix-vcs: compiles as-is (gix included) once tokio unblocks. Confirmed.
+- helix-vcs: compiles as-is once tokio unblocks — without gix, which is
+  optional behind helix-vcs's `git` feature and enabled by nothing in the
+  helix-view build, so the wasm build has no git integration. Confirmed.
 
 Still open for the helix-term gate:
 
