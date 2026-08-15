@@ -28,6 +28,19 @@ jobs:
         with:
           version: 'latest'
 
+      # `wasm-pack build` falls back to an unlocked `cargo install wasm-bindgen-cli`
+      # under the repo's pinned Rust 1.82.0 toolchain, which fails on edition-2024
+      # transitive deps. Pre-install 0.2.117 with a current stable toolchain into
+      # the exact cache location wasm-pack checks (binaries must sit at the dir
+      # root, not only in bin/). See helix-web/README.md "Setup".
+      - name: Pre-install wasm-bindgen-cli into wasm-pack's cache
+        run: |
+          rustup toolchain install stable --profile minimal
+          cargo +stable install wasm-bindgen-cli --version 0.2.117 --locked \
+            --root "$HOME/.cache/.wasm-pack/wasm-bindgen-cargo-install-0.2.117"
+          cp "$HOME/.cache/.wasm-pack/wasm-bindgen-cargo-install-0.2.117/bin/"* \
+            "$HOME/.cache/.wasm-pack/wasm-bindgen-cargo-install-0.2.117/"
+
       - name: Build wasm package
         run: |
           cd helix-web
@@ -40,7 +53,7 @@ jobs:
           npm run build
 
       - name: Deploy
-        uses: peaceiris/actions-gh-pages@v3
+        uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./helix-web/www/dist/
