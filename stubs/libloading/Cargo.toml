@@ -1,0 +1,4 @@
+[package]
+name = "libloading"
+version = "0.8.7"
+edition = "2021"
