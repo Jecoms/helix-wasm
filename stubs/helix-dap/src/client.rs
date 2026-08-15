@@ -44,10 +44,6 @@ pub struct Client {
 }
 
 impl Client {
-    /// wasm32 stub: there are no subprocesses, so a debug adapter can never
-    /// be launched. Callers (the registry) treat this like any other failed
-    /// adapter launch.
-    #[allow(unused_variables)]
     pub async fn process(
         transport: &str,
         command: &str,
@@ -55,9 +51,14 @@ impl Client {
         port_arg: Option<&str>,
         id: DebugAdapterId,
     ) -> Result<(Self, UnboundedReceiver<(DebugAdapterId, Payload)>)> {
-        Err(Error::Other(anyhow!(
-            "cannot launch debug adapter '{command}': no subprocess support on wasm32"
-        )))
+        if command.is_empty() {
+            return Result::Err(Error::Other(anyhow!("Command not provided")));
+        }
+        match (transport, port_arg) {
+            ("tcp", Some(port_arg)) => Self::tcp_process(command, args, port_arg, id).await,
+            ("stdio", _) => Self::stdio(command, args, id),
+            _ => Result::Err(Error::Other(anyhow!("Incorrect transport {}", transport))),
+        }
     }
 
     pub fn streams(
@@ -101,13 +102,21 @@ impl Client {
         )))
     }
 
-    /// wasm32 stub: no subprocesses.
+    /// wasm32 stub: no subprocesses. Upstream's `which(cmd)?` line is kept —
+    /// the `which` stub fails unconditionally on wasm32, so a stdio adapter
+    /// launch surfaces as `Error::ExecutableNotFound`, exactly as a missing
+    /// adapter binary does upstream.
     #[allow(unused_variables)]
     pub fn stdio(
         cmd: &str,
         args: Vec<&str>,
         id: DebugAdapterId,
     ) -> Result<(Self, UnboundedReceiver<(DebugAdapterId, Payload)>)> {
+        // Resolve path to the binary — always fails on wasm32.
+        helix_stdx::env::which(cmd)?;
+
+        // Unreachable on wasm32 (which() above never succeeds); kept so the
+        // signature stays total without upstream's subprocess spawn.
         Err(Error::Other(anyhow!(
             "cannot launch debug adapter '{cmd}': no subprocess support on wasm32"
         )))

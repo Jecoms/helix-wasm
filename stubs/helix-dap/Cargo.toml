@@ -1,10 +1,17 @@
 # Vendored copy of upstream helix-dap 25.07.1 (from the `helix-patched`
 # branch) with the debug-adapter subprocess/TCP machinery removed so the
-# crate builds for wasm32-unknown-unknown:
+# crate builds for wasm32-unknown-unknown. The full client.rs delta vs
+# upstream:
 #   - tokio's `process` and `net` features are dropped (both pull in mio,
-#     which does not build for wasm32)
-#   - the spawning/connecting constructors (`process`, `stdio`, `tcp`,
-#     `tcp_process`) return errors instead of launching adapters
+#     which does not build for wasm32); the `fern` dev-dependency is dropped
+#     with them
+#   - `stdio` keeps upstream's `which(cmd)?` line (which always fails on
+#     wasm32, yielding `Error::ExecutableNotFound`) and drops the spawn that
+#     followed; `tcp` / `tcp_process` return errors instead of connecting;
+#     `process` itself is upstream's verbatim dispatch body
+#   - the `Client._process: Option<Child>` field is removed, `streams()`
+#     loses its `process: Option<Child>` parameter, and the private
+#     `get_port()` helper (tokio::net) is deleted
 # The protocol types, transport pump (generic over async streams), and
 # registry are the pristine upstream code.
 [package]

@@ -195,8 +195,11 @@ impl Client {
     }
 
     /// wasm32 stub: there are no subprocesses, so a language server can
-    /// never be spawned. Callers (the `Registry`) treat this like any other
-    /// failed server launch and the editor runs without LSP.
+    /// never be spawned. Upstream's `which(cmd)?` line is kept — the `which`
+    /// stub fails unconditionally on wasm32, so this returns
+    /// `Error::ExecutableNotFound`, the variant helix-view's
+    /// `launch_language_servers` logs quietly at debug level, and the editor
+    /// runs without LSP.
     #[allow(clippy::type_complexity, clippy::too_many_arguments, unused_variables)]
     pub fn start(
         cmd: &str,
@@ -213,6 +216,14 @@ impl Client {
         UnboundedReceiver<(LanguageServerId, Call)>,
         Arc<Notify>,
     )> {
+        // Resolve path to the binary — always fails on wasm32, yielding
+        // Error::ExecutableNotFound exactly as upstream does for a missing
+        // server binary.
+        helix_stdx::env::which(cmd)?;
+
+        // Unreachable on wasm32 (which() above never succeeds); kept so the
+        // signature stays total without the subprocess spawn that follows in
+        // upstream.
         Err(Error::Other(anyhow::anyhow!(
             "cannot spawn language server '{cmd}': no subprocess support on wasm32"
         )))

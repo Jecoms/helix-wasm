@@ -3,7 +3,10 @@
 # builds for wasm32-unknown-unknown:
 #   - tokio's `process` feature is dropped (it pulls in mio, which does not
 #     build for wasm32)
-#   - `Client::start` returns an error instead of spawning a server process
+#   - `Client::start` keeps upstream's `which(cmd)?` line (which always
+#     fails on wasm32, yielding `Error::ExecutableNotFound`) and drops the
+#     server spawn that followed; the `Client._process: Child` field and its
+#     construction are removed with it
 #   - transport.rs is trimmed to the `Payload` type; the stdio pump is gone
 # Everything else (util conversions, jsonrpc, Registry, progress tracking)
 # is the pristine upstream code, so editor logic behaves identically —
