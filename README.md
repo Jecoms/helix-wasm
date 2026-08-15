@@ -42,8 +42,10 @@ The demo boots helix into an xterm.js terminal with a scratch buffer, with
 syntax highlighting for a small static grammar set (c, go, java,
 javascript, python, regex, rust, toml — try `:set-language rust`). Nothing persists — see SPIKE-NOTES.md for the
 current limitations. The grammar build fetches pinned parser sources at
-build time, so it needs network access and `git`; to add a grammar, see
-`GRAMMARS` in `web/build.rs` and `web/queries/README.md`.
+build time, so it needs network access and `git`. Set `HELIX_WEB_GRAMMARS`
+to a comma-separated subset (e.g. `HELIX_WEB_GRAMMARS=rust,toml wasm-pack
+build web --target web`) to slim the bundle; to add a grammar to the
+catalog, see `GRAMMARS` in `web/build.rs` and `web/queries/README.md`.
 
 ## Branch map
 

@@ -17,12 +17,16 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// The static grammar set: (name, git remote, pinned revision). The pins
+/// The grammar catalog: (name, git remote, pinned revision). The pins
 /// mirror the `[[grammar]]` entries in helix's `languages.toml` at the tag
 /// the workspace tracks. To add a grammar: add a row here, vendor its
 /// queries under `queries/<name>/`, and keep the name in sync with helix's
 /// language configuration (the `tree_sitter_<name>` symbol is derived from
 /// it).
+///
+/// A build links the whole catalog by default; set `HELIX_WEB_GRAMMARS` to
+/// a comma-separated subset of these names to slim the bundle (see
+/// [`selected_grammars`]).
 const GRAMMARS: &[(&str, &str, &str)] = &[
     (
         "c",
@@ -73,6 +77,7 @@ fn main() {
     // under-declared and let local incremental builds link stale objects.
     println!("cargo:rerun-if-changed=../sysroot");
     println!("cargo:rerun-if-changed=queries");
+    println!("cargo:rerun-if-env-changed=HELIX_WEB_GRAMMARS");
 
     if std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() != Ok("wasm32") {
         return;
@@ -83,8 +88,9 @@ fn main() {
         .file("../sysroot/wctype.c")
         .compile("helix_web_libc_shims");
 
+    let grammars = selected_grammars();
     let out_dir = PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
-    for &(name, remote, rev) in GRAMMARS {
+    for &(name, remote, rev) in &grammars {
         let src_dir = fetch_grammar(name, remote, rev, &out_dir).join("src");
 
         let mut build = cc::Build::new();
@@ -96,7 +102,35 @@ fn main() {
         build.compile(&format!("tree-sitter-{name}"));
     }
 
-    generate_registration(&out_dir);
+    generate_registration(&out_dir, &grammars);
+}
+
+/// The catalog entries this build links: all of them by default, or the
+/// comma-separated subset named in `HELIX_WEB_GRAMMARS` (e.g.
+/// `HELIX_WEB_GRAMMARS=rust,toml`). Names outside the catalog fail the
+/// build — selection can only narrow the pinned set, not invent sources.
+fn selected_grammars() -> Vec<(&'static str, &'static str, &'static str)> {
+    let selection = std::env::var("HELIX_WEB_GRAMMARS").unwrap_or_default();
+    if selection.trim().is_empty() {
+        return GRAMMARS.to_vec();
+    }
+    selection
+        .split(',')
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(|name| {
+            *GRAMMARS
+                .iter()
+                .find(|(catalog_name, _, _)| *catalog_name == name)
+                .unwrap_or_else(|| {
+                    let known: Vec<_> = GRAMMARS.iter().map(|(n, _, _)| *n).collect();
+                    panic!(
+                        "HELIX_WEB_GRAMMARS names unknown grammar '{name}'; \
+                         the catalog has: {known:?}"
+                    )
+                })
+        })
+        .collect()
 }
 
 /// Shallow-fetches the pinned revision of a grammar repository into
@@ -137,7 +171,7 @@ fn git(dir: &Path, args: &[&str]) -> Option<String> {
 /// every grammar in the set, and every vendored query file, to
 /// `helix_loader`'s wasm32 static registry. Generated so the grammar list
 /// above stays the single source of truth.
-fn generate_registration(out_dir: &Path) {
+fn generate_registration(out_dir: &Path, grammars: &[(&str, &str, &str)]) {
     use std::fmt::Write;
 
     let queries_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("queries");
@@ -150,7 +184,7 @@ fn generate_registration(out_dir: &Path) {
          \x20   use tree_house::tree_sitter::Grammar;\n\n\
          \x20   extern \"C\" {\n",
     );
-    for &(name, _, _) in GRAMMARS {
+    for &(name, _, _) in grammars {
         let symbol = name.replace('-', "_");
         writeln!(code, "        fn tree_sitter_{symbol}() -> Grammar;").unwrap();
     }
@@ -159,7 +193,7 @@ fn generate_registration(out_dir: &Path) {
          \x20   // SAFETY: a generated grammar entry point takes no arguments, returns\n\
          \x20   // a pointer to its static TSLanguage, and has no preconditions.\n",
     );
-    for &(name, _, _) in GRAMMARS {
+    for &(name, _, _) in grammars {
         let symbol = name.replace('-', "_");
         writeln!(
             code,
@@ -175,7 +209,10 @@ fn generate_registration(out_dir: &Path) {
     // Query registration walks the vendored directory rather than the
     // grammar list: `; inherits:` directives can pull in query-only base
     // languages that have no grammar of their own (javascript inherits from
-    // `ecma` and `_javascript`).
+    // `ecma` and `_javascript`). Queries for unselected grammars register
+    // too — a few KB of dead text against computing the inherits closure of
+    // an arbitrary subset; helix never reads queries for a language whose
+    // grammar did not resolve.
     let mut langs: Vec<_> = std::fs::read_dir(&queries_dir)
         .unwrap()
         .map(|entry| entry.unwrap().path())
