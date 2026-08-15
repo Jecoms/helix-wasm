@@ -109,6 +109,14 @@ green and CI-gated:
 - The rest of term's new dep tree (helix-tui, termini, grep-searcher,
   ignore, fern, chrono, pulldown-cmark, nucleo, ...) compiled for wasm32
   as-is.
+- Adding helix-term reunified the cargo feature graph: helix-tui requires
+  helix-view's `term` feature, and since the wrapper is a single package
+  Cargo resolves one feature graph regardless of `-p`, so
+  `cargo check -p helix-view` now runs with `term`/crossterm active. The
+  deliberate isolation the wrapper had before this step (no `term`
+  feature, no crossterm in the graph) is gone; the per-crate CI jobs are
+  progressive-narrowing diagnostics for where a breakage enters the
+  stack, not proofs that each crate builds in isolation.
 
 ## Known runtime traps (Phase 3, compile ≠ run)
 
@@ -117,6 +125,12 @@ green and CI-gated:
 - `faccess::readonly()` maps fs errors to `true` → every buffer would open
   read-only in the browser; virtual storage must intercept fs paths (see
   legacy `helix-core/src/storage.rs`).
+- `crossterm::bridge` starts at a static 80x24 until the frontend calls
+  `bridge::set_size()`; the legacy in-tree bridge queried live xterm.js
+  `cols()`/`rows()`, so a stale size was structurally impossible there.
+  The Phase-3 backend must call `set_size()` (and inject an
+  `Event::Resize`) before the first render, or helix lays out against the
+  placeholder size.
 - No `block_on` on the browser main thread; event loop must be driven async
   (see legacy `helix-term/src/application.rs` genericized backend).
 - tokio `time`/`fs` features compile but their runtime behavior on wasm is
