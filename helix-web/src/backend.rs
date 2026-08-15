@@ -1,3 +1,4 @@
+use std::cell::RefCell;
 use std::io;
 
 use helix_tui::backend::{ansi, Backend, Buffer};
@@ -9,6 +10,19 @@ use rs_xterm_js::{
     Terminal, TerminalOptions, Theme,
 };
 use wasm_bindgen::JsCast;
+
+/// Resets colors/attributes, restores the default cursor shape, and shows the
+/// cursor. Shared by [`Backend::restore`] and [`Backend::force_restore`] so
+/// the two can't drift apart.
+const RESET_SEQ: &str = "\x1b[0m\x1b[0 q\x1b[?25h";
+
+thread_local! {
+    /// Handle to the xterm.js terminal created by [`spawn_terminal`], so the
+    /// receiver-less [`Backend::force_restore`] (called from the panic hook)
+    /// can reach the terminal without going through a lifetime-bound writer.
+    /// wasm32 is single-threaded, so a thread-local is effectively global.
+    static TERMINAL: RefCell<Option<Terminal>> = const { RefCell::new(None) };
+}
 
 pub fn spawn_terminal() -> Terminal {
     let theme = Theme::new();
@@ -33,6 +47,13 @@ pub fn spawn_terminal() -> Terminal {
     let addon = WebglAddon::new(None);
     terminal.load_addon(addon.clone().dyn_into::<WebglAddon>().unwrap().into());
     terminal.focus();
+    TERMINAL.with(|cell| {
+        if let Ok(mut slot) = cell.try_borrow_mut() {
+            // `Terminal` has no direct `Clone` impl (method resolution derefs
+            // to `Disposable`), so clone the underlying JS handle and cast.
+            *slot = Some(wasm_bindgen::JsValue::from(&terminal).unchecked_into());
+        }
+    });
     terminal
 }
 
@@ -73,17 +94,20 @@ impl<W: Buffer> Backend for WebBackend<W> {
 
     fn restore(&mut self, _config: Config) -> io::Result<()> {
         // Reset colors/attributes and bring the cursor back.
-        write!(self.buffer, "\x1b[0m\x1b[0 q\x1b[?25h")?;
+        write!(self.buffer, "{}", RESET_SEQ)?;
         self.buffer.flush()
     }
 
     fn force_restore() -> io::Result<()> {
-        // TODO(wasm32): the `Backend` trait documents this as "forcibly resets
-        // the terminal" and the panic hook in `Application::run` relies on it,
-        // but there is no global handle on the xterm.js terminal to write to,
-        // so a mid-`draw` panic leaves the surface (cursor, SGR state) as-is.
-        // A thread-local handle to the last-created writer would fix this;
-        // tracked in issue #25.
+        // Runs from the panic hook, so nothing here may panic: tolerate an
+        // inaccessible thread-local or a held borrow by doing nothing.
+        let _ = TERMINAL.try_with(|cell| {
+            if let Ok(slot) = cell.try_borrow() {
+                if let Some(terminal) = slot.as_ref() {
+                    terminal.write(RESET_SEQ);
+                }
+            }
+        });
         Ok(())
     }
 
