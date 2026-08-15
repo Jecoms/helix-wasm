@@ -2,7 +2,8 @@
 //!
 //! This module is NOT part of upstream crossterm — it is the seam where the
 //! wasm frontend replaces the operating-system terminal. The browser backend
-//! (xterm.js glue, plan step 5) pushes input with [`inject_event`] and keeps
+//! (xterm.js glue, Phase 3 — see SPIKE-NOTES.md) pushes input with
+//! [`inject_event`] and keeps
 //! the dimensions current with [`set_size`]; the vendored crossterm API
 //! surface ([`EventStream`](crate::event::EventStream),
 //! [`terminal::size`](crate::terminal::size), raw-mode toggles) reads from
