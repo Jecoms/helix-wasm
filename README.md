@@ -8,57 +8,81 @@
 </picture>
 </h1>
 
-[![Build status](https://github.com/helix-editor/helix/actions/workflows/build.yml/badge.svg)](https://github.com/helix-editor/helix/actions)
-[![GitHub Release](https://img.shields.io/github/v/release/helix-editor/helix)](https://github.com/helix-editor/helix/releases/latest)
-[![Documentation](https://shields.io/badge/-documentation-452859)](https://docs.helix-editor.com/)
-[![GitHub contributors](https://img.shields.io/github/contributors/helix-editor/helix)](https://github.com/helix-editor/helix/graphs/contributors)
-[![Matrix Space](https://img.shields.io/matrix/helix-community:matrix.org)](https://matrix.to/#/#helix-community:matrix.org)
-
 </div>
 
-![Screenshot](./screenshot.png)
+# helix-wasm
 
-A [Kakoune](https://github.com/mawww/kakoune) / [Neovim](https://github.com/neovim/neovim) inspired editor, written in Rust.
+The [Helix](https://github.com/helix-editor/helix) editor compiled to
+`wasm32`, running entirely in the browser on top of
+[xterm.js](https://xtermjs.org/) — no server, no install.
 
-The editing model is very heavily based on Kakoune; during development I found
-myself agreeing with most of Kakoune's design decisions.
+**➡️ Live demo: <https://jecoms.github.io/helix-wasm/demo/>**
 
-For more information, see the [website](https://helix-editor.com) or
-[documentation](https://docs.helix-editor.com/).
+## Status
 
-All shortcuts/keymaps can be found [in the documentation on the website](https://docs.helix-editor.com/keymap.html).
+This is an experimental port. What works:
 
-[Troubleshooting](https://github.com/helix-editor/helix/wiki/Troubleshooting)
+- Helix compiled to `wasm32-unknown-unknown` (with a reduced feature set)
+- Rendering and input through xterm.js in the browser
+- Modal editing, multiple selections, and most core editing features
+- Bundled as a static web app (see the live demo above)
 
-# Features
+What is disabled under `wasm32` (it would require native-only tooling or
+significant design changes upstream):
 
-- Vim-like modal editing
-- Multiple selections
-- Built-in language server support
-- Smart, incremental syntax highlighting and code editing via tree-sitter
+- Language server support and debugging (DAP)
+- Shell command execution and piping
+- VCS features (git info, diffs)
+- Cloning/compiling tree-sitter grammars at runtime
+- Most filesystem operations — reading/writing "files" is crudely emulated
+  via the Web Storage API
 
-Although it's primarily a terminal-based editor, I am interested in exploring
-a custom renderer (similar to Emacs) using wgpu or skulpin.
+See [`helix-web/README.md`](./helix-web/README.md) for the full list of
+limitations and known issues.
 
-Note: Only certain languages have indentation definitions at the moment. Check
-`runtime/queries/<lang>/` for `indents.scm`.
+## Building and running
 
-# Installation
+The wasm build lives in the [`helix-web/`](./helix-web) crate; the browser
+demo app lives in `helix-web/www/`. In short:
 
-[Installation documentation](https://docs.helix-editor.com/install.html).
+```sh
+rustup target add wasm32-unknown-unknown
+cargo install wasm-pack
 
-[![Packaging status](https://repology.org/badge/vertical-allrepos/helix-editor.svg?exclude_unsupported=1)](https://repology.org/project/helix-editor/versions)
+cd helix-web/
+npm install
+wasm-pack build --target web
 
-# Contributing
+cd www/
+npm install
+npm run dev       # visit http://localhost:5173
+```
 
-Contributing guidelines can be found [here](./docs/CONTRIBUTING.md).
+Full setup, build, deploy, and troubleshooting notes (including macOS
+toolchain caveats) are in [`helix-web/README.md`](./helix-web/README.md).
 
-# Getting help
+Native builds of the editor itself should still work — see the upstream
+[installation documentation](https://docs.helix-editor.com/install.html).
 
-Your question might already be answered on the [FAQ](https://github.com/helix-editor/helix/wiki/FAQ).
+## Using the editor
 
-Discuss the project on the community [Matrix Space](https://matrix.to/#/#helix-community:matrix.org) (make sure to join `#helix-editor:matrix.org` if you're on a client that doesn't support Matrix Spaces yet).
+Helix is a [Kakoune](https://github.com/mawww/kakoune) /
+[Neovim](https://github.com/neovim/neovim) inspired modal editor written in
+Rust. For editor usage, see the upstream
+[documentation](https://docs.helix-editor.com/) and
+[keymap reference](https://docs.helix-editor.com/keymap.html) — the port
+follows upstream behavior wherever the feature isn't disabled under wasm.
 
-# Credits
+## Credits & upstream
 
-Thanks to [@jakenvac](https://github.com/jakenvac) for designing the logo!
+- [helix-editor/helix](https://github.com/helix-editor/helix) — the Helix
+  editor itself, of which this repo is a fork (MPL-2.0).
+- [makemeunsee/helix](https://github.com/makemeunsee/helix), branch
+  [`wasm32`](https://github.com/makemeunsee/helix/tree/wasm32) — the original
+  wasm port this repo branched from, which in turn builds on
+  [rrbutani](https://github.com/rrbutani)'s
+  [crossterm/xterm.js integration](https://github.com/rrbutani/crossterm/tree/xtermjs).
+
+## License
+
+[MPL-2.0](./LICENSE), unchanged from upstream Helix.
