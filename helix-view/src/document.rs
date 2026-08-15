@@ -2,22 +2,38 @@ use anyhow::{anyhow, bail, Error};
 use arc_swap::access::DynAccess;
 use arc_swap::ArcSwap;
 use futures_util::future::BoxFuture;
+#[cfg(feature = "dap_lsp")]
 use futures_util::FutureExt;
 use helix_core::auto_pairs::AutoPairs;
+#[cfg(feature = "dap_lsp")]
 use helix_core::chars::char_is_word;
+#[cfg(feature = "dap_lsp")]
 use helix_core::command_line::Token;
 use helix_core::diagnostic::DiagnosticProvider;
 use helix_core::doc_formatter::TextFormat;
 use helix_core::encoding::Encoding;
+use helix_core::diagnostic::LanguageServerId;
 use helix_core::snippets::{ActiveSnippet, SnippetRenderCtx};
+#[cfg(feature = "dap_lsp")]
 use helix_core::syntax::config::LanguageServerFeature;
 use helix_core::text_annotations::{InlineAnnotation, Overlay};
 use helix_event::TaskController;
+#[cfg(feature = "dap_lsp")]
 use helix_lsp::util::lsp_pos_to_pos;
-use helix_stdx::faccess::{copy_metadata, readonly};
+#[cfg(not(target_arch = "wasm32"))]
+use helix_stdx::faccess::copy_metadata;
+use helix_stdx::faccess::readonly;
+#[cfg(feature = "vcs")]
 use helix_vcs::{DiffHandle, DiffProviderRegistry};
 use once_cell::sync::OnceCell;
 use thiserror;
+
+// Stand-ins so function signatures do not need to change when the `vcs`
+// feature (and with it the real types) is disabled.
+#[cfg(not(feature = "vcs"))]
+pub type DiffProviderRegistry = ();
+#[cfg(not(feature = "vcs"))]
+pub type DiffHandle = ();
 
 use ::parking_lot::Mutex;
 use serde::de::{self, Deserialize, Deserializer};
@@ -31,7 +47,11 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::{Arc, Weak};
-use std::time::SystemTime;
+
+#[cfg(target_arch = "wasm32")]
+use instant::{Instant, SystemTime};
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::{Instant, SystemTime};
 
 use helix_core::{
     editor_config::EditorConfig,
@@ -43,10 +63,11 @@ use helix_core::{
     ChangeSet, Diagnostic, LineEnding, Range, Rope, RopeBuilder, Selection, Syntax, Transaction,
 };
 
+#[cfg(feature = "dap_lsp")]
+use crate::expansion;
 use crate::{
     editor::Config,
     events::{DocumentDidChange, SelectionDidChange},
-    expansion,
     view::ViewPosition,
     DocumentId, Editor, Theme, View, ViewId,
 };
@@ -194,13 +215,15 @@ pub struct Document {
     pub(crate) modified_since_accessed: bool,
 
     pub(crate) diagnostics: Vec<Diagnostic>,
+    #[cfg(feature = "dap_lsp")]
     pub(crate) language_servers: HashMap<LanguageServerName, Arc<Client>>,
 
+    #[cfg(feature = "vcs")]
     diff_handle: Option<DiffHandle>,
     version_control_head: Option<Arc<ArcSwap<Box<str>>>>,
 
     // when document was used for most-recent-used buffer picker
-    pub focused_at: std::time::Instant,
+    pub focused_at: Instant,
 
     pub readonly: bool,
 
@@ -597,6 +620,7 @@ fn read_and_detect_encoding<R: std::io::Read + ?Sized>(
 /// Encodes the text inside `rope` into the given `encoding` and writes the
 /// encoded output into `writer.` As a `Rope` can only contain valid UTF-8,
 /// replacement characters may appear in the encoded text.
+#[cfg(not(target_arch = "wasm32"))]
 pub async fn to_writer<'a, W: tokio::io::AsyncWriteExt + Unpin + ?Sized>(
     writer: &'a mut W,
     encoding_with_bom_info: (&'static Encoding, bool),
@@ -668,6 +692,65 @@ pub async fn to_writer<'a, W: tokio::io::AsyncWriteExt + Unpin + ?Sized>(
     Ok(())
 }
 
+// The synchronous wasm32 counterpart of `to_writer()` above: there is no async
+// file IO (or tokio runtime with IO support) on wasm32, writers there are
+// in-memory `std::io::Write` implementors like `helix_core::storage`.
+#[cfg(target_arch = "wasm32")]
+pub fn to_writer<W: std::io::Write + ?Sized>(
+    writer: &mut W,
+    encoding_with_bom_info: (&'static Encoding, bool),
+    rope: &Rope,
+) -> Result<(), Error> {
+    let (encoding, has_bom) = encoding_with_bom_info;
+
+    let iter = rope
+        .chunks()
+        .filter(|c| !c.is_empty())
+        .chain(std::iter::once(""));
+    let mut buf = [0u8; BUF_SIZE];
+
+    let mut total_written = if has_bom {
+        apply_bom(encoding, &mut buf)
+    } else {
+        0
+    };
+
+    let mut encoder = Encoder::from_encoding(encoding);
+
+    for chunk in iter {
+        let is_empty = chunk.is_empty();
+        let mut total_read = 0usize;
+
+        loop {
+            let (result, read, written, ..) =
+                encoder.encode_from_utf8(&chunk[total_read..], &mut buf[total_written..], is_empty);
+
+            total_read += read;
+            total_written += written;
+            match result {
+                encoding::CoderResult::InputEmpty => {
+                    debug_assert_eq!(chunk.len(), total_read);
+                    debug_assert!(buf.len() >= total_written);
+                    break;
+                }
+                encoding::CoderResult::OutputFull => {
+                    debug_assert!(chunk.len() > total_read);
+                    writer.write_all(&buf[..total_written])?;
+                    total_written = 0;
+                }
+            }
+        }
+
+        if is_empty {
+            writer.write_all(&buf[..total_written])?;
+            writer.flush()?;
+            break;
+        }
+    }
+
+    Ok(())
+}
+
 fn take_with<T, F>(mut_ref: &mut T, f: F)
 where
     T: Default,
@@ -676,7 +759,8 @@ where
     *mut_ref = f(mem::take(mut_ref));
 }
 
-use helix_lsp::{lsp, Client, LanguageServerId, LanguageServerName};
+#[cfg(feature = "dap_lsp")]
+use helix_lsp::{lsp, Client, LanguageServerName};
 use url::Url;
 
 impl Document {
@@ -718,11 +802,13 @@ impl Document {
             last_saved_time: SystemTime::now(),
             last_saved_revision: 0,
             modified_since_accessed: false,
+            #[cfg(feature = "dap_lsp")]
             language_servers: HashMap::new(),
+            #[cfg(feature = "vcs")]
             diff_handle: None,
             config,
             version_control_head: None,
-            focused_at: std::time::Instant::now(),
+            focused_at: Instant::now(),
             readonly: false,
             jump_labels: HashMap::new(),
             color_swatches: None,
@@ -751,6 +837,7 @@ impl Document {
         syn_loader: Arc<ArcSwap<syntax::Loader>>,
     ) -> Result<Self, DocumentOpenError> {
         // If the path is not a regular file (e.g.: /dev/random) it should not be opened.
+        #[cfg(not(target_arch = "wasm32"))]
         if path.metadata().is_ok_and(|metadata| !metadata.is_file()) {
             return Err(DocumentOpenError::IrregularFile);
         }
@@ -763,9 +850,16 @@ impl Document {
         encoding = encoding.or(editor_config.encoding);
 
         // Open the file if it exists, otherwise assume it is a new file (and thus empty).
-        let (rope, encoding, has_bom) = if path.exists() {
-            let mut file = std::fs::File::open(path)?;
-            from_reader(&mut file, encoding)?
+        #[cfg(not(target_arch = "wasm32"))]
+        let exists = path.exists();
+        #[cfg(target_arch = "wasm32")]
+        let exists = helix_core::storage::exists(path);
+        let (rope, encoding, has_bom) = if exists {
+            #[cfg(not(target_arch = "wasm32"))]
+            let mut reader = std::fs::File::open(path)?;
+            #[cfg(target_arch = "wasm32")]
+            let mut reader = helix_core::storage::open(path)?;
+            from_reader(&mut reader, encoding)?
         } else {
             let line_ending = editor_config
                 .line_ending
@@ -791,6 +885,7 @@ impl Document {
 
     /// The same as [`format`], but only returns formatting changes if auto-formatting
     /// is configured.
+    #[cfg(feature = "dap_lsp")]
     pub fn auto_format(
         &self,
         editor: &Editor,
@@ -806,6 +901,7 @@ impl Document {
     /// to format it nicely.
     // We can't use anyhow::Result here since the output of the future has to be
     // clonable to be used as shared future. So use a custom error type.
+    #[cfg(feature = "dap_lsp")]
     pub fn format(
         &self,
         editor: &Editor,
@@ -974,7 +1070,9 @@ impl Document {
             }
         };
 
+        #[cfg(feature = "dap_lsp")]
         let identifier = self.path().map(|_| self.identifier());
+        #[cfg(feature = "dap_lsp")]
         let language_servers = self.language_servers.clone();
 
         // mark changes up to now as saved
@@ -987,6 +1085,8 @@ impl Document {
 
         // We encode the file according to the `Document`'s encoding.
         let future = async move {
+            #[cfg(not(target_arch = "wasm32"))]
+            let save_time = {
             use tokio::fs;
             if let Some(parent) = path.parent() {
                 // TODO: display a prompt asking the user if the directories should be created
@@ -1111,6 +1211,19 @@ impl Document {
 
             write_result?;
 
+            save_time
+            };
+
+            // There is no file system on wasm32; documents are persisted to the
+            // browser's local storage instead.
+            #[cfg(target_arch = "wasm32")]
+            let save_time = {
+                let _ = (force, atomic_save, last_saved_time);
+                let mut writer = helix_core::storage::open(&path)?;
+                to_writer(&mut writer, encoding_with_bom_info, &text)?;
+                SystemTime::now()
+            };
+
             let event = DocumentSavedEvent {
                 revision: current_rev,
                 save_time,
@@ -1119,6 +1232,7 @@ impl Document {
                 text: text.clone(),
             };
 
+            #[cfg(feature = "dap_lsp")]
             for (_, language_server) in language_servers {
                 if !language_server.is_initialized() {
                     continue;
@@ -1181,6 +1295,13 @@ impl Document {
         }
     }
 
+    #[cfg(target_arch = "wasm32")]
+    pub fn pickup_last_saved_time(&mut self) {
+        // There is no file system metadata to consult on wasm32.
+        self.last_saved_time = SystemTime::now();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn pickup_last_saved_time(&mut self) {
         self.last_saved_time = match self.path() {
             Some(path) => match path.metadata() {
@@ -1227,8 +1348,11 @@ impl Document {
         // Once we have a valid path we check if its readonly status has changed
         self.detect_readonly();
 
-        let mut file = std::fs::File::open(&path)?;
-        let (rope, ..) = from_reader(&mut file, Some(encoding))?;
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut reader = std::fs::File::open(&path)?;
+        #[cfg(target_arch = "wasm32")]
+        let mut reader = helix_core::storage::open(&path)?;
+        let (rope, ..) = from_reader(&mut reader, Some(encoding))?;
 
         // Calculate the difference between the buffer and source text, and apply it.
         // This is not considered a modification of the contents of the file regardless
@@ -1240,12 +1364,17 @@ impl Document {
         self.pickup_last_saved_time();
         self.detect_indent_and_line_ending();
 
-        match provider_registry.get_diff_base(&path) {
-            Some(diff_base) => self.set_diff_base(diff_base),
-            None => self.diff_handle = None,
-        }
+        #[cfg(feature = "vcs")]
+        {
+            match provider_registry.get_diff_base(&path) {
+                Some(diff_base) => self.set_diff_base(diff_base),
+                None => self.diff_handle = None,
+            }
 
-        self.version_control_head = provider_registry.get_current_head_name(&path);
+            self.version_control_head = provider_registry.get_current_head_name(&path);
+        }
+        #[cfg(not(feature = "vcs"))]
+        let _ = provider_registry;
 
         Ok(())
     }
@@ -1361,7 +1490,7 @@ impl Document {
 
     /// Mark document as recent used for MRU sorting
     pub fn mark_as_focused(&mut self) {
-        self.focused_at = std::time::Instant::now();
+        self.focused_at = Instant::now();
     }
 
     /// Remove a view's selection and inlay hints from this document.
@@ -1449,6 +1578,7 @@ impl Document {
 
         // TODO: all of that should likely just be hooks
         // start computing the diff in parallel
+        #[cfg(feature = "vcs")]
         if let Some(diff_handle) = &self.diff_handle {
             diff_handle.update_document(self.text.clone(), false);
         }
@@ -1817,6 +1947,7 @@ impl Document {
     }
 
     /// maintains the order as configured in the language_servers TOML array
+    #[cfg(feature = "dap_lsp")]
     pub fn language_servers(&self) -> impl Iterator<Item = &helix_lsp::Client> {
         self.language_config().into_iter().flat_map(move |config| {
             config.language_servers.iter().filter_map(move |features| {
@@ -1830,10 +1961,12 @@ impl Document {
         })
     }
 
+    #[cfg(feature = "dap_lsp")]
     pub fn remove_language_server_by_name(&mut self, name: &str) -> Option<Arc<Client>> {
         self.language_servers.remove(name)
     }
 
+    #[cfg(feature = "dap_lsp")]
     pub fn language_servers_with_feature(
         &self,
         feature: LanguageServerFeature,
@@ -1853,15 +1986,23 @@ impl Document {
         })
     }
 
+    #[cfg(feature = "dap_lsp")]
     pub fn supports_language_server(&self, id: LanguageServerId) -> bool {
         self.language_servers().any(|l| l.id() == id)
     }
 
+    #[cfg(feature = "vcs")]
     pub fn diff_handle(&self) -> Option<&DiffHandle> {
         self.diff_handle.as_ref()
     }
 
+    #[cfg(not(feature = "vcs"))]
+    pub fn diff_handle(&self) -> Option<&DiffHandle> {
+        None
+    }
+
     /// Intialize/updates the differ for this document with a new base.
+    #[cfg(feature = "vcs")]
     pub fn set_diff_base(&mut self, diff_base: Vec<u8>) {
         if let Ok((diff_base, ..)) = from_reader(&mut diff_base.as_slice(), Some(self.encoding)) {
             if let Some(differ) = &self.diff_handle {
@@ -1933,8 +2074,15 @@ impl Document {
     }
 
     /// File path as a URL.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn url(&self) -> Option<Url> {
         Url::from_file_path(self.path()?).ok()
+    }
+
+    /// File path as a URL. There are no file URLs on wasm32.
+    #[cfg(target_arch = "wasm32")]
+    pub fn url(&self) -> Option<Url> {
+        None
     }
 
     pub fn uri(&self) -> Option<helix_core::Uri> {
@@ -1997,15 +2145,18 @@ impl Document {
 
     // -- LSP methods
 
+    #[cfg(feature = "dap_lsp")]
     #[inline]
     pub fn identifier(&self) -> lsp::TextDocumentIdentifier {
         lsp::TextDocumentIdentifier::new(self.url().unwrap())
     }
 
+    #[cfg(feature = "dap_lsp")]
     pub fn versioned_identifier(&self) -> lsp::VersionedTextDocumentIdentifier {
         lsp::VersionedTextDocumentIdentifier::new(self.url().unwrap(), self.version)
     }
 
+    #[cfg(feature = "dap_lsp")]
     pub fn position(
         &self,
         view_id: ViewId,
@@ -2020,6 +2171,7 @@ impl Document {
         )
     }
 
+    #[cfg(feature = "dap_lsp")]
     pub fn lsp_diagnostic_to_diagnostic(
         text: &Rope,
         language_config: Option<&LanguageConfiguration>,
