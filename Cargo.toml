@@ -7,13 +7,20 @@ publish = false
 
 [dependencies]
 helix-core = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix-patched" }
-# No `term` feature: crossterm has no wasm32 support. The browser backend
-# (plan step 5) drives the compositor through its own shim instead.
 helix-view = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix-patched" }
+# No default features: `git` would enable helix-vcs's gix integration, which
+# is dead weight in a browser (there is no repository to diff against).
+# helix-term drags in crossterm (via helix-tui and helix-view's `term`
+# feature); the crossterm it gets is the browser shim swapped in below.
+helix-term = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix-patched", default-features = false }
 
 # Transitive dependencies with no wasm32-unknown-unknown support, swapped for
 # the stubs in stubs/. See SPIKE-NOTES.md for why each is safe to stub.
 [patch.crates-io]
+# Vendored copy with the OS terminal layer replaced by a browser bridge —
+# input events and the terminal size come from `crossterm::bridge`, which the
+# wasm frontend feeds. See stubs/crossterm/Cargo.toml for the exact delta.
+crossterm = { path = "stubs/crossterm" }
 home = { path = "stubs/home" }
 which = { path = "stubs/which" }
 libloading = { path = "stubs/libloading" }

@@ -1,0 +1,46 @@
+# Vendored copy of crossterm 0.28.1 (MIT, see LICENSE) with the operating-
+# system terminal layer replaced by a browser bridge so the crate builds for
+# wasm32-unknown-unknown. The ANSI command API — the part helix-tui/helix-term
+# actually drive the screen with — and every public type are the pristine
+# upstream code. The delta:
+#   - the platform `sys` modules (termios/ioctl on unix, the console API on
+#     windows) are gone; terminal size, raw mode, and input events live in the
+#     new `bridge` module, which the browser backend feeds (src/bridge.rs)
+#   - `event::EventStream` is re-implemented over the bridge queue instead of
+#     a mio/winapi pump thread; the blocking `event::poll`/`event::read`
+#     functions and the internal reader machinery behind them are removed
+#     (nothing in helix uses them)
+#   - `tty::IsTty` always reports false — the browser has no file descriptors
+#   - `cursor::position()` reports the origin (no tty round-trip to query)
+#   - feature names are kept but no longer toggle any platform dependency
+# Everything is pure Rust, so the stub also compiles for native targets; the
+# native `cargo check` type-checks helix-term against it.
+[package]
+name = "crossterm"
+version = "0.28.1"
+edition = "2021"
+license = "MIT"
+publish = false
+
+[lib]
+name = "crossterm"
+path = "src/lib.rs"
+
+# The vendored source carries cfgs for features/platforms this stub does not
+# declare (serde, winapi); keeping the code pristine beats the lint noise.
+[lints.rust]
+unexpected_cfgs = { level = "allow" }
+
+[features]
+default = ["bracketed-paste", "windows", "events"]
+bracketed-paste = []
+events = []
+event-stream = ["events"]
+windows = []
+libc = []
+use-dev-tty = []
+
+[dependencies]
+bitflags = "2.3"
+futures-core = { version = "0.3", default-features = false }
+parking_lot = "0.12"
