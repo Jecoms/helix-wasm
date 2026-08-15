@@ -19,19 +19,29 @@ pub fn current_working_dir() -> PathBuf {
         return path.clone();
     }
 
-    // implementation of crossplatform pwd -L
-    // we want pwd -L so that symlinked directories are handled correctly
-    let mut cwd = std::env::current_dir().expect("Couldn't determine current working directory");
+    // There is no OS working directory on wasm32; default to `/` until the
+    // embedder seeds one via `set_current_working_dir`.
+    #[cfg(target_arch = "wasm32")]
+    let cwd = PathBuf::from("/");
 
-    let pwd = std::env::var_os("PWD");
-    #[cfg(windows)]
-    let pwd = pwd.or_else(|| std::env::var_os("CD"));
+    #[cfg(not(target_arch = "wasm32"))]
+    let cwd = {
+        // implementation of crossplatform pwd -L
+        // we want pwd -L so that symlinked directories are handled correctly
+        let mut cwd =
+            std::env::current_dir().expect("Couldn't determine current working directory");
 
-    if let Some(pwd) = pwd.map(PathBuf::from) {
-        if pwd.canonicalize().ok().as_ref() == Some(&cwd) {
-            cwd = pwd;
+        let pwd = std::env::var_os("PWD");
+        #[cfg(windows)]
+        let pwd = pwd.or_else(|| std::env::var_os("CD"));
+
+        if let Some(pwd) = pwd.map(PathBuf::from) {
+            if pwd.canonicalize().ok().as_ref() == Some(&cwd) {
+                cwd = pwd;
+            }
         }
-    }
+        cwd
+    };
     let mut dst = CWD.write().unwrap();
     *dst = Some(cwd.clone());
 
@@ -41,6 +51,8 @@ pub fn current_working_dir() -> PathBuf {
 /// Update the current working directory.
 pub fn set_current_working_dir(path: impl AsRef<Path>) -> std::io::Result<Option<PathBuf>> {
     let path = crate::path::canonicalize(path);
+    // No OS working directory to keep in sync on wasm32; only the static matters.
+    #[cfg(not(target_arch = "wasm32"))]
     std::env::set_current_dir(&path)?;
     let mut cwd = CWD.write().unwrap();
 
