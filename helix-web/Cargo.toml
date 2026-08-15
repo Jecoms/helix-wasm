@@ -11,26 +11,29 @@ crate-type = ["cdylib", "rlib"]
 default = ["console_error_panic_hook"]
 
 [dependencies]
-wasm-bindgen = "0.2"
-wasm-bindgen-futures = "0.4"
+# The wasm-bindgen family is pinned exactly: `wasm-pack build` installs a
+# wasm-bindgen-cli matching the locked crate version, and CLI releases after
+# 0.2.117 require a newer rustc than the 1.82.0 this repo pins.
+wasm-bindgen = "=0.2.117"
+wasm-bindgen-futures = "=0.4.44"
 tokio = { version = "1.33", features = ["rt"] }
 helix-term = { path = "../helix-term", default-features = false }
 helix-tui = { path = "../helix-tui", default-features = false }
-helix-view = { path = "../helix-view", default-features = false, features = ["term"] }
+helix-view = { path = "../helix-view", default-features = false }
 helix-core = { path = "../helix-core" }
 helix-loader = { path = "../helix-loader" }
 console_log = "1.0"
 log = "0.4"
-futures-util = { version = "0.3", default-features = false }
+futures-channel = { version = "0.3", default-features = false, features = ["std"] }
 gloo-timers = { version = "0.3", features = ["futures"] }
-js-sys = "0.3"
-web-sys = { version = "0.3.39", features = [
+js-sys = "=0.3.94"
+web-sys = { version = "=0.3.94", features = [
     "Document",
     "Element",
+    "KeyboardEvent",
     "Window",
 ] }
 rs-xterm-js = { git = "https://github.com/makemeunsee/rs-xterm-js" }
-crossterm = { version = "0.28", features = ["event-stream"] }
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
@@ -39,7 +42,7 @@ crossterm = { version = "0.28", features = ["event-stream"] }
 console_error_panic_hook = { version = "0.1.7", optional = true }
 
 [dev-dependencies]
-wasm-bindgen-test = "0.3.34"
+wasm-bindgen-test = "=0.3.44"
 
 [build-dependencies]
 cc = "1"
