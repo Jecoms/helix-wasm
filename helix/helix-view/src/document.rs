@@ -31,7 +31,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::{Arc, Weak};
-use std::time::SystemTime;
+use web_time::{Instant, SystemTime};
 
 use helix_core::{
     editor_config::EditorConfig,
@@ -123,6 +123,19 @@ pub struct DocumentSavedEvent {
 pub type DocumentSavedEventResult = Result<DocumentSavedEvent, anyhow::Error>;
 pub type DocumentSavedEventFuture = BoxFuture<'static, DocumentSavedEventResult>;
 
+/// Converts an fs metadata timestamp (always `std::time::SystemTime`) to the
+/// [`SystemTime`] used for `last_saved_time`. The two are the same type on
+/// native targets; on wasm32 they differ and the value is carried over via the
+/// unix epoch.
+fn from_std_system_time(t: std::time::SystemTime) -> SystemTime {
+    #[cfg(not(target_arch = "wasm32"))]
+    return t;
+    #[cfg(target_arch = "wasm32")]
+    return SystemTime::UNIX_EPOCH
+        + t.duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default();
+}
+
 #[derive(Debug)]
 pub struct SavePoint {
     /// The view this savepoint is associated with
@@ -200,7 +213,7 @@ pub struct Document {
     version_control_head: Option<Arc<ArcSwap<Box<str>>>>,
 
     // when document was used for most-recent-used buffer picker
-    pub focused_at: std::time::Instant,
+    pub focused_at: Instant,
 
     pub readonly: bool,
 
@@ -722,7 +735,7 @@ impl Document {
             diff_handle: None,
             config,
             version_control_head: None,
-            focused_at: std::time::Instant::now(),
+            focused_at: Instant::now(),
             readonly: false,
             jump_labels: HashMap::new(),
             color_swatches: None,
@@ -1007,7 +1020,7 @@ impl Document {
             // Protect against overwriting changes made externally
             if !force {
                 if let Ok(metadata) = fs::metadata(&path).await {
-                    if let Ok(mtime) = metadata.modified() {
+                    if let Ok(mtime) = metadata.modified().map(from_std_system_time) {
                         if last_saved_time < mtime {
                             bail!("file modified by an external process, use :w! to overwrite");
                         }
@@ -1076,7 +1089,9 @@ impl Document {
             .await;
 
             let save_time = match fs::metadata(&write_path).await {
-                Ok(metadata) => metadata.modified().map_or(SystemTime::now(), |mtime| mtime),
+                Ok(metadata) => metadata
+                    .modified()
+                    .map_or(SystemTime::now(), from_std_system_time),
                 Err(_) => SystemTime::now(),
             };
 
@@ -1190,7 +1205,7 @@ impl Document {
         self.last_saved_time = match self.path() {
             Some(path) => match path.metadata() {
                 Ok(metadata) => match metadata.modified() {
-                    Ok(mtime) => mtime,
+                    Ok(mtime) => from_std_system_time(mtime),
                     Err(err) => {
                         log::debug!("Could not fetch file system's mtime, falling back to current system time: {}", err);
                         SystemTime::now()
@@ -1366,7 +1381,7 @@ impl Document {
 
     /// Mark document as recent used for MRU sorting
     pub fn mark_as_focused(&mut self) {
-        self.focused_at = std::time::Instant::now();
+        self.focused_at = Instant::now();
     }
 
     /// Remove a view's selection and inlay hints from this document.

@@ -194,7 +194,7 @@ type FilePicker = Picker<PathBuf, FilePickerData>;
 
 pub fn file_picker(editor: &Editor, root: PathBuf) -> FilePicker {
     use ignore::{types::TypesBuilder, WalkBuilder};
-    use std::time::Instant;
+    use web_time::Instant;
 
     let config = editor.config();
     let data = FilePickerData {
@@ -276,14 +276,14 @@ pub fn file_picker(editor: &Editor, root: PathBuf) -> FilePicker {
     })
     .with_preview(|_editor, path| Some((path.as_path().into(), None)));
     let injector = picker.injector();
-    let timeout = std::time::Instant::now() + std::time::Duration::from_millis(30);
+    let timeout = Instant::now() + std::time::Duration::from_millis(30);
 
     let mut hit_timeout = false;
     for file in &mut files {
         if injector.push(file).is_err() {
             break;
         }
-        if std::time::Instant::now() >= timeout {
+        if Instant::now() >= timeout {
             hit_timeout = true;
             break;
         }

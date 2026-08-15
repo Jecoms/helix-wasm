@@ -24,6 +24,7 @@ helix-lsp = { path = "../helix-lsp" }
 helix-dap = { path = "../helix-dap" }
 helix-vcs = { path = "../helix-vcs" }
 
+web-time.workspace = true
 bitflags.workspace = true
 anyhow = "1"
 crossterm = { version = "0.28", optional = true }

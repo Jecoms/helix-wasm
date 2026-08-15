@@ -1,5 +1,5 @@
 use std::ops::Range;
-use std::time::Instant;
+use web_time::Instant;
 
 use imara_diff::{Algorithm, Diff, Hunk, IndentHeuristic, IndentLevel, InternedInput};
 use ropey::RopeSlice;

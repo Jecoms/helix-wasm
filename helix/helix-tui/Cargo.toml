@@ -19,6 +19,7 @@ helix-view = { path = "../helix-view", features = ["term"] }
 helix-core = { path = "../helix-core" }
 
 bitflags.workspace = true
+web-time.workspace = true
 cassowary = "0.3"
 unicode-segmentation.workspace = true
 crossterm = { version = "0.28", optional = true }

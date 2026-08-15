@@ -126,7 +126,7 @@ where
     fn supports_keyboard_enhancement_protocol(&self) -> bool {
         *self.supports_keyboard_enhancement_protocol
             .get_or_init(|| {
-                use std::time::Instant;
+                use web_time::Instant;
 
                 let now = Instant::now();
                 let supported = matches!(terminal::supports_keyboard_enhancement(), Ok(true));

@@ -3144,7 +3144,7 @@ fn buffer_picker(cx: &mut Context) {
         path: Option<PathBuf>,
         is_modified: bool,
         is_current: bool,
-        focused_at: std::time::Instant,
+        focused_at: web_time::Instant,
     }
 
     let new_meta = |doc: &Document| BufferMeta {

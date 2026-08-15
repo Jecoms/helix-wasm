@@ -1431,6 +1431,7 @@ dependencies = [
  "unicode-segmentation",
  "unicode-width 0.1.12",
  "url",
+ "web-time",
 ]
 
 [[package]]
@@ -1582,6 +1583,7 @@ dependencies = [
  "tokio-stream",
  "toml",
  "url",
+ "web-time",
 ]
 
 [[package]]
@@ -1597,6 +1599,7 @@ dependencies = [
  "once_cell",
  "termini",
  "unicode-segmentation",
+ "web-time",
 ]
 
 [[package]]
@@ -1648,6 +1651,7 @@ dependencies = [
  "tokio-stream",
  "toml",
  "url",
+ "web-time",
 ]
 
 [[package]]
@@ -1986,7 +1990,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6a793df0d7afeac54f95b471d3af7f0d4fb975699f972341a4b76988d49cdf0c"
 dependencies = [
  "cfg-if",
- "windows-targets 0.52.6",
+ "windows-targets 0.53.2",
 ]
 
 [[package]]
@@ -3030,6 +3034,16 @@ name = "wasm-bindgen-shared"
 version = "0.2.93"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c62a0a307cb4a311d3a07867860911ca130c3494e8c2719593806c08bc5d0484"
+
+[[package]]
+name = "web-time"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
+dependencies = [
+ "js-sys",
+ "wasm-bindgen",
+]
 
 [[package]]
 name = "which"
