@@ -11,8 +11,13 @@
 //!
 //! Single-consumer: one waker slot is kept, so exactly one `EventStream`
 //! should be polled at a time (helix-term creates exactly one).
+//!
+//! Output flows the other way through [`Output`], an `io::Write` whose
+//! `flush` hands the buffered ANSI bytes to the sink registered with
+//! [`set_output`] — the frontend forwards them to its terminal emulator.
 
 use std::collections::VecDeque;
+use std::io;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Mutex;
 use std::task::{Context, Poll, Waker};
@@ -24,6 +29,7 @@ use crate::event::Event;
 static SIZE: AtomicU32 = AtomicU32::new((80 << 16) | 24);
 static RAW_MODE: AtomicBool = AtomicBool::new(false);
 static QUEUE: Mutex<VecDeque<Event>> = Mutex::new(VecDeque::new());
+static OUTPUT_SINK: Mutex<Option<fn(&[u8])>> = Mutex::new(None);
 static WAKER: Mutex<Option<Waker>> = Mutex::new(None);
 
 /// Records the terminal dimensions reported by the frontend.
@@ -64,5 +70,53 @@ pub(crate) fn poll_next_event(cx: &mut Context<'_>) -> Poll<Option<std::io::Resu
             *WAKER.lock().unwrap() = Some(cx.waker().clone());
             Poll::Pending
         }
+    }
+}
+
+/// Registers the sink that receives everything written to [`Output`].
+///
+/// A plain `fn` keeps the bridge free of frontend types; a wasm frontend
+/// typically registers a function that reads its JS callback out of a
+/// thread-local (wasm32 is single-threaded, so that is sound).
+pub fn set_output(sink: fn(&[u8])) {
+    *OUTPUT_SINK.lock().unwrap() = Some(sink);
+}
+
+/// The browser stand-in for the process stdout that terminal rendering
+/// writes to: buffers writes and forwards them to the [`set_output`] sink on
+/// flush, preserving the batching the renderer's queue!/flush pattern
+/// expects. Writes made before a sink is registered are discarded on flush
+/// (there is nowhere to show them, and buffering indefinitely would leak).
+#[derive(Debug, Default)]
+pub struct Output {
+    buffer: Vec<u8>,
+}
+
+impl Output {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+impl io::Write for Output {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.buffer.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        if !self.buffer.is_empty() {
+            // Copy the `fn` out so the OUTPUT_SINK lock is released before
+            // calling it: the sink crosses into frontend code (JS on wasm32),
+            // and `std::sync::Mutex` is non-reentrant — a callback that
+            // re-entered the bridge while the lock was held would deadlock
+            // the single wasm thread.
+            let sink = *OUTPUT_SINK.lock().unwrap();
+            if let Some(sink) = sink {
+                sink(&self.buffer);
+            }
+            self.buffer.clear();
+        }
+        Ok(())
     }
 }

@@ -12,6 +12,10 @@
 #     (nothing in helix uses them)
 #   - `tty::IsTty` always reports false — the browser has no file descriptors
 #   - `cursor::position()` reports the origin (no tty round-trip to query)
+#   - new output surface: `bridge::Output` (an `io::Write` standing in for
+#     process stdout) buffers writes and hands them on flush to the sink a
+#     frontend registers with `bridge::set_output` — rendering reaches the
+#     browser terminal through this instead of file descriptor 1
 #   - feature names are kept but no longer toggle any platform dependency
 # Everything is pure Rust, so the stub also compiles for unix-native targets;
 # the native `cargo check` type-checks helix-term against it. Native Windows

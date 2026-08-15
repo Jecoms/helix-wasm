@@ -10,5 +10,6 @@
 //! for the full recipe and phase plan.
 
 pub use helix_core;
+pub use helix_loader;
 pub use helix_term;
 pub use helix_view;

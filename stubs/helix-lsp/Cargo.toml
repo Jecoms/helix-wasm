@@ -8,6 +8,9 @@
 #     server spawn that followed; the `Client._process: Child` field and its
 #     construction are removed with it
 #   - transport.rs is trimmed to the `Payload` type; the stdio pump is gone
+#   - `file_event::Handler::new` spawns its worker only when a tokio runtime
+#     exists (`Handle::try_current()`); upstream spawns unconditionally,
+#     which would panic on wasm32 where no runtime is ever entered
 # Everything else (util conversions, jsonrpc, Registry, progress tracking)
 # is the pristine upstream code, so editor logic behaves identically —
 # there is simply never a running language server.

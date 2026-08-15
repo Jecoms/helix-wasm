@@ -13,6 +13,7 @@ helix-view = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix
 # helix-term drags in crossterm (via helix-tui and helix-view's `term`
 # feature); the crossterm it gets is the browser shim swapped in below.
 helix-term = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix-patched", default-features = false }
+helix-loader = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix-patched" }
 
 # Transitive dependencies with no wasm32-unknown-unknown support, swapped for
 # the stubs in stubs/. See SPIKE-NOTES.md for why each is safe to stub.
@@ -41,4 +42,10 @@ helix-lsp = { path = "stubs/helix-lsp" }
 helix-dap = { path = "stubs/helix-dap" }
 
 [workspace]
+members = ["web"]
 exclude = ["stubs"]
+
+# wasm-pack builds the web crate with --release; favor size, the demo ships
+# over the network.
+[profile.release]
+opt-level = "s"
