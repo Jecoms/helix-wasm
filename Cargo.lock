@@ -993,6 +993,7 @@ dependencies = [
 [[package]]
 name = "tree-house-bindings"
 version = "0.2.4"
+source = "git+https://github.com/Jecoms/tree-house?branch=bindings-v0.2.4-patched#012d0c909fd7d0523cd894c3052d853ee4e8cb09"
 dependencies = [
  "cc",
  "libloading",

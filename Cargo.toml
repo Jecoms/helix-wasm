@@ -15,12 +15,13 @@ home = { path = "stubs/home" }
 which = { path = "stubs/which" }
 libloading = { path = "stubs/libloading" }
 url = { path = "stubs/url" }
-# Not a stub: a full vendored copy of the crates.io 0.2.4 source carrying only
-# a wasm ABI fix — the `ts_query_cursor_set_byte_range` extern declaration was
-# missing the C function's `bool` return, which traps with signature_mismatch
-# on wasm32 (see SPIKE-NOTES.md, known runtime traps). Retires when upstream
-# tree-house lands the fix.
-tree-house-bindings = { path = "vendor/tree-house-bindings" }
+# Not a stub: a patched fork — the pristine 0.2.4 release commit plus a
+# one-line wasm ABI fix. The `ts_query_cursor_set_byte_range` extern
+# declaration was missing the C function's `bool` return, which traps with
+# signature_mismatch on wasm32 (see SPIKE-NOTES.md, known runtime traps).
+# Retire when upstream helix-editor/tree-house#40 lands in a release helix
+# depends on.
+tree-house-bindings = { git = "https://github.com/Jecoms/tree-house", branch = "bindings-v0.2.4-patched" }
 
 [workspace]
-exclude = ["stubs", "vendor"]
+exclude = ["stubs"]
