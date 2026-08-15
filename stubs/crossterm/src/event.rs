@@ -1,19 +1,14 @@
 //! # Event
 //!
-//! The `event` module provides the functionality to read keyboard, mouse and terminal resize events.
+//! The `event` module provides the keyboard, mouse and terminal resize event
+//! types.
 //!
-//! * The [`read`](fn.read.html) function returns an [`Event`](enum.Event.html) immediately
-//! (if available) or blocks until an [`Event`](enum.Event.html) is available.
-//!
-//! * The [`poll`](fn.poll.html) function allows you to check if there is or isn't an [`Event`](enum.Event.html) available
-//! within the given period of time. In other words - if subsequent call to the [`read`](fn.read.html)
-//! function will block or not.
-//!
-//! It's **not allowed** to call these functions from different threads or combine them with the
-//! [`EventStream`](struct.EventStream.html). You're allowed to either:
-//!
-//! * use the [`read`](fn.read.html) & [`poll`](fn.poll.html) functions on any, but same, thread
-//! * or the [`EventStream`](struct.EventStream.html).
+//! Shim: upstream's blocking `read()`/`poll()` functions (and the reader
+//! machinery behind them) are removed — nothing in helix uses them. The one
+//! way to consume events is the async
+//! [`EventStream`](struct.EventStream.html), which is fed by the browser
+//! backend through [`crate::bridge::inject_event`] instead of an OS input
+//! source.
 //!
 //! **Make sure to enable [raw mode](../terminal/index.html#raw-mode) in order for keyboard events to work properly**
 //!
@@ -22,101 +17,6 @@
 //! Mouse and focus events are not enabled by default. You have to enable them with the
 //! [`EnableMouseCapture`](struct.EnableMouseCapture.html) / [`EnableFocusChange`](struct.EnableFocusChange.html) command.
 //! See [Command API](../index.html#command-api) for more information.
-//!
-//! ## Examples
-//!
-//! Blocking read:
-//!
-//! ```no_run
-//! #![cfg(feature = "bracketed-paste")]
-//! use crossterm::{
-//!     event::{
-//!         read, DisableBracketedPaste, DisableFocusChange, DisableMouseCapture, EnableBracketedPaste,
-//!         EnableFocusChange, EnableMouseCapture, Event,
-//!     },
-//!     execute,
-//! };
-//!
-//! fn print_events() -> std::io::Result<()> {
-//!     execute!(
-//!          std::io::stdout(),
-//!          EnableBracketedPaste,
-//!          EnableFocusChange,
-//!          EnableMouseCapture
-//!     )?;
-//!     loop {
-//!         // `read()` blocks until an `Event` is available
-//!         match read()? {
-//!             Event::FocusGained => println!("FocusGained"),
-//!             Event::FocusLost => println!("FocusLost"),
-//!             Event::Key(event) => println!("{:?}", event),
-//!             Event::Mouse(event) => println!("{:?}", event),
-//!             #[cfg(feature = "bracketed-paste")]
-//!             Event::Paste(data) => println!("{:?}", data),
-//!             Event::Resize(width, height) => println!("New size {}x{}", width, height),
-//!         }
-//!     }
-//!     execute!(
-//!         std::io::stdout(),
-//!         DisableBracketedPaste,
-//!         DisableFocusChange,
-//!         DisableMouseCapture
-//!     )?;
-//!     Ok(())
-//! }
-//! ```
-//!
-//! Non-blocking read:
-//!
-//! ```no_run
-//! #![cfg(feature = "bracketed-paste")]
-//! use std::{time::Duration, io};
-//!
-//! use crossterm::{
-//!     event::{
-//!         poll, read, DisableBracketedPaste, DisableFocusChange, DisableMouseCapture,
-//!         EnableBracketedPaste, EnableFocusChange, EnableMouseCapture, Event,
-//!     },
-//!     execute,
-//! };
-//!
-//! fn print_events() -> io::Result<()> {
-//!     execute!(
-//!          std::io::stdout(),
-//!          EnableBracketedPaste,
-//!          EnableFocusChange,
-//!          EnableMouseCapture
-//!     )?;
-//!     loop {
-//!         // `poll()` waits for an `Event` for a given time period
-//!         if poll(Duration::from_millis(500))? {
-//!             // It's guaranteed that the `read()` won't block when the `poll()`
-//!             // function returns `true`
-//!             match read()? {
-//!                 Event::FocusGained => println!("FocusGained"),
-//!                 Event::FocusLost => println!("FocusLost"),
-//!                 Event::Key(event) => println!("{:?}", event),
-//!                 Event::Mouse(event) => println!("{:?}", event),
-//!                 #[cfg(feature = "bracketed-paste")]
-//!                 Event::Paste(data) => println!("Pasted {:?}", data),
-//!                 Event::Resize(width, height) => println!("New size {}x{}", width, height),
-//!             }
-//!         } else {
-//!             // Timeout expired and no `Event` is available
-//!         }
-//!     }
-//!     execute!(
-//!         std::io::stdout(),
-//!         DisableBracketedPaste,
-//!         DisableFocusChange,
-//!         DisableMouseCapture
-//!     )?;
-//!     Ok(())
-//! }
-//! ```
-//!
-//! Check the [examples](https://github.com/crossterm-rs/crossterm/tree/master/examples) folder for more of
-//! them (`event-*`).
 
 #[cfg(feature = "event-stream")]
 pub(crate) mod stream;
