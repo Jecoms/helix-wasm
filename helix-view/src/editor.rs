@@ -1103,18 +1103,31 @@ const THIRTY_YEARS_IN_SECS: u64 = 86400 * 365 * 30;
 
 #[cfg(target_arch = "wasm32")]
 impl Sleep {
-    // equivalent to internal Instant::far_future() (30 years)
+    // A logical deadline far enough out to mean "never" (30 years), matching
+    // internal Instant::far_future(). The backing browser timeout is capped
+    // at ~24.8 days (see `until`); `wait_event` re-arms timers that fire
+    // before their logical deadline.
     fn far_future() -> Self {
-        Self {
-            timeout: TimeoutFuture::new(i32::MAX as u32),
-            deadline: Instant::now() + Duration::from_secs(THIRTY_YEARS_IN_SECS),
-        }
+        Self::until(Instant::now() + Duration::from_secs(THIRTY_YEARS_IN_SECS))
     }
 
     fn new(duration: Duration) -> Self {
+        Self::until(Instant::now() + duration)
+    }
+
+    fn until(deadline: Instant) -> Self {
+        // Browsers cap setTimeout delays at i32::MAX ms (~24.8 days) and fire
+        // larger values immediately, so clamp; `deadline` keeps the real
+        // target and `wait_event` re-arms on an early fire.
+        let now = Instant::now();
+        let ms = if deadline > now {
+            (deadline - now).as_millis().min(i32::MAX as u128) as u32
+        } else {
+            0
+        };
         Self {
-            timeout: TimeoutFuture::new(duration.as_millis() as u32),
-            deadline: Instant::now() + duration,
+            timeout: TimeoutFuture::new(ms),
+            deadline,
         }
     }
 }
@@ -2361,20 +2374,30 @@ impl Editor {
                         self.needs_redraw = true;
                         let timeout = Instant::now() + Duration::from_millis(33);
                         if timeout < self.idle_timer.deadline && timeout < self.redraw_timer.deadline {
-                            self.redraw_timer.as_mut().set(Sleep {
-                                timeout: TimeoutFuture::new(33),
-                                deadline: timeout,
-                            })
+                            self.redraw_timer.as_mut().set(Sleep::until(timeout))
                         }
                     }
                 }
 
                 _ = &mut self.redraw_timer.timeout => {
-                    self.redraw_timer.as_mut().set(Sleep::far_future());
-                    return EditorEvent::Redraw
+                    // The browser timeout is capped below the logical
+                    // deadline (see Sleep::until); on an early fire, re-arm
+                    // instead of emitting a spurious redraw.
+                    let deadline = self.redraw_timer.deadline;
+                    if Instant::now() < deadline {
+                        self.redraw_timer.as_mut().set(Sleep::until(deadline));
+                    } else {
+                        self.redraw_timer.as_mut().set(Sleep::far_future());
+                        return EditorEvent::Redraw
+                    }
                 }
                 _ = &mut self.idle_timer.timeout => {
-                    return EditorEvent::IdleTimer
+                    let deadline = self.idle_timer.deadline;
+                    if Instant::now() < deadline {
+                        self.idle_timer.as_mut().set(Sleep::until(deadline));
+                    } else {
+                        return EditorEvent::IdleTimer
+                    }
                 }
             }
         }
