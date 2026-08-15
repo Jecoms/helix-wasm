@@ -30,6 +30,21 @@ const GRAMMARS: &[(&str, &str, &str)] = &[
         "7175a6dd5fc1cee660dce6fe23f6043d75af424a",
     ),
     (
+        "go",
+        "https://github.com/tree-sitter/tree-sitter-go",
+        "64457ea6b73ef5422ed1687178d4545c3e91334a",
+    ),
+    (
+        "javascript",
+        "https://github.com/tree-sitter/tree-sitter-javascript",
+        "f772967f7b7bc7c28f845be2420a38472b16a8ee",
+    ),
+    (
+        "python",
+        "https://github.com/tree-sitter/tree-sitter-python",
+        "4bfdd9033a2225cc95032ce77066b7aeca9e2efc",
+    ),
+    (
         "regex",
         "https://github.com/tree-sitter/tree-sitter-regex",
         "e1cfca3c79896ff79842f057ea13e529b66af636",
@@ -146,10 +161,26 @@ fn generate_registration(out_dir: &Path) {
             "    register_grammar(\"{name}\", unsafe {{ tree_sitter_{symbol}() }});"
         )
         .unwrap();
+        assert!(
+            queries_dir.join(name).is_dir(),
+            "no vendored queries for grammar '{name}' in queries/"
+        );
+    }
 
-        let lang_dir = queries_dir.join(name);
+    // Query registration walks the vendored directory rather than the
+    // grammar list: `; inherits:` directives can pull in query-only base
+    // languages that have no grammar of their own (javascript inherits from
+    // `ecma` and `_javascript`).
+    let mut langs: Vec<_> = std::fs::read_dir(&queries_dir)
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .filter(|path| path.is_dir())
+        .collect();
+    langs.sort();
+    for lang_dir in langs {
+        let lang = lang_dir.file_name().unwrap().to_str().unwrap().to_owned();
         let mut files: Vec<_> = std::fs::read_dir(&lang_dir)
-            .unwrap_or_else(|_| panic!("no vendored queries for grammar '{name}' in queries/"))
+            .unwrap()
             .map(|entry| entry.unwrap().file_name().into_string().unwrap())
             .filter(|file| file.ends_with(".scm"))
             .collect();
@@ -158,7 +189,7 @@ fn generate_registration(out_dir: &Path) {
             let path = lang_dir.join(&file);
             writeln!(
                 code,
-                "    register_runtime_file(\"{name}\", \"{file}\", include_str!(r\"{}\"));",
+                "    register_runtime_file(\"{lang}\", \"{file}\", include_str!(r\"{}\"));",
                 path.display()
             )
             .unwrap();

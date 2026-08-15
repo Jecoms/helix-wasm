@@ -125,8 +125,8 @@ browser: scratch buffer, modal editing, command palette, resize — verified
 in a headless-Chromium smoke run. The runtime traps below are resolved
 except where noted. Still open for the rest of Phase 3:
 
-- ~~**Static grammar set**~~ — done: c, regex, rust, toml are statically
-  linked and highlighting renders (headless-Chromium-verified). The pieces:
+- ~~**Static grammar set**~~ — done: c, go, javascript, python, regex,
+  rust, toml are statically linked and highlighting renders (headless-Chromium-verified). The pieces:
   - `web/build.rs` `GRAMMARS` is the single source of truth: it
     shallow-fetches each grammar's C source pinned by rev (the same pins as
     helix's `languages.toml`) into OUT_DIR, compiles parser.c/scanner.c via
@@ -140,7 +140,8 @@ except where noted. Still open for the rest of Phase 3:
   - Queries are helix's own files, vendored under `web/queries/<lang>/`
     (see the README there; re-copy on tag bump), embedded and registered at
     boot in `web/src/session.rs::start`.
-  - To add a grammar: one row in `GRAMMARS` + vendor its queries. Languages
+  - To add a grammar: one row in `GRAMMARS` + vendor its queries (plus any
+    query-only base dirs they `; inherits:` from, like javascript's `ecma`). Languages
     without a registered grammar degrade to plain text (`get_language`
     returns `Ok(None)`), so the pristine full `languages.toml` ships
     untrimmed.
