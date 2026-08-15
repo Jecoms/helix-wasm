@@ -447,6 +447,11 @@ pub fn get_terminal_provider() -> Option<TerminalConfig> {
     None
 }
 
+#[cfg(target_arch = "wasm32")]
+pub fn get_terminal_provider() -> Option<TerminalConfig> {
+    None
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "kebab-case", deny_unknown_fields)]
 pub struct LspConfig {
