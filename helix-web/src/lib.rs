@@ -41,8 +41,10 @@ pub async fn main() {
 
     let config = Config::load_default().unwrap_or_default();
 
-    if let Ok(mut storage) = helix_core::storage::open(".config/helix/runtime/tutor") {
+    if let Ok(mut storage) = helix_core::storage::create(".config/helix/runtime/tutor") {
         write!(&mut storage, "{}\n\n{}", HEADER, TUTOR).unwrap_or(());
+        // content is staged in memory; the flush commits it to localStorage
+        storage.flush().unwrap_or(());
     }
 
     let mut args = Args::default();

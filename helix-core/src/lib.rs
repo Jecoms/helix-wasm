@@ -25,7 +25,7 @@ mod position;
 pub mod search;
 pub mod selection;
 pub mod snippets;
-#[cfg(target_arch = "wasm32")]
+#[cfg(any(target_arch = "wasm32", test))]
 pub mod storage;
 pub mod surround;
 pub mod syntax;

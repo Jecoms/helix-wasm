@@ -1220,7 +1220,7 @@ impl Document {
             #[cfg(target_arch = "wasm32")]
             let save_time = {
                 let _ = (force, atomic_save, last_saved_time);
-                let mut writer = helix_core::storage::open(&path)?;
+                let mut writer = helix_core::storage::create(&path)?;
                 to_writer(&mut writer, encoding_with_bom_info, &text)?;
                 SystemTime::now()
             };
