@@ -694,9 +694,11 @@ pub async fn to_writer<'a, W: tokio::io::AsyncWriteExt + Unpin + ?Sized>(
 
 // The synchronous wasm32 counterpart of `to_writer()` above: there is no async
 // file IO (or tokio runtime with IO support) on wasm32, writers there are
-// in-memory `std::io::Write` implementors like `helix_core::storage`.
-#[cfg(target_arch = "wasm32")]
-pub fn to_writer<W: std::io::Write + ?Sized>(
+// in-memory `std::io::Write` implementors like `helix_core::storage`. Also
+// compiled on the host under `cfg(test)` so its chunked encoding can be
+// verified against the async version (hence the distinct name).
+#[cfg(any(target_arch = "wasm32", test))]
+pub fn to_writer_sync<W: std::io::Write + ?Sized>(
     writer: &mut W,
     encoding_with_bom_info: (&'static Encoding, bool),
     rope: &Rope,
@@ -1221,7 +1223,7 @@ impl Document {
             let save_time = {
                 let _ = (force, atomic_save, last_saved_time);
                 let mut writer = helix_core::storage::create(&path)?;
-                to_writer(&mut writer, encoding_with_bom_info, &text)?;
+                to_writer_sync(&mut writer, encoding_with_bom_info, &text)?;
                 SystemTime::now()
             };
 
@@ -2644,6 +2646,36 @@ mod test {
             .to_string(),
             helix_core::NATIVE_LINE_ENDING.as_str()
         );
+    }
+
+    /// The synchronous `to_writer_sync` (the wasm32 save path) must produce
+    /// byte-identical output to the async `to_writer` used on native.
+    #[test]
+    fn to_writer_sync_matches_async_to_writer() {
+        let big = "€".repeat(2 * BUF_SIZE); // multi-byte chars straddling the chunk buffer
+        let cases: &[(&str, &str, bool)] = &[
+            ("", "UTF-8", false), // empty rope: sync path must still write (and flush) nothing
+            ("hello world\n", "UTF-8", false),
+            ("hello bom\n", "UTF-8", true),
+            ("héllo wörld\n", "windows-1252", false),
+            (&big, "UTF-8", false),
+        ];
+
+        for (text, label, has_bom) in cases {
+            let encoding = encoding::Encoding::for_label(label.as_bytes()).unwrap();
+            let rope = Rope::from_str(text);
+
+            let mut sync_out: Vec<u8> = Vec::new();
+            to_writer_sync(&mut sync_out, (encoding, *has_bom), &rope).unwrap();
+
+            let mut async_out: Vec<u8> = Vec::new();
+            helix_lsp::block_on(to_writer(&mut async_out, (encoding, *has_bom), &rope)).unwrap();
+
+            assert_eq!(
+                sync_out, async_out,
+                "sync/async encoding mismatch for {label} (bom: {has_bom})"
+            );
+        }
     }
 
     macro_rules! decode {
