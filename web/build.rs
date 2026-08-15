@@ -107,30 +107,37 @@ fn main() {
 
 /// The catalog entries this build links: all of them by default, or the
 /// comma-separated subset named in `HELIX_WEB_GRAMMARS` (e.g.
-/// `HELIX_WEB_GRAMMARS=rust,toml`). Names outside the catalog fail the
-/// build — selection can only narrow the pinned set, not invent sources.
+/// `HELIX_WEB_GRAMMARS=rust,toml`). Unknown and repeated names both fail
+/// the build with a message naming the offender — selection can only
+/// narrow the pinned set, and a repeat would otherwise surface as a
+/// duplicate-definition error in the generated registration code.
 fn selected_grammars() -> Vec<(&'static str, &'static str, &'static str)> {
     let selection = std::env::var("HELIX_WEB_GRAMMARS").unwrap_or_default();
     if selection.trim().is_empty() {
         return GRAMMARS.to_vec();
     }
-    selection
-        .split(',')
-        .map(str::trim)
-        .filter(|name| !name.is_empty())
-        .map(|name| {
-            *GRAMMARS
-                .iter()
-                .find(|(catalog_name, _, _)| *catalog_name == name)
-                .unwrap_or_else(|| {
-                    let known: Vec<_> = GRAMMARS.iter().map(|(n, _, _)| *n).collect();
-                    panic!(
-                        "HELIX_WEB_GRAMMARS names unknown grammar '{name}'; \
-                         the catalog has: {known:?}"
-                    )
-                })
-        })
-        .collect()
+    let mut selected: Vec<(&str, &str, &str)> = Vec::new();
+    for name in selection.split(',').map(str::trim) {
+        if name.is_empty() {
+            continue;
+        }
+        let entry = *GRAMMARS
+            .iter()
+            .find(|(catalog_name, _, _)| *catalog_name == name)
+            .unwrap_or_else(|| {
+                let known: Vec<_> = GRAMMARS.iter().map(|(n, _, _)| *n).collect();
+                panic!(
+                    "HELIX_WEB_GRAMMARS names unknown grammar '{name}'; \
+                     the catalog has: {known:?}"
+                )
+            });
+        assert!(
+            !selected.iter().any(|&(seen, _, _)| seen == name),
+            "HELIX_WEB_GRAMMARS names grammar '{name}' more than once"
+        );
+        selected.push(entry);
+    }
+    selected
 }
 
 /// Shallow-fetches the pinned revision of a grammar repository into
