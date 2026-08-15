@@ -810,6 +810,11 @@ impl Document {
         &self,
         editor: &Editor,
     ) -> Option<BoxFuture<'static, Result<Transaction, FormatterError>>> {
+        // No subprocesses on wasm32: external formatters are compiled out
+        // (tokio's `process` feature is not enabled for this target).
+        #[cfg(target_arch = "wasm32")]
+        let _ = editor;
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some((fmt_cmd, fmt_args)) = self
             .language_config()
             .and_then(|c| c.formatter.as_ref())

@@ -36,7 +36,7 @@ url = "2.5.4"
 
 arc-swap = { version = "1.7.1" }
 
-tokio = { version = "1", features = ["rt", "rt-multi-thread", "io-util", "io-std", "time", "process", "macros", "fs", "parking_lot"] }
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "io-util", "io-std", "time", "macros", "fs", "parking_lot"] }
 tokio-stream = "0.1"
 futures-util = { version = "0.3", features = ["std", "async-await"], default-features = false }
 
@@ -58,6 +58,11 @@ clipboard-win = { version = "5.4", features = ["std"] }
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
 rustix = { version = "1.0", features = ["fs"] }
+
+# tokio's `process` feature pulls in mio, which does not build for wasm32.
+# External formatter support (the only user) is compiled out on wasm32.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { version = "1", features = ["process"] }
 
 [dev-dependencies]
 helix-tui = { path = "../helix-tui" }
