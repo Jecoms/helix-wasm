@@ -6234,6 +6234,17 @@ fn shell_impl(shell: &[String], cmd: &str, input: Option<Rope>) -> anyhow::Resul
     tokio::task::block_in_place(|| helix_lsp::block_on(shell_impl_async(shell, cmd, input)))
 }
 
+#[cfg(target_arch = "wasm32")]
+async fn shell_impl_async(
+    _shell: &[String],
+    _cmd: &str,
+    _input: Option<Rope>,
+) -> anyhow::Result<Tendril> {
+    // There are no subprocesses on wasm32.
+    bail!("Shell commands are not supported on this platform")
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 async fn shell_impl_async(
     shell: &[String],
     cmd: &str,
@@ -6402,7 +6413,7 @@ fn shell_prompt(cx: &mut Context, prompt: Cow<'static, str>, behavior: ShellBeha
 }
 
 fn suspend(_cx: &mut Context) {
-    #[cfg(not(windows))]
+    #[cfg(unix)]
     {
         _cx.block_try_flush_writes().ok();
         signal_hook::low_level::raise(signal_hook::consts::signal::SIGTSTP).unwrap();

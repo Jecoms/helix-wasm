@@ -70,6 +70,20 @@ fn filter_picker_entry(entry: &DirEntry, root: &Path, dedup_symlinks: bool) -> b
 }
 
 /// Opens URL in external program.
+#[cfg(target_arch = "wasm32")]
+fn open_external_url_callback(
+    _url: Url,
+) -> impl Future<Output = Result<job::Callback, anyhow::Error>> + Send + 'static {
+    // There are no external programs on wasm32.
+    async {
+        Ok(job::Callback::Editor(Box::new(move |editor| {
+            editor.set_error("Opening URLs in an external program is not supported on this platform")
+        })))
+    }
+}
+
+/// Opens URL in external program.
+#[cfg(not(target_arch = "wasm32"))]
 fn open_external_url_callback(
     url: Url,
 ) -> impl Future<Output = Result<job::Callback, anyhow::Error>> + Send + 'static {

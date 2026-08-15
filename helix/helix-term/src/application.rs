@@ -34,14 +34,14 @@ use log::{debug, error, info, warn};
 use std::io::stdout;
 use std::{io::stdin, path::Path, sync::Arc};
 
-#[cfg(not(windows))]
+#[cfg(unix)]
 use anyhow::Context;
 use anyhow::Error;
 
 use crossterm::{event::Event as CrosstermEvent, tty::IsTty};
-#[cfg(not(windows))]
+#[cfg(unix)]
 use {signal_hook::consts::signal, signal_hook_tokio::Signals};
-#[cfg(windows)]
+#[cfg(not(unix))]
 type Signals = futures_util::stream::Empty<()>;
 
 #[cfg(not(feature = "integration"))]
@@ -222,9 +222,9 @@ impl Application {
                 .unwrap_or_else(|_| editor.new_file(Action::VerticalSplit));
         }
 
-        #[cfg(windows)]
+        #[cfg(not(unix))]
         let signals = futures_util::stream::empty();
-        #[cfg(not(windows))]
+        #[cfg(unix)]
         let signals = Signals::new([
             signal::SIGTSTP,
             signal::SIGCONT,
@@ -460,13 +460,13 @@ impl Application {
         editor.set_theme(theme);
     }
 
-    #[cfg(windows)]
-    // no signal handling available on windows
+    #[cfg(not(unix))]
+    // no signal handling available outside unix
     pub async fn handle_signals(&mut self, _signal: ()) -> bool {
         true
     }
 
-    #[cfg(not(windows))]
+    #[cfg(unix)]
     pub async fn handle_signals(&mut self, signal: i32) -> bool {
         match signal {
             signal::SIGTSTP => {
