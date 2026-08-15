@@ -30,7 +30,7 @@ use crate::{
 };
 
 use log::{debug, error, info, warn};
-#[cfg(not(feature = "integration"))]
+#[cfg(all(not(feature = "integration"), not(target_arch = "wasm32")))]
 use std::io::stdout;
 use std::{io::stdin, path::Path, sync::Arc};
 
@@ -50,8 +50,16 @@ use tui::backend::CrosstermBackend;
 #[cfg(feature = "integration")]
 use tui::backend::TestBackend;
 
-#[cfg(not(feature = "integration"))]
+#[cfg(all(not(feature = "integration"), not(target_arch = "wasm32")))]
 type TerminalBackend = CrosstermBackend<std::io::Stdout>;
+
+// wasm32 has no stdout; rendered ANSI is written to the browser crossterm
+// shim's bridge (`crossterm::bridge`), which the web frontend drains into
+// its terminal emulator. That module only exists in the shim, but this arm
+// is only compiled when building for wasm32, where the shim is the
+// crossterm in the dependency graph.
+#[cfg(all(not(feature = "integration"), target_arch = "wasm32"))]
+type TerminalBackend = CrosstermBackend<crossterm::bridge::Output>;
 
 #[cfg(feature = "integration")]
 type TerminalBackend = TestBackend;
@@ -103,8 +111,11 @@ impl Application {
         theme_parent_dirs.extend(helix_loader::runtime_dirs().iter().cloned());
         let theme_loader = theme::Loader::new(&theme_parent_dirs);
 
-        #[cfg(not(feature = "integration"))]
+        #[cfg(all(not(feature = "integration"), not(target_arch = "wasm32")))]
         let backend = CrosstermBackend::new(stdout(), &config.editor);
+
+        #[cfg(all(not(feature = "integration"), target_arch = "wasm32"))]
+        let backend = CrosstermBackend::new(crossterm::bridge::Output::new(), &config.editor);
 
         #[cfg(feature = "integration")]
         let backend = TestBackend::new(120, 150);
