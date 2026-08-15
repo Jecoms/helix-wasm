@@ -60,9 +60,52 @@ pub enum GrammarSource {
 const BUILD_TARGET: &str = env!("BUILD_TARGET");
 const REMOTE_NAME: &str = "origin";
 
+// wasm32-unknown-unknown has no dynamic linking and no runtime directory,
+// so grammars are statically linked into the embedding application, which
+// registers them (and its query files, see `register_runtime_file`) here at
+// startup before any language is loaded.
+#[cfg(target_arch = "wasm32")]
+static STATIC_GRAMMARS: once_cell::sync::Lazy<
+    std::sync::RwLock<std::collections::HashMap<String, Grammar>>,
+> = once_cell::sync::Lazy::new(Default::default);
+
+#[cfg(target_arch = "wasm32")]
+static STATIC_RUNTIME_FILES: once_cell::sync::Lazy<
+    std::sync::RwLock<std::collections::HashMap<(String, String), String>>,
+> = once_cell::sync::Lazy::new(Default::default);
+
+/// Registers a statically linked tree-sitter grammar under `name`, making it
+/// available to [`get_language`]. `grammar` is typically obtained by calling
+/// the grammar's `tree_sitter_<name>` entry point, declared `extern "C"` and
+/// linked into the binary by the embedder's build script.
+///
+/// ABI compatibility is not validated here; tree-sitter rejects an
+/// incompatible grammar when it is assigned to a parser.
+#[cfg(target_arch = "wasm32")]
+pub fn register_grammar(name: &str, grammar: Grammar) {
+    STATIC_GRAMMARS
+        .write()
+        .unwrap()
+        .insert(name.to_owned(), grammar);
+}
+
+/// Registers the contents of a `runtime/queries/<language>/<filename>` file,
+/// making it available to [`load_runtime_file`]. Embedders should register
+/// every query file that exists for a language they registered a grammar
+/// for, so that `; inherits:` directives can be resolved.
+#[cfg(target_arch = "wasm32")]
+pub fn register_runtime_file(language: &str, filename: &str, contents: &str) {
+    STATIC_RUNTIME_FILES.write().unwrap().insert(
+        (language.to_owned(), filename.to_owned()),
+        contents.to_owned(),
+    );
+}
+
+/// Gives the tree-sitter grammar registered under `name`, if any. A missing
+/// grammar is not an error: highlighting degrades gracefully.
 #[cfg(target_arch = "wasm32")]
 pub fn get_language(name: &str) -> Result<Option<Grammar>> {
-    unimplemented!()
+    Ok(STATIC_GRAMMARS.read().unwrap().get(name).copied())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -587,7 +630,27 @@ fn mtime(path: &Path) -> Result<SystemTime> {
 
 /// Gives the contents of a file from a language's `runtime/queries/<lang>`
 /// directory
+#[cfg(not(target_arch = "wasm32"))]
 pub fn load_runtime_file(language: &str, filename: &str) -> Result<String, std::io::Error> {
     let path = crate::runtime_file(PathBuf::new().join("queries").join(language).join(filename));
     std::fs::read_to_string(path)
+}
+
+/// Gives the contents of a file from a language's `runtime/queries/<lang>`
+/// directory, from the set the embedder registered with
+/// [`register_runtime_file`]: there is no runtime directory to read on
+/// wasm32.
+#[cfg(target_arch = "wasm32")]
+pub fn load_runtime_file(language: &str, filename: &str) -> Result<String, std::io::Error> {
+    STATIC_RUNTIME_FILES
+        .read()
+        .unwrap()
+        .get(&(language.to_owned(), filename.to_owned()))
+        .cloned()
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                format!("no registered runtime file queries/{language}/{filename}"),
+            )
+        })
 }
