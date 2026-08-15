@@ -298,7 +298,10 @@ mod tests {
             "\x1b[58:5:200m"
         );
         // Named colors map onto the first 16 palette entries.
-        assert_eq!(emitted(|o| set_underline_color(o, Color::Red)), "\x1b[58:5:1m");
+        assert_eq!(
+            emitted(|o| set_underline_color(o, Color::Red)),
+            "\x1b[58:5:1m"
+        );
         assert_eq!(
             emitted(|o| set_underline_color(o, Color::White)),
             "\x1b[58:5:15m"
@@ -349,11 +352,7 @@ mod tests {
         // SGR 22 clears both BOLD and DIM, so dropping BOLD while keeping DIM
         // must re-emit DIM — the exact case the native ModifierDiff handles.
         assert_eq!(
-            emitted(|o| write_modifier_diff(
-                o,
-                Modifier::BOLD | Modifier::DIM,
-                Modifier::DIM
-            )),
+            emitted(|o| write_modifier_diff(o, Modifier::BOLD | Modifier::DIM, Modifier::DIM)),
             "\x1b[22m\x1b[2m"
         );
     }
@@ -417,10 +416,10 @@ mod tests {
         assert_eq!(
             out,
             concat!(
-                "\x1b[1;1Ha",             // default state: no styling emitted
-                "\x1b[1m\x1b[31;49mb",    // add BOLD, set fg (bg unchanged but paired)
-                "\x1b[58:5:4m\x1b[4:3mc", // underline color + curl style only
-                "\x1b[59m\x1b[39m\x1b[49m\x1b[0m" // trailing reset
+                "\x1b[1;1Ha",                      // default state: no styling emitted
+                "\x1b[1m\x1b[31;49mb",             // add BOLD, set fg (bg unchanged but paired)
+                "\x1b[58:5:4m\x1b[4:3mc",          // underline color + curl style only
+                "\x1b[59m\x1b[39m\x1b[49m\x1b[0m"  // trailing reset
             )
         );
     }
