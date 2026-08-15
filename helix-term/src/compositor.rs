@@ -40,9 +40,20 @@ impl Context<'_> {
         }
         #[cfg(target_arch = "wasm32")]
         {
-            // blocking is not possible on wasm32; drive the futures inline
-            futures_executor::block_on(self.jobs.finish(self.editor, None))?;
-            futures_executor::block_on(self.editor.flush_writes())?;
+            use futures_util::FutureExt;
+            // Blocking would park wasm32's only thread and freeze the page if
+            // a future needed the JS event loop to progress. The wasm32 save
+            // path is synchronous (localStorage), so these futures complete
+            // in a single poll; a genuinely pending future is reported as an
+            // error instead.
+            self.jobs
+                .finish(self.editor, None)
+                .now_or_never()
+                .ok_or_else(|| anyhow::anyhow!("cannot block on pending jobs on wasm32"))??;
+            self.editor
+                .flush_writes()
+                .now_or_never()
+                .ok_or_else(|| anyhow::anyhow!("cannot block on pending writes on wasm32"))??;
         }
         Ok(())
     }
