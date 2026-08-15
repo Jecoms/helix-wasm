@@ -3,6 +3,14 @@ on:
   push:
     branches: [ wasm32 ]
   workflow_dispatch:
+
+# Serialize Pages deploys: deploy-pages has no built-in queuing, so without
+# this an older in-flight run could finish after — and overwrite — a newer
+# one. Don't cancel in-progress runs; let deploys complete in order.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -53,12 +61,24 @@ jobs:
           npm install
           npm run build
 
-      # Keep the demo under /demo so its URL matches the gh-pages layout the
-      # docs reference (https://<owner>.github.io/helix-wasm/demo/).
+      # Keep the demo under /demo, preserving the URL layout of the previous
+      # gh-pages deploy (https://<owner>.github.io/helix-wasm/demo/). The bare
+      # site root gets a small redirect page so it doesn't 404.
       - name: Stage site under /demo
         run: |
           mkdir -p _site/demo
           cp -r helix-web/www/dist/. _site/demo/
+          cat > _site/index.html <<'EOF'
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta http-equiv="refresh" content="0; url=demo/">
+            <title>helix-wasm</title>
+          </head>
+          <body><a href="demo/">Continue to the helix-wasm demo</a></body>
+          </html>
+          EOF
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
@@ -73,7 +93,7 @@ jobs:
       id-token: write
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deployment.outputs.page_url }}demo/
     steps:
       - name: Enable Pages
         uses: actions/configure-pages@v5
