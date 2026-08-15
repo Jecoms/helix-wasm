@@ -13,8 +13,10 @@
 #   - `tty::IsTty` always reports false — the browser has no file descriptors
 #   - `cursor::position()` reports the origin (no tty round-trip to query)
 #   - feature names are kept but no longer toggle any platform dependency
-# Everything is pure Rust, so the stub also compiles for native targets; the
-# native `cargo check` type-checks helix-term against it.
+# Everything is pure Rust, so the stub also compiles for unix-native targets;
+# the native `cargo check` type-checks helix-term against it. Native Windows
+# is explicitly rejected (compile_error! in src/lib.rs): the vendored source
+# retains `#[cfg(windows)]` items that reference the deleted console layer.
 [package]
 name = "crossterm"
 version = "0.28.1"

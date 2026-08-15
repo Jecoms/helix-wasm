@@ -248,17 +248,15 @@ pub mod tty;
 /// of upstream crossterm.
 pub mod bridge;
 
-#[cfg(windows)]
-/// A module that exposes one function to check if the current terminal supports ANSI sequences.
-pub mod ansi_support;
 mod command;
 pub(crate) mod macros;
 
-#[cfg(all(windows, not(feature = "windows")))]
-compile_error!("Compiling on Windows with \"windows\" feature disabled. Feature \"windows\" should only be disabled when project will never be compiled on Windows.");
-
-#[cfg(all(winapi, not(feature = "winapi")))]
-compile_error!("Compiling on Windows with \"winapi\" feature disabled. Feature \"winapi\" should only be disabled when project will never be compiled on Windows.");
-
-#[cfg(all(crossterm_winapi, not(feature = "crossterm_winapi")))]
-compile_error!("Compiling on Windows with \"crossterm_winapi\" feature disabled. Feature \"crossterm_winapi\" should only be disabled when project will never be compiled on Windows.");
+// Shim: the Windows console layer (`sys::windows`, `ansi_support`,
+// winapi/crossterm_winapi) was removed along with the unix tty layer, but the
+// vendored source still carries `#[cfg(windows)]` items that reference it.
+// Rather than rewrite that pristine upstream code, reject native Windows
+// builds outright with a clear message instead of a pile of resolution
+// errors. The stub targets wasm32; unix-native builds exist only so the
+// native `cargo check` can type-check helix-term against it.
+#[cfg(windows)]
+compile_error!("this crossterm stub has no Windows console layer; it supports wasm32-unknown-unknown and unix-native type-checking only.");
