@@ -13,3 +13,6 @@ pulled in by `; inherits:` directives (javascript inherits from `ecma` and
 Do not edit these files; re-copy them from the pinned `helix-patched`
 revision when bumping the helix tag. When adding a grammar to the set, add
 its directory here plus any directory its queries `; inherits:` from.
+
+License and attribution notices for the grammar C sources these queries
+pair with (statically linked into the shipped wasm) live in `../NOTICE.md`.

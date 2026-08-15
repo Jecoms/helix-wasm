@@ -20,9 +20,10 @@ use std::process::Command;
 /// The grammar catalog: (name, git remote, pinned revision). The pins
 /// mirror the `[[grammar]]` entries in helix's `languages.toml` at the tag
 /// the workspace tracks. To add a grammar: add a row here, vendor its
-/// queries under `queries/<name>/`, and keep the name in sync with helix's
+/// queries under `queries/<name>/`, keep the name in sync with helix's
 /// language configuration (the `tree_sitter_<name>` symbol is derived from
-/// it).
+/// it), and record its license attribution in `NOTICE.md` (also on pin
+/// bumps).
 ///
 /// A build links the whole catalog by default; set `HELIX_WEB_GRAMMARS` to
 /// a comma-separated subset of these names to slim the bundle (see
