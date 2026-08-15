@@ -1,6 +1,9 @@
 use arc_swap::{access::Map, ArcSwap};
 use futures_util::Stream;
-use helix_core::{diagnostic::Severity, pos_at_coords, syntax, Range, Selection};
+#[cfg(feature = "dap_lsp")]
+use helix_core::Selection;
+use helix_core::{diagnostic::Severity, pos_at_coords, syntax, Range};
+#[cfg(feature = "dap_lsp")]
 use helix_lsp::{
     lsp::{self, notification::Notification},
     util::lsp_range_to_range,
@@ -16,6 +19,7 @@ use helix_view::{
     tree::Layout,
     Align, Editor,
 };
+#[cfg(feature = "dap_lsp")]
 use serde_json::json;
 use tui::backend::Backend;
 
@@ -29,44 +33,61 @@ use crate::{
     ui::{self, overlay::overlaid},
 };
 
-use log::{debug, error, info, warn};
-#[cfg(not(feature = "integration"))]
+#[cfg(feature = "dap_lsp")]
+use log::{error, info};
+use log::{debug, warn};
+#[cfg(all(not(feature = "integration"), not(target_arch = "wasm32")))]
 use std::io::stdout;
-use std::{io::stdin, path::Path, sync::Arc};
+#[cfg(not(target_arch = "wasm32"))]
+use std::io::stdin;
+use std::{path::Path, sync::Arc};
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_arch = "wasm32")))]
 use anyhow::Context;
 use anyhow::Error;
 
-use crossterm::{event::Event as CrosstermEvent, tty::IsTty};
-#[cfg(not(windows))]
+#[cfg(not(target_arch = "wasm32"))]
+use crossterm::tty::IsTty;
+#[cfg(not(any(windows, target_arch = "wasm32")))]
 use {signal_hook::consts::signal, signal_hook_tokio::Signals};
-#[cfg(windows)]
+#[cfg(any(windows, target_arch = "wasm32"))]
 type Signals = futures_util::stream::Empty<()>;
 
-#[cfg(not(feature = "integration"))]
+#[cfg(all(not(feature = "integration"), not(target_arch = "wasm32")))]
 use tui::backend::CrosstermBackend;
 
-#[cfg(feature = "integration")]
+#[cfg(any(feature = "integration", target_arch = "wasm32"))]
 use tui::backend::TestBackend;
 
-#[cfg(not(feature = "integration"))]
+#[cfg(all(not(feature = "integration"), not(target_arch = "wasm32")))]
 type TerminalBackend = CrosstermBackend<std::io::Stdout>;
 
-#[cfg(feature = "integration")]
+// On wasm32 there is no terminal to attach to; the embedder supplies its own
+// `Backend` via `Application::new_with_backend`. `TestBackend` only serves as
+// the placeholder default for the type parameter.
+#[cfg(any(feature = "integration", target_arch = "wasm32"))]
 type TerminalBackend = TestBackend;
 
-type Terminal = tui::terminal::Terminal<TerminalBackend>;
+type Terminal<B> = tui::terminal::Terminal<B>;
 
-pub struct Application {
+/// The terminal input event type the event loop consumes: crossterm events on
+/// native targets, already-converted helix events on wasm32 (where the
+/// embedder feeds input in directly).
+#[cfg(not(target_arch = "wasm32"))]
+pub type InputEvent = crossterm::event::Event;
+#[cfg(target_arch = "wasm32")]
+pub type InputEvent = helix_view::input::Event;
+
+pub struct Application<B: Backend = TerminalBackend> {
     compositor: Compositor,
-    terminal: Terminal,
+    terminal: Terminal<B>,
     pub editor: Editor,
 
     config: Arc<ArcSwap<Config>>,
 
     signals: Signals,
     jobs: Jobs,
+    #[cfg(feature = "dap_lsp")]
     lsp_progress: LspProgressMap,
 }
 
@@ -93,7 +114,25 @@ fn setup_integration_logging() {
 }
 
 impl Application {
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new(args: Args, config: Config, lang_loader: syntax::Loader) -> Result<Self, Error> {
+        #[cfg(not(feature = "integration"))]
+        let backend = CrosstermBackend::new(stdout(), &config.editor);
+
+        #[cfg(feature = "integration")]
+        let backend = TestBackend::new(120, 150);
+
+        Self::new_with_backend(args, config, lang_loader, backend)
+    }
+}
+
+impl<B: Backend> Application<B> {
+    pub fn new_with_backend(
+        args: Args,
+        config: Config,
+        lang_loader: syntax::Loader,
+        backend: B,
+    ) -> Result<Self, Error> {
         #[cfg(feature = "integration")]
         setup_integration_logging();
 
@@ -102,12 +141,6 @@ impl Application {
         let mut theme_parent_dirs = vec![helix_loader::config_dir()];
         theme_parent_dirs.extend(helix_loader::runtime_dirs().iter().cloned());
         let theme_loader = theme::Loader::new(&theme_parent_dirs);
-
-        #[cfg(not(feature = "integration"))]
-        let backend = CrosstermBackend::new(stdout(), &config.editor);
-
-        #[cfg(feature = "integration")]
-        let backend = TestBackend::new(120, 150);
 
         let terminal = Terminal::new(backend)?;
         let area = terminal.size().expect("couldn't get terminal size");
@@ -214,17 +247,23 @@ impl Application {
             } else {
                 editor.new_file(Action::VerticalSplit);
             }
-        } else if stdin().is_tty() || cfg!(feature = "integration") {
-            editor.new_file(Action::VerticalSplit);
         } else {
-            editor
-                .new_file_from_stdin(Action::VerticalSplit)
-                .unwrap_or_else(|_| editor.new_file(Action::VerticalSplit));
+            #[cfg(not(target_arch = "wasm32"))]
+            if stdin().is_tty() || cfg!(feature = "integration") {
+                editor.new_file(Action::VerticalSplit);
+            } else {
+                editor
+                    .new_file_from_stdin(Action::VerticalSplit)
+                    .unwrap_or_else(|_| editor.new_file(Action::VerticalSplit));
+            }
+            // There is no stdin to read from on wasm32.
+            #[cfg(target_arch = "wasm32")]
+            editor.new_file(Action::VerticalSplit);
         }
 
-        #[cfg(windows)]
+        #[cfg(any(windows, target_arch = "wasm32"))]
         let signals = futures_util::stream::empty();
-        #[cfg(not(windows))]
+        #[cfg(not(any(windows, target_arch = "wasm32")))]
         let signals = Signals::new([
             signal::SIGTSTP,
             signal::SIGCONT,
@@ -241,6 +280,7 @@ impl Application {
             config,
             signals,
             jobs: Jobs::new(),
+            #[cfg(feature = "dap_lsp")]
             lsp_progress: LspProgressMap::new(),
         };
 
@@ -282,7 +322,7 @@ impl Application {
 
     pub async fn event_loop<S>(&mut self, input_stream: &mut S)
     where
-        S: Stream<Item = std::io::Result<crossterm::event::Event>> + Unpin,
+        S: Stream<Item = std::io::Result<InputEvent>> + Unpin,
     {
         self.render().await;
 
@@ -295,7 +335,7 @@ impl Application {
 
     pub async fn event_loop_until_idle<S>(&mut self, input_stream: &mut S) -> bool
     where
-        S: Stream<Item = std::io::Result<crossterm::event::Event>> + Unpin,
+        S: Stream<Item = std::io::Result<InputEvent>> + Unpin,
     {
         loop {
             if self.editor.should_close() {
@@ -404,12 +444,15 @@ impl Application {
                 // Re-detect .editorconfig
                 document.detect_editor_config();
                 document.detect_language(&lang_loader);
-                let diagnostics = Editor::doc_diagnostics(
-                    &self.editor.language_servers,
-                    &self.editor.diagnostics,
-                    document,
-                );
-                document.replace_diagnostics(diagnostics, &[], None);
+                #[cfg(feature = "dap_lsp")]
+                {
+                    let diagnostics = Editor::doc_diagnostics(
+                        &self.editor.language_servers,
+                        &self.editor.diagnostics,
+                        document,
+                    );
+                    document.replace_diagnostics(diagnostics, &[], None);
+                }
             }
 
             self.terminal
@@ -460,13 +503,13 @@ impl Application {
         editor.set_theme(theme);
     }
 
-    #[cfg(windows)]
-    // no signal handling available on windows
+    #[cfg(any(windows, target_arch = "wasm32"))]
+    // no signal handling available on windows and wasm32
     pub async fn handle_signals(&mut self, _signal: ()) -> bool {
         true
     }
 
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_arch = "wasm32")))]
     pub async fn handle_signals(&mut self, signal: i32) -> bool {
         match signal {
             signal::SIGTSTP => {
@@ -607,11 +650,13 @@ impl Application {
                 self.handle_config_events(event);
                 self.render().await;
             }
+            #[cfg(feature = "dap_lsp")]
             EditorEvent::LanguageServerMessage((id, call)) => {
                 self.handle_language_server_message(call, id).await;
                 // limit render calls for fast language server messages
                 helix_event::request_redraw();
             }
+            #[cfg(feature = "dap_lsp")]
             EditorEvent::DebuggerEvent((id, payload)) => {
                 let needs_render = self.editor.handle_debugger_message(id, payload).await;
                 if needs_render {
@@ -635,7 +680,7 @@ impl Application {
         false
     }
 
-    pub async fn handle_terminal_events(&mut self, event: std::io::Result<CrosstermEvent>) {
+    pub async fn handle_terminal_events(&mut self, event: std::io::Result<InputEvent>) {
         let mut cx = crate::compositor::Context {
             editor: &mut self.editor,
             jobs: &mut self.jobs,
@@ -643,7 +688,7 @@ impl Application {
         };
         // Handle key events
         let should_redraw = match event.unwrap() {
-            CrosstermEvent::Resize(width, height) => {
+            InputEvent::Resize(width, height) => {
                 self.terminal
                     .resize(Rect::new(0, 0, width, height))
                     .expect("Unable to resize terminal");
@@ -656,7 +701,8 @@ impl Application {
                     .handle_event(&Event::Resize(width, height), &mut cx)
             }
             // Ignore keyboard release events.
-            CrosstermEvent::Key(crossterm::event::KeyEvent {
+            #[cfg(not(target_arch = "wasm32"))]
+            InputEvent::Key(crossterm::event::KeyEvent {
                 kind: crossterm::event::KeyEventKind::Release,
                 ..
             }) => false,
@@ -668,6 +714,7 @@ impl Application {
         }
     }
 
+    #[cfg(feature = "dap_lsp")]
     pub async fn handle_language_server_message(
         &mut self,
         call: helix_lsp::Call,
@@ -1035,6 +1082,7 @@ impl Application {
         }
     }
 
+    #[cfg(feature = "dap_lsp")]
     fn handle_show_document(
         &mut self,
         params: lsp::ShowDocumentParams,
@@ -1116,7 +1164,7 @@ impl Application {
 
     pub async fn run<S>(&mut self, input_stream: &mut S) -> Result<i32, Error>
     where
-        S: Stream<Item = std::io::Result<crossterm::event::Event>> + Unpin,
+        S: Stream<Item = std::io::Result<InputEvent>> + Unpin,
     {
         self.claim_term().await?;
 
@@ -1126,7 +1174,7 @@ impl Application {
             // We can't handle errors properly inside this closure.  And it's
             // probably not a good idea to `unwrap()` inside a panic handler.
             // So we just ignore the `Result`.
-            let _ = TerminalBackend::force_restore();
+            let _ = B::force_restore();
             hook(info);
         }));
 
@@ -1164,6 +1212,7 @@ impl Application {
             errs.push(err);
         }
 
+        #[cfg(feature = "dap_lsp")]
         if self.editor.close_language_servers(None).await.is_err() {
             log::error!("Timed out waiting for language servers to shutdown");
             errs.push(anyhow::format_err!(

@@ -5,6 +5,7 @@ use helix_view::document::Mode;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fmt::Display;
+#[cfg(not(target_arch = "wasm32"))]
 use std::fs;
 use std::io::Error as IOError;
 use toml::de::Error as TomlError;
@@ -118,10 +119,15 @@ impl Config {
     }
 
     pub fn load_default() -> Result<Config, ConfigLoadError> {
+        // Configuration lives in the browser's local storage on wasm32.
+        #[cfg(not(target_arch = "wasm32"))]
+        let read_content = fs::read_to_string;
+        #[cfg(target_arch = "wasm32")]
+        let read_content = helix_core::storage::read_to_string;
         let global_config =
-            fs::read_to_string(helix_loader::config_file()).map_err(ConfigLoadError::Error);
-        let local_config = fs::read_to_string(helix_loader::workspace_config_file())
-            .map_err(ConfigLoadError::Error);
+            read_content(helix_loader::config_file()).map_err(ConfigLoadError::Error);
+        let local_config =
+            read_content(helix_loader::workspace_config_file()).map_err(ConfigLoadError::Error);
         Config::load(global_config, local_config)
     }
 }

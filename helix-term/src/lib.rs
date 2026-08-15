@@ -7,6 +7,7 @@ pub mod commands;
 pub mod compositor;
 pub mod config;
 pub mod events;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod health;
 pub mod job;
 pub mod keymap;
@@ -20,12 +21,12 @@ mod handlers;
 use ignore::DirEntry;
 use url::Url;
 
-#[cfg(windows)]
+#[cfg(any(windows, target_arch = "wasm32"))]
 fn true_color() -> bool {
     true
 }
 
-#[cfg(not(windows))]
+#[cfg(not(any(windows, target_arch = "wasm32")))]
 fn true_color() -> bool {
     if matches!(
         std::env::var("COLORTERM").map(|v| matches!(v.as_str(), "truecolor" | "24bit")),
@@ -70,6 +71,7 @@ fn filter_picker_entry(entry: &DirEntry, root: &Path, dedup_symlinks: bool) -> b
 }
 
 /// Opens URL in external program.
+#[cfg(not(target_arch = "wasm32"))]
 fn open_external_url_callback(
     url: Url,
 ) -> impl Future<Output = Result<job::Callback, anyhow::Error>> + Send + 'static {
@@ -83,6 +85,19 @@ fn open_external_url_callback(
         }
         Ok(job::Callback::Editor(Box::new(move |editor| {
             editor.set_error("Opening URL in external program failed")
+        })))
+    }
+}
+
+/// There is no external program to hand URLs to on wasm32.
+#[cfg(target_arch = "wasm32")]
+fn open_external_url_callback(
+    url: Url,
+) -> impl Future<Output = Result<job::Callback, anyhow::Error>> + Send + 'static {
+    let _ = url;
+    async {
+        Ok(job::Callback::Editor(Box::new(move |editor| {
+            editor.set_error("Opening URLs is not supported on wasm32")
         })))
     }
 }

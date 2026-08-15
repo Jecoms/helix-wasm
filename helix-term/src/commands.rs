@@ -1,16 +1,84 @@
+#[cfg(feature = "dap_lsp")]
 pub(crate) mod dap;
+#[cfg(feature = "dap_lsp")]
 pub(crate) mod lsp;
 pub(crate) mod typed;
 
+#[cfg(feature = "dap_lsp")]
 pub use dap::*;
 use futures_util::FutureExt;
+#[cfg(feature = "vcs")]
 use helix_event::status;
 use helix_stdx::{
     path::{self, find_paths},
     rope::{self, RopeSliceExt},
 };
+#[cfg(feature = "vcs")]
 use helix_vcs::{FileChange, Hunk};
+#[cfg(feature = "dap_lsp")]
 pub use lsp::*;
+
+// Stand-ins for the LSP and DAP commands so that the keymap and the static
+// command registry do not need to change when `dap_lsp` is disabled.
+#[cfg(not(feature = "dap_lsp"))]
+mod dap_lsp_stubs {
+    use super::Context;
+
+    macro_rules! dap_lsp_stubs {
+        ($($name:ident,)*) => {
+            $(
+                pub fn $name(cx: &mut Context) {
+                    cx.editor
+                        .set_error("LSP/DAP support is not compiled into this build");
+                }
+            )*
+        };
+    }
+
+    pub fn dap_toggle_breakpoint_impl(
+        cx: &mut Context,
+        _path: std::path::PathBuf,
+        _line: usize,
+    ) {
+        cx.editor
+            .set_error("LSP/DAP support is not compiled into this build");
+    }
+
+    dap_lsp_stubs!(
+        symbol_picker,
+        workspace_symbol_picker,
+        diagnostics_picker,
+        workspace_diagnostics_picker,
+        code_action,
+        goto_declaration,
+        goto_definition,
+        goto_type_definition,
+        goto_implementation,
+        goto_reference,
+        signature_help,
+        hover,
+        rename_symbol,
+        select_references_to_symbol_under_cursor,
+        dap_launch,
+        dap_restart,
+        dap_toggle_breakpoint,
+        dap_continue,
+        dap_pause,
+        dap_step_in,
+        dap_step_out,
+        dap_next,
+        dap_variables,
+        dap_terminate,
+        dap_enable_exceptions,
+        dap_disable_exceptions,
+        dap_edit_condition,
+        dap_edit_log,
+        dap_switch_thread,
+        dap_switch_stack_frame,
+    );
+}
+#[cfg(not(feature = "dap_lsp"))]
+pub use dap_lsp_stubs::*;
 use tui::{
     text::{Span, Spans},
     widgets::Cell,
@@ -34,15 +102,19 @@ use helix_core::{
     regex::{self, Regex},
     search::{self, CharMatcher},
     selection, surround,
-    syntax::config::{BlockCommentToken, LanguageServerFeature},
+    syntax::config::BlockCommentToken,
     text_annotations::{Overlay, TextAnnotations},
     textobject,
     unicode::width::UnicodeWidthChar,
     visual_offset_from_block, Deletion, LineEnding, Position, Range, Rope, RopeReader, RopeSlice,
     Selection, SmallVec, Syntax, Tendril, Transaction,
 };
+#[cfg(feature = "dap_lsp")]
+use helix_core::syntax::config::LanguageServerFeature;
+#[cfg(feature = "dap_lsp")]
+use helix_view::document::FormatterError;
 use helix_view::{
-    document::{FormatterError, Mode, SCRATCH_BUFFER_NAME},
+    document::{Mode, SCRATCH_BUFFER_NAME},
     editor::Action,
     info::Info,
     input::KeyEvent,
@@ -65,13 +137,13 @@ use crate::{
 };
 
 use crate::job::{self, Jobs};
+#[cfg(feature = "dap_lsp")]
+use std::{error::Error, future::Future};
 use std::{
     char::{ToLowercase, ToUppercase},
     cmp::Ordering,
     collections::{HashMap, HashSet},
-    error::Error,
     fmt,
-    future::Future,
     io::Read,
     num::NonZeroUsize,
 };
@@ -143,6 +215,7 @@ impl Context<'_> {
             Some((Box::new(on_next_key_callback), OnKeyCallbackKind::Fallback));
     }
 
+    #[cfg(feature = "dap_lsp")]
     #[inline]
     pub fn callback<T, F>(
         &mut self,
@@ -173,6 +246,7 @@ impl Context<'_> {
     }
 }
 
+#[cfg(feature = "dap_lsp")]
 #[inline]
 fn make_job_callback<T, F>(
     call: impl Future<Output = helix_lsp::Result<T>> + 'static + Send,
@@ -3139,12 +3213,17 @@ fn file_explorer_in_current_directory(cx: &mut Context) {
 fn buffer_picker(cx: &mut Context) {
     let current = view!(cx.editor).doc;
 
+    #[cfg(target_arch = "wasm32")]
+    use instant::Instant;
+    #[cfg(not(target_arch = "wasm32"))]
+    use std::time::Instant;
+
     struct BufferMeta {
         id: DocumentId,
         path: Option<PathBuf>,
         is_modified: bool,
         is_current: bool,
-        focused_at: std::time::Instant,
+        focused_at: Instant,
     }
 
     let new_meta = |doc: &Document| BufferMeta {
@@ -3294,6 +3373,13 @@ fn jumplist_picker(cx: &mut Context) {
     cx.push_layer(Box::new(overlaid(picker)));
 }
 
+#[cfg(not(feature = "vcs"))]
+fn changed_file_picker(cx: &mut Context) {
+    cx.editor
+        .set_error("VCS support is not compiled into this build");
+}
+
+#[cfg(feature = "vcs")]
 fn changed_file_picker(cx: &mut Context) {
     pub struct FileChangeData {
         cwd: PathBuf,
@@ -3570,6 +3656,7 @@ fn insert_with_indent(cx: &mut Context, cursor_fallback: IndentFallbackPos) {
 //
 // TODO: provide some way to cancel this, probably as part of a more general job cancellation
 // scheme
+#[cfg(feature = "dap_lsp")]
 async fn make_format_callback(
     doc_id: DocumentId,
     doc_version: i32,
@@ -3998,14 +4085,29 @@ fn goto_prev_diag(cx: &mut Context) {
     cx.editor.apply_motion(motion)
 }
 
+#[cfg(not(feature = "vcs"))]
+fn goto_first_change(cx: &mut Context) {
+    cx.editor
+        .set_error("VCS support is not compiled into this build");
+}
+
+#[cfg(feature = "vcs")]
 fn goto_first_change(cx: &mut Context) {
     goto_first_change_impl(cx, false);
 }
 
+#[cfg(not(feature = "vcs"))]
+fn goto_last_change(cx: &mut Context) {
+    cx.editor
+        .set_error("VCS support is not compiled into this build");
+}
+
+#[cfg(feature = "vcs")]
 fn goto_last_change(cx: &mut Context) {
     goto_first_change_impl(cx, true);
 }
 
+#[cfg(feature = "vcs")]
 fn goto_first_change_impl(cx: &mut Context, reverse: bool) {
     let editor = &mut cx.editor;
     let (view, doc) = current!(editor);
@@ -4026,14 +4128,29 @@ fn goto_first_change_impl(cx: &mut Context, reverse: bool) {
     }
 }
 
+#[cfg(not(feature = "vcs"))]
+fn goto_next_change(cx: &mut Context) {
+    cx.editor
+        .set_error("VCS support is not compiled into this build");
+}
+
+#[cfg(feature = "vcs")]
 fn goto_next_change(cx: &mut Context) {
     goto_next_change_impl(cx, Direction::Forward)
 }
 
+#[cfg(not(feature = "vcs"))]
+fn goto_prev_change(cx: &mut Context) {
+    cx.editor
+        .set_error("VCS support is not compiled into this build");
+}
+
+#[cfg(feature = "vcs")]
 fn goto_prev_change(cx: &mut Context) {
     goto_next_change_impl(cx, Direction::Backward)
 }
 
+#[cfg(feature = "vcs")]
 fn goto_next_change_impl(cx: &mut Context, direction: Direction) {
     let count = cx.count() as u32 - 1;
     let motion = move |editor: &mut Editor| {
@@ -4084,6 +4201,7 @@ fn goto_next_change_impl(cx: &mut Context, direction: Direction) {
 /// Returns the [Range] for a [Hunk] in the given text.
 /// Additions and modifications cover the added and modified ranges.
 /// Deletions are represented as the point at the start of the deletion hunk.
+#[cfg(feature = "vcs")]
 fn hunk_range(hunk: Hunk, text: RopeSlice) -> Range {
     let anchor = text.line_to_char(hunk.after.start as usize);
     let head = if hunk.after.is_empty() {
@@ -4916,6 +5034,14 @@ fn unindent(cx: &mut Context) {
     exit_select_mode(cx);
 }
 
+#[cfg(not(feature = "dap_lsp"))]
+fn format_selections(cx: &mut Context) {
+    // Range formatting is provided by the language servers.
+    cx.editor
+        .set_error("LSP/DAP support is not compiled into this build");
+}
+
+#[cfg(feature = "dap_lsp")]
 fn format_selections(cx: &mut Context) {
     use helix_lsp::{lsp, util::range_to_lsp_range};
 
@@ -5923,6 +6049,7 @@ fn select_textobject(cx: &mut Context, objtype: textobject::TextObject) {
                     return;
                 }
 
+                #[cfg(feature = "vcs")]
                 let textobject_change = |range: Range| -> Range {
                     let diff_handle = doc.diff_handle().unwrap();
                     let diff = diff_handle.load();
@@ -5957,7 +6084,12 @@ fn select_textobject(cx: &mut Context, objtype: textobject::TextObject) {
                             objtype,
                             count,
                         ),
+                        #[cfg(feature = "vcs")]
                         'g' => textobject_change(range),
+                        // unreachable: without VCS support `diff_handle()` is
+                        // always `None` and the check above bails out first
+                        #[cfg(not(feature = "vcs"))]
+                        'g' => range,
                         // TODO: cancel new ranges if inconsistent surround matches across lines
                         ch if !ch.is_ascii_alphanumeric() => textobject::textobject_pair_surround(
                             doc.syntax(),
@@ -6230,10 +6362,27 @@ fn shell_keep_pipe(cx: &mut Context) {
     );
 }
 
-fn shell_impl(shell: &[String], cmd: &str, input: Option<Rope>) -> anyhow::Result<Tendril> {
-    tokio::task::block_in_place(|| helix_lsp::block_on(shell_impl_async(shell, cmd, input)))
+// There are no external processes to pipe through on wasm32.
+#[cfg(target_arch = "wasm32")]
+fn shell_impl(_shell: &[String], _cmd: &str, _input: Option<Rope>) -> anyhow::Result<Tendril> {
+    bail!("Shell commands are not supported on wasm32")
 }
 
+#[cfg(target_arch = "wasm32")]
+async fn shell_impl_async(
+    _shell: &[String],
+    _cmd: &str,
+    _input: Option<Rope>,
+) -> anyhow::Result<Tendril> {
+    bail!("Shell commands are not supported on wasm32")
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn shell_impl(shell: &[String], cmd: &str, input: Option<Rope>) -> anyhow::Result<Tendril> {
+    tokio::task::block_in_place(|| futures_executor::block_on(shell_impl_async(shell, cmd, input)))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 async fn shell_impl_async(
     shell: &[String],
     cmd: &str,
@@ -6402,7 +6551,7 @@ fn shell_prompt(cx: &mut Context, prompt: Cow<'static, str>, behavior: ShellBeha
 }
 
 fn suspend(_cx: &mut Context) {
-    #[cfg(not(windows))]
+    #[cfg(not(any(windows, target_arch = "wasm32")))]
     {
         _cx.block_try_flush_writes().ok();
         signal_hook::low_level::raise(signal_hook::consts::signal::SIGTSTP).unwrap();

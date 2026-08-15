@@ -87,6 +87,8 @@ impl<T: 'static + Send + Sync, D: 'static + Send + Sync> AsyncHook
                 };
 
                 job::dispatch_blocking(move |editor, compositor| {
+                    #[cfg(not(feature = "dap_lsp"))]
+                    let _ = &editor;
                     let Some(Overlay {
                         content: picker, ..
                     }) = compositor.find::<Overlay<Picker<T, D>>>()
@@ -99,12 +101,15 @@ impl<T: 'static + Send + Sync, D: 'static + Send + Sync> AsyncHook
                     else {
                         return;
                     };
-                    let diagnostics = helix_view::Editor::doc_diagnostics(
-                        &editor.language_servers,
-                        &editor.diagnostics,
-                        doc,
-                    );
-                    doc.replace_diagnostics(diagnostics, &[], None);
+                    #[cfg(feature = "dap_lsp")]
+                    {
+                        let diagnostics = helix_view::Editor::doc_diagnostics(
+                            &editor.language_servers,
+                            &editor.diagnostics,
+                            doc,
+                        );
+                        doc.replace_diagnostics(diagnostics, &[], None);
+                    }
                     doc.syntax = Some(syntax);
                 });
             });

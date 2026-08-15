@@ -1,10 +1,22 @@
+// The `hx` binary is a native terminal application; on wasm32 helix is
+// embedded as a library instead (see helix-web).
+#[cfg(target_arch = "wasm32")]
+fn main() {}
+
+#[cfg(not(target_arch = "wasm32"))]
 use anyhow::{Context, Error, Result};
+#[cfg(not(target_arch = "wasm32"))]
 use crossterm::event::EventStream;
+#[cfg(not(target_arch = "wasm32"))]
 use helix_loader::VERSION_AND_GIT_HASH;
+#[cfg(not(target_arch = "wasm32"))]
 use helix_term::application::Application;
+#[cfg(not(target_arch = "wasm32"))]
 use helix_term::args::Args;
+#[cfg(not(target_arch = "wasm32"))]
 use helix_term::config::{Config, ConfigLoadError};
 
+#[cfg(not(target_arch = "wasm32"))]
 fn setup_logging(verbosity: u64) -> Result<()> {
     let mut base_config = fern::Dispatch::new();
 
@@ -33,11 +45,13 @@ fn setup_logging(verbosity: u64) -> Result<()> {
     Ok(())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn main() -> Result<()> {
     let exit_code = main_impl()?;
     std::process::exit(exit_code);
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[tokio::main]
 async fn main_impl() -> Result<i32> {
     let args = Args::parse_args().context("could not parse arguments")?;

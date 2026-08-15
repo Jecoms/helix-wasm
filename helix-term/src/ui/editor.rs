@@ -1,15 +1,16 @@
+#[cfg(feature = "dap_lsp")]
+use crate::{handlers::completion::CompletionItem, ui::Completion};
 use crate::{
     commands::{self, OnKeyCallback, OnKeyCallbackKind},
     compositor::{Component, Context, Event, EventResult},
     events::{OnModeSwitch, PostCommand},
-    handlers::completion::CompletionItem,
     key,
     keymap::{KeymapResult, Keymaps},
     ui::{
         document::{render_document, LinePos, TextRenderer},
         statusline,
         text_decorations::{self, Decoration, DecorationManager, InlineDiagnostics},
-        Completion, ProgressSpinners,
+        ProgressSpinners,
     },
 };
 
@@ -40,6 +41,7 @@ pub struct EditorView {
     on_next_key: Option<(OnKeyCallback, OnKeyCallbackKind)>,
     pseudo_pending: Vec<KeyEvent>,
     pub(crate) last_insert: (commands::MappableCommand, Vec<InsertEvent>),
+    #[cfg(feature = "dap_lsp")]
     pub(crate) completion: Option<Completion>,
     spinners: ProgressSpinners,
     /// Tracks if the terminal window is focused by reaction to terminal focus events
@@ -47,6 +49,8 @@ pub struct EditorView {
 }
 
 #[derive(Debug, Clone)]
+// the completion variants are only constructed by the `dap_lsp` completion UI
+#[cfg_attr(not(feature = "dap_lsp"), allow(dead_code))]
 pub enum InsertEvent {
     Key(KeyEvent),
     CompletionApply {
@@ -64,6 +68,7 @@ impl EditorView {
             on_next_key: None,
             pseudo_pending: Vec::new(),
             last_insert: (commands::MappableCommand::normal_mode, Vec::new()),
+            #[cfg(feature = "dap_lsp")]
             completion: None,
             spinners: ProgressSpinners::default(),
             terminal_focused: true,
@@ -103,6 +108,7 @@ impl EditorView {
         }
 
         // Set DAP highlights, if needed.
+        #[cfg(feature = "dap_lsp")]
         if let Some(frame) = editor.current_stack_frame() {
             let dap_line = frame.line.saturating_sub(1);
             let style = theme.get("ui.highlight.frameline");
@@ -996,6 +1002,7 @@ impl EditorView {
         }
     }
 
+    #[cfg(feature = "dap_lsp")]
     #[allow(clippy::too_many_arguments)]
     pub fn set_completion(
         &mut self,
@@ -1021,7 +1028,10 @@ impl EditorView {
     }
 
     pub fn clear_completion(&mut self, editor: &mut Editor) -> Option<OnKeyCallback> {
-        self.completion = None;
+        #[cfg(feature = "dap_lsp")]
+        {
+            self.completion = None;
+        }
         let mut on_next_key: Option<OnKeyCallback> = None;
         editor.handlers.completions.request_controller.restart();
         editor.handlers.completions.active_completions.clear();
@@ -1057,7 +1067,10 @@ impl EditorView {
     }
 
     pub fn handle_idle_timeout(&mut self, cx: &mut commands::Context) -> EventResult {
+        #[cfg(feature = "dap_lsp")]
         commands::compute_inlay_hints_for_all_views(cx.editor, cx.jobs);
+        #[cfg(not(feature = "dap_lsp"))]
+        let _ = cx;
 
         EventResult::Ignored(None)
     }
@@ -1373,7 +1386,9 @@ impl Component for EditorView {
                     match mode {
                         Mode::Insert => {
                             // let completion swallow the event if necessary
+                            #[cfg_attr(not(feature = "dap_lsp"), allow(unused_mut))]
                             let mut consumed = false;
+                            #[cfg(feature = "dap_lsp")]
                             if let Some(completion) = &mut self.completion {
                                 let res = {
                                     // use a fake context here
@@ -1585,6 +1600,7 @@ impl Component for EditorView {
             }
         }
 
+        #[cfg(feature = "dap_lsp")]
         if let Some(completion) = self.completion.as_mut() {
             completion.render(area, surface, cx);
         }
