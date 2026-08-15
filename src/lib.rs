@@ -7,3 +7,4 @@
 //! in `stubs/`. See SPIKE-NOTES.md for the full recipe and phase plan.
 
 pub use helix_core;
+pub use helix_view;
