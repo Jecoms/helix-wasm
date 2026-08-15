@@ -150,7 +150,21 @@ except where noted. Still open for the rest of Phase 3:
 
 - ~~`std::time::Instant::now()` panics on wasm32-unknown-unknown~~ →
   resolved on `helix-patched` by the `web-time` swap (free on native) plus
-  gloo-timers-backed editor idle/redraw timers. Upstreamable.
+  gloo-timers-backed editor idle/redraw timers. Upstreamable. Two caveats:
+  - **helix-vcs is NOT covered**: `helix-vcs/src/diff.rs` still uses
+    `tokio::time::Instant` (`Instant::now()` feeds
+    `tokio::time::timeout_at` in the diff worker), which web-time cannot
+    replace — `timeout_at` demands tokio's own `Instant`. Unreachable in
+    the demo (helix-term builds with `default-features = false`, no git
+    provider), but making helix-vcs reachable on wasm32 needs
+    browser-timer work in the diff worker (the 547247fb approach), not a
+    clock swap.
+  - web-time sits in the plain `[dependencies]` of the patched crates
+    (helix-core/term/tui/view), not a `target.'cfg(...)'` table like
+    gloo-timers: on native it is a pure `std::time` re-export, and gating
+    it would force cfg-gated `use` statements through shared code. The
+    deliberate cost is that native dependency graphs gain the (inert)
+    web-time crate — the one softening of the "native untouched" framing.
 - `faccess::readonly()` maps fs errors to `true` → every buffer opened from
   a path would be read-only in the browser; virtual storage must intercept
   fs paths (see legacy `helix-core/src/storage.rs`). Not hit by the

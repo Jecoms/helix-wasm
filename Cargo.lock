@@ -445,7 +445,7 @@ checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 [[package]]
 name = "helix-core"
 version = "25.7.1"
-source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#afefe70fd72a49adb9f05ed4b522544d3f70f7d9"
+source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#950fc48c3a0e097090e921837b2e0e0da63b308f"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -501,7 +501,7 @@ dependencies = [
 [[package]]
 name = "helix-event"
 version = "25.7.1"
-source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#afefe70fd72a49adb9f05ed4b522544d3f70f7d9"
+source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#950fc48c3a0e097090e921837b2e0e0da63b308f"
 dependencies = [
  "anyhow",
  "foldhash",
@@ -516,7 +516,7 @@ dependencies = [
 [[package]]
 name = "helix-loader"
 version = "25.7.1"
-source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#afefe70fd72a49adb9f05ed4b522544d3f70f7d9"
+source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#950fc48c3a0e097090e921837b2e0e0da63b308f"
 dependencies = [
  "anyhow",
  "cc",
@@ -557,7 +557,7 @@ dependencies = [
 [[package]]
 name = "helix-lsp-types"
 version = "0.95.1"
-source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#afefe70fd72a49adb9f05ed4b522544d3f70f7d9"
+source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#950fc48c3a0e097090e921837b2e0e0da63b308f"
 dependencies = [
  "bitflags",
  "serde",
@@ -568,12 +568,12 @@ dependencies = [
 [[package]]
 name = "helix-parsec"
 version = "25.7.1"
-source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#afefe70fd72a49adb9f05ed4b522544d3f70f7d9"
+source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#950fc48c3a0e097090e921837b2e0e0da63b308f"
 
 [[package]]
 name = "helix-stdx"
 version = "25.7.1"
-source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#afefe70fd72a49adb9f05ed4b522544d3f70f7d9"
+source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#950fc48c3a0e097090e921837b2e0e0da63b308f"
 dependencies = [
  "bitflags",
  "dunce",
@@ -591,7 +591,7 @@ dependencies = [
 [[package]]
 name = "helix-term"
 version = "25.7.1"
-source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#afefe70fd72a49adb9f05ed4b522544d3f70f7d9"
+source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#950fc48c3a0e097090e921837b2e0e0da63b308f"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -635,7 +635,7 @@ dependencies = [
 [[package]]
 name = "helix-tui"
 version = "25.7.1"
-source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#afefe70fd72a49adb9f05ed4b522544d3f70f7d9"
+source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#950fc48c3a0e097090e921837b2e0e0da63b308f"
 dependencies = [
  "bitflags",
  "cassowary",
@@ -652,7 +652,7 @@ dependencies = [
 [[package]]
 name = "helix-vcs"
 version = "25.7.1"
-source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#afefe70fd72a49adb9f05ed4b522544d3f70f7d9"
+source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#950fc48c3a0e097090e921837b2e0e0da63b308f"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -667,7 +667,7 @@ dependencies = [
 [[package]]
 name = "helix-view"
 version = "25.7.1"
-source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#afefe70fd72a49adb9f05ed4b522544d3f70f7d9"
+source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#950fc48c3a0e097090e921837b2e0e0da63b308f"
 dependencies = [
  "anyhow",
  "arc-swap",
