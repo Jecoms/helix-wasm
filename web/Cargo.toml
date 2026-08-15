@@ -1,0 +1,29 @@
+# The browser frontend: a wasm-bindgen cdylib that boots helix-term against
+# the crossterm browser shim and exposes the small JS surface the host page
+# drives (see www/). Only meaningful for wasm targets — on native the crate
+# compiles to an empty lib so plain `cargo check` of the workspace stays
+# cheap and green.
+[package]
+name = "helix-web"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+helix-wasm = { path = ".." }
+# Resolves to the browser shim in stubs/ via the workspace [patch] table;
+# the frontend needs its `bridge` module directly.
+crossterm = "0.28"
+wasm-bindgen = "0.2"
+wasm-bindgen-futures = "0.4"
+js-sys = "0.3"
+console_error_panic_hook = "0.1.7"
+console_log = "1.0"
+log = "0.4"
+
+[build-dependencies]
+cc = "1"

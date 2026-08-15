@@ -118,23 +118,56 @@ green and CI-gated:
   progressive-narrowing diagnostics for where a breakage enters the
   stack, not proofs that each crate builds in isolation.
 
+## Phase 3 status: the demo boots
+
+`web/` (crate `helix-web`) + `web/www/` boot pristine helix-term in the
+browser: scratch buffer, modal editing, command palette, resize — verified
+in a headless-Chromium smoke run. The runtime traps below are resolved
+except where noted. Still open for the rest of Phase 3:
+
+- **Static grammar set** — no grammars are linked yet, so no syntax
+  highlighting; grammar loads fail cleanly through the libloading stub. The
+  plan: compile a small grammar list's parser C in `web/build.rs` (the libc
+  side — `sysroot/shims.c`, `wctype.c`, the `c_alloc` allocator — already
+  links) and resolve symbols through a registration path. Watch for
+  tree-house's parse-timeout `Instant` use when the first grammar lands.
+- **GH Pages deploy** — the CI `web-bundle` job builds the bundle; the
+  deploy workflow (port of legacy `web_demo.yml`) is deliberately not
+  enabled yet.
+- **Persistence / virtual storage** — nothing persists; `:w` on a path hits
+  unsupported fs APIs and reports an error. `faccess::readonly()` maps fs
+  errors to `true`, so any buffer opened *from a path* would be read-only;
+  the scratch-buffer demo doesn't hit it. Legacy solved both with
+  `helix-core/src/storage.rs` (localStorage-backed); v2 needs an equivalent
+  that doesn't fork helix-core.
+- **No tokio runtime is entered** — `AsyncHook` workers check
+  `Handle::try_current()` and silently don't spawn (completion debounce,
+  signature help, auto-save stay inert; harmless without LSP). Code paths
+  that `tokio::spawn` unconditionally (`Jobs::add` for non-wait jobs, saves)
+  panic if reached; same exposure the legacy port shipped with.
+
 ## Known runtime traps (Phase 3, compile ≠ run)
 
-- `std::time::Instant::now()` panics on wasm32-unknown-unknown → upstream a
-  `web-time` swap (free on native) or hold on `helix-patched`.
-- `faccess::readonly()` maps fs errors to `true` → every buffer would open
-  read-only in the browser; virtual storage must intercept fs paths (see
-  legacy `helix-core/src/storage.rs`).
-- `crossterm::bridge` starts at a static 80x24 until the frontend calls
-  `bridge::set_size()`; the legacy in-tree bridge queried live xterm.js
-  `cols()`/`rows()`, so a stale size was structurally impossible there.
-  The Phase-3 backend must call `set_size()` (and inject an
-  `Event::Resize`) before the first render, or helix lays out against the
-  placeholder size.
-- No `block_on` on the browser main thread; event loop must be driven async
-  (see legacy `helix-term/src/application.rs` genericized backend).
-- tokio `time`/`fs` features compile but their runtime behavior on wasm is
-  unverified.
+- ~~`std::time::Instant::now()` panics on wasm32-unknown-unknown~~ →
+  resolved on `helix-patched` by the `web-time` swap (free on native) plus
+  gloo-timers-backed editor idle/redraw timers. Upstreamable.
+- `faccess::readonly()` maps fs errors to `true` → every buffer opened from
+  a path would be read-only in the browser; virtual storage must intercept
+  fs paths (see legacy `helix-core/src/storage.rs`). Not hit by the
+  scratch-buffer demo.
+- ~~`crossterm::bridge` starts at a static 80x24~~ → the web frontend's
+  `start()` calls `bridge::set_size()` and injects `Event::Resize` before
+  the first render. The trap remains for other embedders: size the bridge
+  before booting the app.
+- No `block_on` on the browser main thread; the event loop runs as a
+  wasm-bindgen future (`spawn_local(app.run(...))`) — works with pristine
+  helix-term because the crossterm stub's `EventStream` and the
+  gloo-timers `Sleep` are plain futures needing no runtime.
+- tokio `time`/`fs` features compile but panic at runtime if actually
+  driven (no runtime is entered; see Phase 3 status above).
+- `std::env::current_dir`/`current_exe` and etcetera's `$HOME` lookup are
+  unsupported → fixed working directory `/` and fixed loader paths on
+  `helix-patched`.
 - tree-house-bindings ≤0.2.4 (and upstream master as of 2026-08) declares
   `ts_query_cursor_set_byte_range` without the C function's `bool` return —
   harmless on native ABIs, but wasm32 traps with `signature_mismatch` the
@@ -149,7 +182,9 @@ green and CI-gated:
 ## Branch map
 
 - `v2` (this branch, orphan) — becomes the new `main` at Phase 4 swap.
-- `helix-patched` (to create) — helix at tag + faccess fix + tokio feature
-  trims; Cargo git-deps point here until upstream PRs land.
+- `helix-patched` — helix at tag + the not-yet-upstreamed fixes (faccess,
+  tokio feature trims, web-time clocks, browser timers, bridge render
+  target, loader/env fallbacks); Cargo git-deps point here until upstream
+  PRs land.
 - `legacy` (to create from current `main`) — the old in-tree port;
   reference for crossterm shim, storage, backend wiring, wasm-sysroot.

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <title>Helix web - alpha demo</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #3b224c;
+    }
+
+    #terminal {
+      width: 100%;
+      height: 100vh;
+      /* dvh tracks the actual visible viewport on mobile browsers */
+      height: 100dvh;
+    }
+  </style>
+</head>
+
+<body>
+  <noscript>This page contains webassembly and javascript content, please enable javascript in your browser.</noscript>
+  <div id="terminal"></div>
+  <script type="module" src="/main.js"></script>
+</body>
+
+</html>

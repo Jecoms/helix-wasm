@@ -57,3 +57,36 @@ jobs:
 
       - name: Check helix-term for wasm32
         run: cargo check -p helix-term --target wasm32-unknown-unknown --locked
+
+  web-bundle:
+    name: build web bundle (wasm-pack + vite)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - name: Build the wasm package
+        run: wasm-pack build web --target web -- --locked
+
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build the host page
+        run: |
+          cd web/www
+          npm ci
+          npm run build
