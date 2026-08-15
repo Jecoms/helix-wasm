@@ -21,6 +21,10 @@ thread_local! {
     /// receiver-less [`Backend::force_restore`] (called from the panic hook)
     /// can reach the terminal without going through a lifetime-bound writer.
     /// wasm32 is single-threaded, so a thread-local is effectively global.
+    ///
+    /// Written once per page load: this assumes the single [`spawn_terminal`]
+    /// call in `lib.rs`; a future dispose/recreate flow must re-register here
+    /// or `force_restore` will write to the stale instance.
     static TERMINAL: RefCell<Option<Terminal>> = const { RefCell::new(None) };
 }
 
