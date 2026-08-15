@@ -5,6 +5,11 @@
 [env]
 CC_wasm32_unknown_unknown = { value = "sysroot/wasm-cc", relative = true, force = true }
 
+# helix-term's build script fetches + dlopen-builds tree-sitter grammars,
+# which is native-Helix machinery: the wasm build links its grammar set
+# statically (Phase 3, see SPIKE-NOTES.md). Skip it.
+HELIX_DISABLE_AUTO_GRAMMAR_BUILD = "1"
+
 # tokio's feature guard rejects `fs`/`io-std`/`rt-multi-thread` on wasm unless
 # tokio_unstable is set. Upstream helix already builds with tokio_unstable in
 # its own .cargo/config.toml, so this matches the environment helix is

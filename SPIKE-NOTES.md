@@ -83,15 +83,40 @@ green and CI-gated:
   optional behind helix-vcs's `git` feature and enabled by nothing in the
   helix-view build, so the wasm build has no git integration. Confirmed.
 
-Still open for the helix-term gate:
+Resolved — `cargo check -p helix-term --target wasm32-unknown-unknown` is
+green and CI-gated:
 
-- crossterm: `[patch]` with a browser shim; port legacy
-  `helix-web/src/crossterm/`. (helix-view dodges this — its `crossterm`
-  dep is optional behind the `term` feature, which the wrapper doesn't
-  enable. helix-tui/helix-term need the shim for real.)
-- helix-term's `signal-hook-tokio` dep needs a `cfg(unix)` target gate on
-  `helix-patched`, plus ~2 direct `tokio::process` use sites in term
-  source to compile out.
+- crossterm: `[patch.crates-io]` → `stubs/crossterm`, a vendored 0.28.1
+  with the OS terminal layer replaced by a browser bridge. The ANSI
+  command API, the style/event types, and the `execute!`/`queue!` macros
+  are pristine upstream code; terminal size, raw mode, and `EventStream`
+  read from the new `crossterm::bridge` module instead of the tty, and
+  the Phase-3 browser backend feeds it (`bridge::inject_event`,
+  `bridge::set_size`). The legacy port solved this by editing helix-tui
+  in-tree; the Cargo-level swap keeps upstream helix-tui/helix-term
+  untouched. The shim is pure Rust, so it also compiles natively and the
+  native `cargo check` type-checks helix-term against it.
+- helix-term's subprocess/signal surface: trimmed on `helix-patched`.
+  tokio's `process` feature and the `open` crate (no wasm32 support at
+  all) moved to `cfg(not(target_arch = "wasm32"))` target deps, their two
+  use sites (shell commands, external URL opening) return errors on
+  wasm32; signal handling (signal-hook/signal-hook-tokio/libc) narrowed
+  from `cfg(not(windows))` to `cfg(unix)`, so wasm32 takes the same
+  no-signals path Windows already did.
+- helix-term's build script fetches + dlopen-builds grammars by default;
+  `.cargo/config.toml` sets `HELIX_DISABLE_AUTO_GRAMMAR_BUILD=1` since
+  the wasm build links its grammar set statically (Phase 3).
+- The rest of term's new dep tree (helix-tui, termini, grep-searcher,
+  ignore, fern, chrono, pulldown-cmark, nucleo, ...) compiled for wasm32
+  as-is.
+- Adding helix-term reunified the cargo feature graph: helix-tui requires
+  helix-view's `term` feature, and since the wrapper is a single package
+  Cargo resolves one feature graph regardless of `-p`, so
+  `cargo check -p helix-view` now runs with `term`/crossterm active. The
+  deliberate isolation the wrapper had before this step (no `term`
+  feature, no crossterm in the graph) is gone; the per-crate CI jobs are
+  progressive-narrowing diagnostics for where a breakage enters the
+  stack, not proofs that each crate builds in isolation.
 
 ## Known runtime traps (Phase 3, compile ≠ run)
 
@@ -100,6 +125,12 @@ Still open for the helix-term gate:
 - `faccess::readonly()` maps fs errors to `true` → every buffer would open
   read-only in the browser; virtual storage must intercept fs paths (see
   legacy `helix-core/src/storage.rs`).
+- `crossterm::bridge` starts at a static 80x24 until the frontend calls
+  `bridge::set_size()`; the legacy in-tree bridge queried live xterm.js
+  `cols()`/`rows()`, so a stale size was structurally impossible there.
+  The Phase-3 backend must call `set_size()` (and inject an
+  `Event::Resize`) before the first render, or helix lays out against the
+  placeholder size.
 - No `block_on` on the browser main thread; event loop must be driven async
   (see legacy `helix-term/src/application.rs` genericized backend).
 - tokio `time`/`fs` features compile but their runtime behavior on wasm is
