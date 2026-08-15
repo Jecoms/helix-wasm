@@ -34,10 +34,96 @@ use std::{
     sync::Arc,
 };
 
-use tokio::{
-    sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
-    time::{sleep, Duration, Instant, Sleep},
-};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+
+#[cfg(not(target_arch = "wasm32"))]
+use tokio::time::{sleep, Duration, Instant, Sleep};
+#[cfg(target_arch = "wasm32")]
+use wasm_timer::{sleep, Duration, Instant, Sleep};
+
+// tokio's time driver needs a runtime thread that can park, which
+// wasm32-unknown-unknown does not have, and tokio::time::Instant is
+// std::time::Instant underneath, which traps there. This module supplies
+// `sleep`/`Sleep` lookalikes backed by browser timeouts so the timer-driven
+// code in this file compiles for wasm32 without further changes.
+#[cfg(target_arch = "wasm32")]
+mod wasm_timer {
+    use std::future::Future;
+    use std::pin::Pin;
+    use std::task::{Context, Poll};
+
+    pub use std::time::Duration;
+
+    use gloo_timers::future::TimeoutFuture;
+    pub use web_time::Instant;
+
+    /// A timer future with the API subset of `tokio::time::Sleep` used here.
+    pub struct Sleep {
+        timeout: TimeoutFuture,
+        deadline: Instant,
+    }
+
+    pub fn sleep(duration: Duration) -> Sleep {
+        let deadline = Instant::now()
+            .checked_add(duration)
+            .unwrap_or_else(far_future);
+        Sleep {
+            timeout: timeout_until(deadline),
+            deadline,
+        }
+    }
+
+    // Far enough out to mean "never" (30 years), mirroring what
+    // tokio::time::Instant::far_future is documented to guarantee.
+    fn far_future() -> Instant {
+        Instant::now() + Duration::from_secs(86400 * 365 * 30)
+    }
+
+    fn timeout_until(deadline: Instant) -> TimeoutFuture {
+        // Browsers cap setTimeout delays at i32::MAX ms (~24.8 days) and fire
+        // larger values immediately, so clamp; `Sleep::poll` re-arms until
+        // the logical deadline is actually reached.
+        let ms = deadline
+            .saturating_duration_since(Instant::now())
+            .as_millis()
+            .min(i32::MAX as u128) as u32;
+        TimeoutFuture::new(ms)
+    }
+
+    impl Sleep {
+        pub fn deadline(&self) -> Instant {
+            self.deadline
+        }
+
+        pub fn reset(self: Pin<&mut Self>, deadline: Instant) {
+            let this = self.get_mut();
+            this.deadline = deadline;
+            this.timeout = timeout_until(deadline);
+        }
+    }
+
+    impl Future for Sleep {
+        type Output = ();
+
+        fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+            let this = self.get_mut();
+            loop {
+                match Pin::new(&mut this.timeout).poll(cx) {
+                    Poll::Pending => return Poll::Pending,
+                    Poll::Ready(()) => {
+                        if Instant::now() >= this.deadline {
+                            return Poll::Ready(());
+                        }
+                        // The backing browser timeout fired before the logical
+                        // deadline (clamping above); re-arm and poll again so
+                        // the new timeout registers the waker.
+                        this.timeout = timeout_until(this.deadline);
+                    }
+                }
+            }
+        }
+    }
+}
 
 use anyhow::{anyhow, bail, Error};
 
