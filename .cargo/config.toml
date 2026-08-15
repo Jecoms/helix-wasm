@@ -4,3 +4,14 @@
 # `relative = true` makes cargo absolutize the path against the repo root.
 [env]
 CC_wasm32_unknown_unknown = { value = "sysroot/wasm-cc", relative = true, force = true }
+
+# tokio's feature guard rejects `fs`/`io-std`/`rt-multi-thread` on wasm unless
+# tokio_unstable is set. Upstream helix already builds with tokio_unstable in
+# its own .cargo/config.toml, so this matches the environment helix is
+# developed against. The gated features compile on wasm32; whether each works
+# at runtime is a phase-3 concern (see SPIKE-NOTES.md).
+# NB: a RUSTFLAGS/CARGO_ENCODED_RUSTFLAGS environment variable overrides (not
+# merges with) config-file rustflags — if one is ever set, it must carry
+# `--cfg tokio_unstable` itself or tokio's feature guard errors come back.
+[target.wasm32-unknown-unknown]
+rustflags = ["--cfg", "tokio_unstable"]

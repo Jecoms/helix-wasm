@@ -20,7 +20,18 @@ home = { path = "stubs/home" }             # 0.5.9 — no wasm support upstream
 which = { path = "stubs/which" }           # 8.0.0 — no wasm support upstream
 libloading = { path = "stubs/libloading" } # 0.8.7 — dlopen; wasm links grammars statically
 url = { path = "stubs/url" }               # 2.5.4 + wasm cfg for from/to_file_path
+
+# helix-view and up: swap the subprocess-bound helix crates for vendored
+# stubs (patching the git source replaces the in-repo path deps too)
+[patch."https://github.com/Jecoms/helix-wasm.git"]
+helix-lsp = { path = "stubs/helix-lsp" }
+helix-dap = { path = "stubs/helix-dap" }
 ```
+
+Plus, for helix-view and up, `--cfg tokio_unstable` for the wasm32 target
+(`.cargo/config.toml` `[target.wasm32-unknown-unknown] rustflags`): tokio's
+feature guard otherwise rejects `fs`/`io-std`/`rt-multi-thread` on wasm.
+Upstream helix sets the same cfg in its own `.cargo/config.toml`.
 
 Environment for the wasm target (belongs in `.cargo/config.toml` `[env]`):
 
@@ -45,17 +56,42 @@ build.rs (see legacy `helix-web/build.rs`).
 
 ## Enumerated blockers for helix-view / helix-term (Phase 2)
 
-- Single failing crate in helix-view's whole tree: **mio**, pulled by
-  tokio's `process` feature, requested in Cargo.toml by helix-view,
-  helix-term, helix-lsp, helix-dap. Trimming `process` = the only
-  Cargo.toml lines needed on the `helix-patched` branch.
-- Direct `tokio::process`/`net` use in view+term source: only ~3 sites.
-- Stub surface: helix-lsp ~26 distinct symbols used by view+term (grep
-  undercounts `Client` method calls — expect more), helix-dap ~5,
-  helix-vcs ~1 (may compile as-is once tokio unblocks; git2 stays off).
+Resolved — `cargo check -p helix-view --target wasm32-unknown-unknown` is
+green and CI-gated:
+
+- **mio** via tokio's `process` feature: trimmed on `helix-patched` for
+  helix-view (feature moved to a `cfg(not(wasm32))` target dep; the one
+  `tokio::process` use site, external formatters in `Document::format`, is
+  compiled out for wasm32). helix-lsp/helix-dap's `process`+`net` requests
+  went away with the stubs below.
+- The spike's "mio is the only failing crate" claim was incomplete: tokio
+  also has a *feature guard* that rejects `fs`/`io-std`/`rt-multi-thread`
+  on wasm unless `--cfg tokio_unstable` is set. Upstream helix already
+  builds with tokio_unstable (its own `.cargo/config.toml`), so ours sets
+  it for the wasm32 target too — no upstream edit needed.
+- helix-lsp / helix-dap: stubbed via `[patch."<this repo's git URL>"]` →
+  `stubs/helix-lsp`, `stubs/helix-dap`. Not hand-written facades: vendored
+  copies of the upstream crates with only the subprocess/TCP machinery
+  removed (spawn paths return errors), so Registry/util/jsonrpc/protocol
+  types behave identically and the surface automatically covers whatever
+  view+term use. Re-vendor on tag bumps; the delta is documented in each
+  stub's Cargo.toml header.
+- helix-view's own wasm32 fallbacks had bit-rotted upstream (noop clipboard
+  provider signatures/derives, missing `get_terminal_provider`); fixed on
+  `helix-patched` — upstreamable, same category as the faccess fix.
+- helix-vcs: compiles as-is once tokio unblocks — without gix, which is
+  optional behind helix-vcs's `git` feature and enabled by nothing in the
+  helix-view build, so the wasm build has no git integration. Confirmed.
+
+Still open for the helix-term gate:
+
 - crossterm: `[patch]` with a browser shim; port legacy
-  `helix-web/src/crossterm/`.
-- helix-term's `signal-hook-tokio` dep needs a `cfg(unix)` target gate.
+  `helix-web/src/crossterm/`. (helix-view dodges this — its `crossterm`
+  dep is optional behind the `term` feature, which the wrapper doesn't
+  enable. helix-tui/helix-term need the shim for real.)
+- helix-term's `signal-hook-tokio` dep needs a `cfg(unix)` target gate on
+  `helix-patched`, plus ~2 direct `tokio::process` use sites in term
+  source to compile out.
 
 ## Known runtime traps (Phase 3, compile ≠ run)
 

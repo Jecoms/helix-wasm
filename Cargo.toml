@@ -7,6 +7,9 @@ publish = false
 
 [dependencies]
 helix-core = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix-patched" }
+# No `term` feature: crossterm has no wasm32 support. The browser backend
+# (plan step 5) drives the compositor through its own shim instead.
+helix-view = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix-patched" }
 
 # Transitive dependencies with no wasm32-unknown-unknown support, swapped for
 # the stubs in stubs/. See SPIKE-NOTES.md for why each is safe to stub.
@@ -22,6 +25,13 @@ url = { path = "stubs/url" }
 # Retire when upstream helix-editor/tree-house#40 lands in a release helix
 # depends on.
 tree-house-bindings = { git = "https://github.com/Jecoms/tree-house", branch = "bindings-v0.2.4-patched" }
+
+# helix-view's LSP/DAP clients exist to talk to server subprocesses, which
+# wasm32 does not have. Swap them for vendored copies whose spawn paths
+# return errors (see the stubs' Cargo.toml headers for the exact delta).
+[patch."https://github.com/Jecoms/helix-wasm.git"]
+helix-lsp = { path = "stubs/helix-lsp" }
+helix-dap = { path = "stubs/helix-dap" }
 
 [workspace]
 exclude = ["stubs"]
