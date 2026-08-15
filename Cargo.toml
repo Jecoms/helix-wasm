@@ -15,6 +15,12 @@ home = { path = "stubs/home" }
 which = { path = "stubs/which" }
 libloading = { path = "stubs/libloading" }
 url = { path = "stubs/url" }
+# Not a stub: a full vendored copy of the crates.io 0.2.4 source carrying only
+# a wasm ABI fix — the `ts_query_cursor_set_byte_range` extern declaration was
+# missing the C function's `bool` return, which traps with signature_mismatch
+# on wasm32 (see SPIKE-NOTES.md, known runtime traps). Retires when upstream
+# tree-house lands the fix.
+tree-house-bindings = { path = "vendor/tree-house-bindings" }
 
 [workspace]
-exclude = ["stubs"]
+exclude = ["stubs", "vendor"]
