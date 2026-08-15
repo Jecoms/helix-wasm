@@ -125,12 +125,31 @@ browser: scratch buffer, modal editing, command palette, resize — verified
 in a headless-Chromium smoke run. The runtime traps below are resolved
 except where noted. Still open for the rest of Phase 3:
 
-- **Static grammar set** — no grammars are linked yet, so no syntax
-  highlighting; grammar loads fail cleanly through the libloading stub. The
-  plan: compile a small grammar list's parser C in `web/build.rs` (the libc
-  side — `sysroot/shims.c`, `wctype.c`, the `c_alloc` allocator — already
-  links) and resolve symbols through a registration path. Watch for
-  tree-house's parse-timeout `Instant` use when the first grammar lands.
+- ~~**Static grammar set**~~ — done: c, go, java, javascript, python,
+  regex, rust, toml are statically linked and highlighting renders (headless-Chromium-verified). The pieces:
+  - `web/build.rs` `GRAMMARS` is the single source of truth: it
+    shallow-fetches each grammar's C source pinned by rev (the same pins as
+    helix's `languages.toml`) into OUT_DIR, compiles parser.c/scanner.c via
+    the wasm-cc sysroot shim, and generates the `register()` glue.
+  - `helix-patched` gained a wasm32 embedder-registration API in
+    `helix-loader::grammar` (`register_grammar`, `register_runtime_file`;
+    `get_language`/`load_runtime_file` read those registries) — replaces
+    upstream's `unimplemented!()` wasm arm; upstreamable. The libloading
+    stub stays a pure failure stub; symbols resolve through registration,
+    not fake dlopen.
+  - Queries are helix's own files, vendored under `web/queries/<lang>/`
+    (see the README there; re-copy on tag bump), embedded and registered at
+    boot in `web/src/session.rs::start`.
+  - To add a grammar: one row in `GRAMMARS` + vendor its queries (plus any
+    query-only base dirs they `; inherits:` from, like javascript's `ecma`). Languages
+    without a registered grammar degrade to plain text (`get_language`
+    returns `Ok(None)`), so the pristine full `languages.toml` ships
+    untrimmed.
+  - The feared tree-house parse-timeout trap is a non-trap: the timeout
+    goes through `ts_parser_set_timeout_micros` into tree-sitter's C clock
+    (`clock_gettime`), which `sysroot/shims.c` freezes at zero — elapsed
+    time is always zero, timeouts never fire, parses run to completion. No
+    Rust `Instant` involved.
 - **GH Pages deploy** — the CI `web-bundle` job builds the bundle; the
   deploy workflow (port of legacy `web_demo.yml`) is deliberately not
   enabled yet.
@@ -198,7 +217,7 @@ except where noted. Still open for the rest of Phase 3:
 - `v2` (this branch, orphan) — becomes the new `main` at Phase 4 swap.
 - `helix-patched` — helix at tag + the not-yet-upstreamed fixes (faccess,
   tokio feature trims, web-time clocks, browser timers, bridge render
-  target, loader/env fallbacks); Cargo git-deps point here until upstream
-  PRs land.
+  target, loader/env fallbacks, wasm32 grammar/query registration in
+  helix-loader); Cargo git-deps point here until upstream PRs land.
 - `legacy` (to create from current `main`) — the old in-tree port;
   reference for crossterm shim, storage, backend wiring, wasm-sysroot.

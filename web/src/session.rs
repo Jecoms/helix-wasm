@@ -57,6 +57,11 @@ pub fn start(output: Function, columns: u16, rows: u16) -> Result<(), JsValue> {
     helix_wasm::helix_loader::initialize_config_file(None);
     helix_wasm::helix_loader::initialize_log_file(None);
 
+    // Each language's syntax config is compiled lazily, once, on first use;
+    // register the static grammar set before anything can trigger that. A
+    // language with no registered grammar degrades to plain text.
+    crate::grammars::register();
+
     let config = Config::load_default().unwrap_or_else(|_| Config::default());
     let lang_loader = helix_wasm::helix_core::config::default_lang_loader();
 

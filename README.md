@@ -38,9 +38,14 @@ npm install
 npm run dev      # serves the demo on a local vite dev server
 ```
 
-The demo boots helix into an xterm.js terminal with a scratch buffer. Syntax
-highlighting is off (the static grammar set is a follow-up) and nothing
-persists — see SPIKE-NOTES.md for the current limitations.
+The demo boots helix into an xterm.js terminal with a scratch buffer, with
+syntax highlighting for a small static grammar set (c, go, java,
+javascript, python, regex, rust, toml — try `:set-language rust`). Nothing persists — see SPIKE-NOTES.md for the
+current limitations. The grammar build fetches pinned parser sources at
+build time, so it needs network access and `git`. Set `HELIX_WEB_GRAMMARS`
+to a comma-separated subset (e.g. `HELIX_WEB_GRAMMARS=rust,toml wasm-pack
+build web --target web`) to slim the bundle; to add a grammar to the
+catalog, see `GRAMMARS` in `web/build.rs` and `web/queries/README.md`.
 
 ## Branch map
 
@@ -52,7 +57,8 @@ persists — see SPIKE-NOTES.md for the current limitations.
   wasm32 trims of the subprocess and signal machinery in helix-view and
   helix-term; repairs to helix-view's bit-rotted wasm32 clipboard/terminal
   fallbacks; the web-time clock swap; browser-timeout editor timers; the
-  bridge render target; and wasm32 fallbacks for the working directory and
-  loader paths).
+  bridge render target; wasm32 fallbacks for the working directory and
+  loader paths; and the wasm32 grammar/query registration API in
+  helix-loader).
   Retires as upstream PRs land.
 - `main` — the previous in-tree port, to be archived as `legacy` at the swap.

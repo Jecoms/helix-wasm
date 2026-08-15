@@ -90,3 +90,25 @@ jobs:
           cd web/www
           npm ci
           npm run build
+
+      # Advisory report, not a gate: bundle size is a documented concern
+      # (roughly 100-500 KB of raw wasm per grammar), so surface the trend
+      # on every build; a hard threshold would need a justified budget.
+      - name: Report bundle size
+        run: |
+          {
+            echo '### Web bundle size'
+            echo
+            echo '| File | Raw | Gzip |'
+            echo '| --- | ---: | ---: |'
+            for file in web/www/dist/index.html web/www/dist/assets/*; do
+              raw=$(wc -c < "$file" | tr -d '[:space:]')
+              gzip=$(gzip -c "$file" | wc -c | tr -d '[:space:]')
+              printf '| %s | %s (%s) | %s (%s) |\n' \
+                "$(basename "$file")" \
+                "$raw" "$(numfmt --to=iec "$raw")" \
+                "$gzip" "$(numfmt --to=iec "$gzip")"
+            done
+            echo
+            echo "Total dist (raw): $(du -sk web/www/dist | cut -f1) KiB"
+          } | tee -a "$GITHUB_STEP_SUMMARY"

@@ -13,6 +13,8 @@
 #[cfg(target_family = "wasm")]
 mod c_alloc;
 #[cfg(target_family = "wasm")]
+mod grammars;
+#[cfg(target_family = "wasm")]
 mod keys;
 #[cfg(target_family = "wasm")]
 mod session;
