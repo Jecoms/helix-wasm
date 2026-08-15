@@ -20,7 +20,14 @@ terminal.focus();
 await init();
 start((bytes) => terminal.write(bytes), terminal.cols, terminal.rows);
 
+// For a keystroke xterm.js fires onKey and then, synchronously, onData with
+// the sequence that key produced. Pastes (and IME-composed text) arrive
+// through onData alone — a length heuristic can't tell a one-character paste
+// from a keystroke, so track "the next onData is this keystroke's own
+// sequence" explicitly instead.
+let dataIsFromKey = false;
 terminal.onKey(({ domEvent }) => {
+  dataIsFromKey = true;
   key_event(
     domEvent.key,
     domEvent.ctrlKey,
@@ -30,10 +37,23 @@ terminal.onKey(({ domEvent }) => {
   );
 });
 // Browser-native paste (ctrl/cmd-v reaches xterm.js as a paste, not a key).
-// Single characters and ESC-prefixed sequences are ordinary keystrokes,
-// already delivered through onKey above.
+// helix enables bracketed paste mode at boot, so xterm.js delivers pasted
+// text wrapped in the \x1b[200~ ... \x1b[201~ markers — unwrap those and
+// forward the payload. Other ESC-prefixed payloads are skipped: xterm.js
+// answers terminal queries (cursor position, device attributes) through
+// onData with ESC sequences. Bare non-ESC data that no keystroke produced
+// (IME-composed text, paste with bracketed mode off) is forwarded as-is.
+const BRACKETED_START = "\x1b[200~";
+const BRACKETED_END = "\x1b[201~";
 terminal.onData((data) => {
-  if (data.length > 1 && !data.startsWith("\x1b")) {
+  const fromKey = dataIsFromKey;
+  dataIsFromKey = false;
+  if (fromKey) {
+    return;
+  }
+  if (data.startsWith(BRACKETED_START) && data.endsWith(BRACKETED_END)) {
+    paste(data.slice(BRACKETED_START.length, -BRACKETED_END.length));
+  } else if (!data.startsWith("\x1b")) {
     paste(data);
   }
 });
