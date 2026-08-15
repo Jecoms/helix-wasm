@@ -106,7 +106,13 @@ impl io::Write for Output {
 
     fn flush(&mut self) -> io::Result<()> {
         if !self.buffer.is_empty() {
-            if let Some(sink) = *OUTPUT_SINK.lock().unwrap() {
+            // Copy the `fn` out so the OUTPUT_SINK lock is released before
+            // calling it: the sink crosses into frontend code (JS on wasm32),
+            // and `std::sync::Mutex` is non-reentrant — a callback that
+            // re-entered the bridge while the lock was held would deadlock
+            // the single wasm thread.
+            let sink = *OUTPUT_SINK.lock().unwrap();
+            if let Some(sink) = sink {
                 sink(&self.buffer);
             }
             self.buffer.clear();
