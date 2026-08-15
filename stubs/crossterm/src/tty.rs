@@ -7,6 +7,9 @@ pub trait IsTty {
     fn is_tty(&self) -> bool;
 }
 
+// Wider than upstream's `impl<S: AsRawFd> IsTty for S`: `AsRawFd` does not
+// exist on wasm32-unknown-unknown, so the bound is dropped and `.is_tty()`
+// exists (and is false) on types upstream would reject at compile time.
 impl<S> IsTty for S {
     fn is_tty(&self) -> bool {
         false
