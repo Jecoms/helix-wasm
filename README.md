@@ -39,8 +39,8 @@ npm run dev      # serves the demo on a local vite dev server
 ```
 
 The demo boots helix into an xterm.js terminal with a scratch buffer, with
-syntax highlighting for a small static grammar set (c, go, javascript,
-python, regex, rust, toml — try `:set-language rust`). Nothing persists — see SPIKE-NOTES.md for the
+syntax highlighting for a small static grammar set (c, go, java,
+javascript, python, regex, rust, toml — try `:set-language rust`). Nothing persists — see SPIKE-NOTES.md for the
 current limitations. The grammar build fetches pinned parser sources at
 build time, so it needs network access and `git`; to add a grammar, see
 `GRAMMARS` in `web/build.rs` and `web/queries/README.md`.

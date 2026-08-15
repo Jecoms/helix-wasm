@@ -125,8 +125,8 @@ browser: scratch buffer, modal editing, command palette, resize — verified
 in a headless-Chromium smoke run. The runtime traps below are resolved
 except where noted. Still open for the rest of Phase 3:
 
-- ~~**Static grammar set**~~ — done: c, go, javascript, python, regex,
-  rust, toml are statically linked and highlighting renders (headless-Chromium-verified). The pieces:
+- ~~**Static grammar set**~~ — done: c, go, java, javascript, python,
+  regex, rust, toml are statically linked and highlighting renders (headless-Chromium-verified). The pieces:
   - `web/build.rs` `GRAMMARS` is the single source of truth: it
     shallow-fetches each grammar's C source pinned by rev (the same pins as
     helix's `languages.toml`) into OUT_DIR, compiles parser.c/scanner.c via

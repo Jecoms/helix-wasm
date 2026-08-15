@@ -35,6 +35,11 @@ const GRAMMARS: &[(&str, &str, &str)] = &[
         "64457ea6b73ef5422ed1687178d4545c3e91334a",
     ),
     (
+        "java",
+        "https://github.com/tree-sitter/tree-sitter-java",
+        "09d650def6cdf7f479f4b78f595e9ef5b58ce31e",
+    ),
+    (
         "javascript",
         "https://github.com/tree-sitter/tree-sitter-javascript",
         "f772967f7b7bc7c28f845be2420a38472b16a8ee",
