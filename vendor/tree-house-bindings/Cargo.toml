@@ -1,0 +1,39 @@
+# Vendored copy of tree-house-bindings 0.2.1 (https://github.com/helix-editor/tree-house),
+# wired in via `[patch.crates-io]` so it can be patched for wasm32-unknown-unknown:
+# * `libloading` (and `Grammar::new`) is gated to non-wasm targets; wasm32 builds
+#   obtain `Grammar`s from statically linked `tree_sitter_*` symbols instead.
+# * build.rs cross-compiles the vendored tree-sitter C runtime for wasm32 against
+#   the libc shim headers in `helix-web/src/wasm-sysroot`.
+# * On wasm32 the crate exports a Rust-backed `malloc`/`calloc`/`realloc`/`free`
+#   for the C runtime (see `src/wasm_alloc.rs`).
+[package]
+name = "tree-house-bindings"
+description = "Homey Rust bindings for the tree-sitter C library"
+version = "0.2.1"
+authors = ["Pascal Kuthe <pascalkuthe@pm.me>"]
+edition = "2021"
+rust-version = "1.76.0"
+license = "MPL-2.0"
+repository = "https://github.com/helix-editor/tree-house"
+
+[lib]
+name = "tree_house_bindings"
+path = "src/lib.rs"
+
+[features]
+ropey = ["dep:ropey"]
+
+[dependencies]
+regex-cursor = "0.1.5"
+thiserror = "2.0"
+
+[dependencies.ropey]
+version = "1.6"
+optional = true
+default-features = false
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+libloading = "0.8"
+
+[build-dependencies]
+cc = "1.0"

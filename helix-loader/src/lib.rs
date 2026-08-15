@@ -3,6 +3,7 @@ pub mod grammar;
 
 use helix_stdx::{env::current_working_dir, path};
 
+#[cfg(not(target_arch = "wasm32"))]
 use etcetera::base_strategy::{choose_base_strategy, BaseStrategy};
 use std::path::{Path, PathBuf};
 
@@ -37,7 +38,8 @@ pub fn initialize_log_file(specified_file: Option<PathBuf>) {
 /// 4. `HELIX_DEFAULT_RUNTIME` (if environment variable is set *at build time*)
 /// 5. subdirectory of path to helix executable (always included)
 ///
-/// Postcondition: returns at least two paths (they might not exist).
+/// Postcondition: returns at least two paths on native targets, at least one
+/// on wasm32 (they might not exist).
 fn prioritize_runtime_dirs() -> Vec<PathBuf> {
     const RT_DIR: &str = "runtime";
     // Adding higher priority first
@@ -67,12 +69,17 @@ fn prioritize_runtime_dirs() -> Vec<PathBuf> {
 
     // fallback to location of the executable being run
     // canonicalize the path in case the executable is symlinked
-    let exe_rt_dir = std::env::current_exe()
-        .ok()
-        .and_then(|path| std::fs::canonicalize(path).ok())
-        .and_then(|path| path.parent().map(|path| path.to_path_buf().join(RT_DIR)))
-        .unwrap();
-    rt_dirs.push(exe_rt_dir);
+    // (no executable path exists on wasm32; there the config runtime dir
+    // above is the only unconditional entry)
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let exe_rt_dir = std::env::current_exe()
+            .ok()
+            .and_then(|path| std::fs::canonicalize(path).ok())
+            .and_then(|path| path.parent().map(|path| path.to_path_buf().join(RT_DIR)))
+            .unwrap();
+        rt_dirs.push(exe_rt_dir);
+    }
     rt_dirs
 }
 
@@ -116,6 +123,7 @@ pub fn runtime_file(rel_path: impl AsRef<Path>) -> PathBuf {
     })
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn config_dir() -> PathBuf {
     // TODO: allow env var override
     let strategy = choose_base_strategy().expect("Unable to find the config directory!");
@@ -124,12 +132,27 @@ pub fn config_dir() -> PathBuf {
     path
 }
 
+/// There is no OS user directory on wasm32; use a fixed path within the
+/// wasm build's virtual file system.
+#[cfg(target_arch = "wasm32")]
+pub fn config_dir() -> PathBuf {
+    PathBuf::from(".config/helix")
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn cache_dir() -> PathBuf {
     // TODO: allow env var override
     let strategy = choose_base_strategy().expect("Unable to find the cache directory!");
     let mut path = strategy.cache_dir();
     path.push("helix");
     path
+}
+
+/// There is no OS user directory on wasm32; use a fixed path within the
+/// wasm build's virtual file system.
+#[cfg(target_arch = "wasm32")]
+pub fn cache_dir() -> PathBuf {
+    PathBuf::from(".cache/helix")
 }
 
 pub fn config_file() -> PathBuf {

@@ -19,10 +19,9 @@ fn main() -> std::io::Result<()> {
 
     fetch_grammars(Some(&languages)).expect("Failed to fetch tree-sitter grammars");
 
-    let mut build = cc::Build::new();
-    build.file("src/wasm-sysroot/wctype.c");
-    build.include("src/wasm-sysroot/");
-    build.compile("wctype");
+    // The libc shims in src/wasm-sysroot (wctype.c, shims.c) are compiled
+    // together with the tree-sitter runtime by the vendored
+    // tree-house-bindings build script.
 
     const PARSER_C: &str = "parser.c";
     const SCANNER_C: &str = "scanner.c";

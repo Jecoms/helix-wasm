@@ -18,10 +18,19 @@ pub enum Uri {
 impl Uri {
     // This clippy allow mirrors url::Url::from_file_path
     #[allow(clippy::result_unit_err)]
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn to_url(&self) -> Result<url::Url, ()> {
         match self {
             Uri::File(path) => url::Url::from_file_path(path),
         }
+    }
+
+    /// The `url` crate does not provide `Url::from_file_path` on wasm32,
+    /// where there are no meaningful absolute file paths; this always fails.
+    #[allow(clippy::result_unit_err)]
+    #[cfg(target_arch = "wasm32")]
+    pub fn to_url(&self) -> Result<url::Url, ()> {
+        Err(())
     }
 
     pub fn as_path(&self) -> Option<&Path> {
@@ -79,12 +88,23 @@ impl std::error::Error for UrlConversionError {}
 
 fn convert_url_to_uri(url: &url::Url) -> Result<Uri, UrlConversionErrorKind> {
     if url.scheme() == "file" {
-        url.to_file_path()
-            .map(|path| Uri::File(helix_stdx::path::normalize(path).into()))
-            .map_err(|_| UrlConversionErrorKind::UnableToConvert)
+        url_to_file_path(url).map(|path| Uri::File(helix_stdx::path::normalize(path).into()))
     } else {
         Err(UrlConversionErrorKind::UnsupportedScheme)
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn url_to_file_path(url: &url::Url) -> Result<PathBuf, UrlConversionErrorKind> {
+    url.to_file_path()
+        .map_err(|_| UrlConversionErrorKind::UnableToConvert)
+}
+
+/// The `url` crate does not provide `Url::to_file_path` on wasm32, where
+/// there are no meaningful absolute file paths; this always fails.
+#[cfg(target_arch = "wasm32")]
+fn url_to_file_path(_url: &url::Url) -> Result<PathBuf, UrlConversionErrorKind> {
+    Err(UrlConversionErrorKind::UnableToConvert)
 }
 
 impl TryFrom<url::Url> for Uri {
