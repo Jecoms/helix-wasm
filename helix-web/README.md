@@ -34,7 +34,9 @@ Most features of the editor are untested, so expect bugs; see 'Known issues'.
 ### Setup
 
 ```sh
-cargo install cargo-wasm
+rustup target add wasm32-unknown-unknown
+
+cargo install wasm-pack   # or `brew install wasm-pack` on macOS
 
 npm install
 
@@ -42,21 +44,59 @@ cd www/
 
 npm install
 ```
+
+On macOS, Apple's clang cannot target `wasm32`, so the tree-sitter C runtime
+and grammars need Homebrew's LLVM (`brew install llvm`):
+
+```sh
+export CC_wasm32_unknown_unknown=/opt/homebrew/opt/llvm/bin/clang
+export AR_wasm32_unknown_unknown=/opt/homebrew/opt/llvm/bin/llvm-ar
+```
+
+Note: `wasm-pack build` installs a `wasm-bindgen-cli` matching the version
+locked in `Cargo.lock` (currently 0.2.117, the newest whose CLI still builds
+with the Rust 1.82.0 toolchain this repo pins). If that install fails on
+edition-2024 dependencies, pre-install it with a newer toolchain into
+wasm-pack's cache directory. On macOS that cache is
+`~/Library/Caches/.wasm-pack`:
+
+```sh
+cargo +stable install --locked wasm-bindgen-cli --version 0.2.117 \
+  --root "$HOME/Library/Caches/.wasm-pack/wasm-bindgen-cargo-install-0.2.117"
+cp "$HOME/Library/Caches/.wasm-pack/wasm-bindgen-cargo-install-0.2.117/bin/"* \
+  "$HOME/Library/Caches/.wasm-pack/wasm-bindgen-cargo-install-0.2.117/"
+```
+
+On Linux the cache lives at `~/.cache/.wasm-pack` instead; substitute that
+path in the `--root` and `cp` commands above.
 
 ### Build
 
 ```sh
-wasm-pack build
+wasm-pack build --target web
 ```
 
+`--target web` matters: it emits ES-module glue that fetches and instantiates
+`helix_web_bg.wasm` itself at runtime, so the JS bundler never parses the wasm
+binary (Rust 1.82 emits wasm features like reference types that older bundler
+wasm parsers reject).
+
+The first build needs network access: `build.rs` fetches the tree-sitter
+grammar sources listed in `languages`.
+
 ### Run
+
+The demo app in `www/` is built with [Vite](https://vitejs.dev/); it consumes
+the `pkg/` output of `wasm-pack` as a `file:` dependency.
 
 ```sh
 cd www/
 
-NODE_OPTIONS=--openssl-legacy-provider npm run start
+npm run dev       # dev server, visit http://localhost:5173
 
-# then visit https://localhost:8080
+# or, production build + local preview:
+npm run build     # outputs www/dist/
+npm run preview
 ```
 
 ### Deploy

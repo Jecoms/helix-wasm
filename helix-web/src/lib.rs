@@ -1,12 +1,12 @@
 mod backend;
+mod events;
 mod utils;
 #[path = "crossterm/mod.rs"]
 mod xtct;
 
 use std::io::Write;
 
-use backend::spawn_terminal;
-use crossterm::event;
+use backend::{spawn_terminal, WebBackend};
 use helix_term::{application::Application, args::Args, config::Config};
 use wasm_bindgen::prelude::*;
 use xtct::XtermJsCrosstermBackend;
@@ -32,8 +32,7 @@ pub async fn main() {
     utils::set_logging(log::Level::Debug);
 
     let terminal = spawn_terminal();
-    let term_ref = &terminal;
-    let write: XtermJsCrosstermBackend = term_ref.into();
+    let mut input_stream = events::event_stream(&terminal);
 
     helix_loader::initialize_config_file(None);
     // only so that `:log-open` does something; actual logs are found on the JS console
@@ -50,15 +49,14 @@ pub async fn main() {
     let mut args = Args::default();
     args.load_tutor = true;
 
-    let mut app = Application::new_with_write(
+    let backend = WebBackend::new(XtermJsCrosstermBackend::new(&terminal));
+    let mut app = Application::new_with_backend(
         args,
         config,
-        helix_core::config::default_syntax_loader(),
-        write,
+        helix_core::config::default_lang_loader(),
+        backend,
     )
     .unwrap();
 
-    app.run(&mut event::EventStream::new(&terminal))
-        .await
-        .unwrap();
+    app.run(&mut input_stream).await.unwrap();
 }
