@@ -68,6 +68,16 @@ build.rs (see legacy `helix-web/build.rs`).
   (see legacy `helix-term/src/application.rs` genericized backend).
 - tokio `time`/`fs` features compile but their runtime behavior on wasm is
   unverified.
+- tree-house-bindings ≤0.2.4 (and upstream master as of 2026-08) declares
+  `ts_query_cursor_set_byte_range` without the C function's `bool` return —
+  harmless on native ABIs, but wasm32 traps with `signature_mismatch` the
+  moment a query cursor runs (`InactiveQueryCursor::new` calls it
+  unconditionally; helix-core's syntax/indent paths hit it). `cargo check`
+  can't catch it. Neutralized here by `[patch.crates-io]` → the
+  `Jecoms/tree-house` fork, branch `bindings-v0.2.4-patched` (pristine
+  0.2.4 release commit + the one-line fix from legacy PR #22). Upstream
+  PR helix-editor/tree-house#40 carries the same fix; retire the patch
+  once it lands in a release helix depends on.
 
 ## Branch map
 

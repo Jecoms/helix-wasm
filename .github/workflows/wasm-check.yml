@@ -1,0 +1,25 @@
+name: wasm32 check
+
+on:
+  push:
+    branches: [v2]
+  pull_request:
+    branches: [v2]
+
+jobs:
+  helix-core:
+    name: check helix-core (wasm32-unknown-unknown)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check helix-core for wasm32
+        run: cargo check -p helix-core --target wasm32-unknown-unknown --locked

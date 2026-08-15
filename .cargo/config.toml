@@ -1,0 +1,6 @@
+# wasm32-unknown-unknown has no hosted C toolchain, but tree-sitter's C
+# runtime still has to compile for it. Point cc-rs at the repo's clang shim,
+# which injects the stub sysroot headers and the flags they require.
+# `relative = true` makes cargo absolutize the path against the repo root.
+[env]
+CC_wasm32_unknown_unknown = { value = "sysroot/wasm-cc", relative = true, force = true }

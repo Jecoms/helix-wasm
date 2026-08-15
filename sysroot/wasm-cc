@@ -1,0 +1,33 @@
+#!/bin/sh
+# C compiler entry point for the wasm32-unknown-unknown target, wired up via
+# `CC_wasm32_unknown_unknown` in .cargo/config.toml. Injects the flags the
+# stub sysroot in this directory requires:
+#
+#   -I <this dir>   stub libc headers; enough for tree-sitter's stock build
+#                   script — no vendoring, no fork
+#   -D__linux__     tree-sitter's portable/endian.h has no wasm case (it hits
+#                   "#error platform not supported"); defining __linux__ routes
+#                   it to `#include <endian.h>`, which the sysroot provides
+#                   (wasm is little-endian; the macros are identities)
+#   -ffreestanding  stops clang's builtin headers from include_next-ing into a
+#                   hosted libc (inttypes.h forwards regardless, which is why
+#                   the sysroot ships its own to shadow it)
+#
+# Apple's system clang parses wasm but cannot emit it ("unable to create
+# target"), so prefer an LLVM-project clang when one can be found. Set
+# HELIX_WASM_CLANG to override the compiler choice.
+set -eu
+
+sysroot=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+
+if [ -n "${HELIX_WASM_CLANG:-}" ]; then
+    clang=$HELIX_WASM_CLANG
+elif [ -x /opt/homebrew/opt/llvm/bin/clang ]; then
+    clang=/opt/homebrew/opt/llvm/bin/clang
+elif [ -x /usr/local/opt/llvm/bin/clang ]; then
+    clang=/usr/local/opt/llvm/bin/clang
+else
+    clang=clang
+fi
+
+exec "$clang" -I"$sysroot" -D__linux__ -ffreestanding "$@"

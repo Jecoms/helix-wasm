@@ -3055,8 +3055,6 @@ fn file_url_segments_to_pathbuf(
     use std::ffi::OsStr;
     #[cfg(target_os = "hermit")]
     use std::os::hermit::ffi::OsStrExt;
-    #[cfg(all(target_arch = "wasm32", not(any(target_os = "wasi", target_os = "hermit"))))]
-    use wasm_os_str_ext::OsStrExt;
     #[cfg(any(unix, target_os = "redox"))]
     use std::os::unix::prelude::OsStrExt;
     use std::path::PathBuf;

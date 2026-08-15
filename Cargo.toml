@@ -1,0 +1,27 @@
+[package]
+name = "helix-wasm"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+publish = false
+
+[dependencies]
+helix-core = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix-patched" }
+
+# Transitive dependencies with no wasm32-unknown-unknown support, swapped for
+# the stubs in stubs/. See SPIKE-NOTES.md for why each is safe to stub.
+[patch.crates-io]
+home = { path = "stubs/home" }
+which = { path = "stubs/which" }
+libloading = { path = "stubs/libloading" }
+url = { path = "stubs/url" }
+# Not a stub: a patched fork — the pristine 0.2.4 release commit plus a
+# one-line wasm ABI fix. The `ts_query_cursor_set_byte_range` extern
+# declaration was missing the C function's `bool` return, which traps with
+# signature_mismatch on wasm32 (see SPIKE-NOTES.md, known runtime traps).
+# Retire when upstream helix-editor/tree-house#40 lands in a release helix
+# depends on.
+tree-house-bindings = { git = "https://github.com/Jecoms/tree-house", branch = "bindings-v0.2.4-patched" }
+
+[workspace]
+exclude = ["stubs"]
