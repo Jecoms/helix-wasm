@@ -1,7 +1,7 @@
 import { defineConfig } from "vite";
 
 export default defineConfig({
-  // The demo is deployed under a sub-path (gh-pages `/helix/demo`), so emit
+  // The demo is deployed under a sub-path (gh-pages `/helix-wasm/demo`), so emit
   // relative asset URLs.
   base: "./",
   build: {
