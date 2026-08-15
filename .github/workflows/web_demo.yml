@@ -2,9 +2,12 @@ name: Deploy web demo
 on:
   push:
     branches: [ wasm32 ]
+  workflow_dispatch:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout sources
