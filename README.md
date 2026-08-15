@@ -52,13 +52,14 @@ cargo install wasm-pack
 cd helix-web/
 npm install
 wasm-pack build --target web
+# if wasm-bindgen-cli install fails, see helix-web/README.md
 
 cd www/
 npm install
 npm run dev       # visit http://localhost:5173
 ```
 
-Full setup, build, deploy, and troubleshooting notes (including macOS
+Full setup, build, deploy, and troubleshooting notes (including platform
 toolchain caveats) are in [`helix-web/README.md`](./helix-web/README.md).
 
 Native builds of the editor itself should still work — see the upstream
