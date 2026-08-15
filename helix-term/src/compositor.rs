@@ -31,8 +31,30 @@ impl Context<'_> {
     /// Waits on all pending jobs, and then tries to flush all pending write
     /// operations for all documents.
     pub fn block_try_flush_writes(&mut self) -> anyhow::Result<()> {
-        tokio::task::block_in_place(|| helix_lsp::block_on(self.jobs.finish(self.editor, None)))?;
-        tokio::task::block_in_place(|| helix_lsp::block_on(self.editor.flush_writes()))?;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            tokio::task::block_in_place(|| {
+                futures_executor::block_on(self.jobs.finish(self.editor, None))
+            })?;
+            tokio::task::block_in_place(|| futures_executor::block_on(self.editor.flush_writes()))?;
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            use futures_util::FutureExt;
+            // Blocking would park wasm32's only thread and freeze the page if
+            // a future needed the JS event loop to progress. The wasm32 save
+            // path is synchronous (localStorage), so these futures complete
+            // in a single poll; a genuinely pending future is reported as an
+            // error instead.
+            self.jobs
+                .finish(self.editor, None)
+                .now_or_never()
+                .ok_or_else(|| anyhow::anyhow!("cannot block on pending jobs on wasm32"))??;
+            self.editor
+                .flush_writes()
+                .now_or_never()
+                .ok_or_else(|| anyhow::anyhow!("cannot block on pending writes on wasm32"))??;
+        }
         Ok(())
     }
 }

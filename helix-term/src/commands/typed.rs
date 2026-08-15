@@ -2,6 +2,7 @@ use std::fmt::Write;
 use std::io::BufReader;
 use std::ops::{self, Deref};
 
+#[cfg(feature = "dap_lsp")]
 use crate::job::Job;
 
 use super::*;
@@ -334,6 +335,7 @@ fn buffer_previous(
     Ok(())
 }
 
+#[cfg_attr(not(feature = "dap_lsp"), allow(unused_variables))]
 fn write_impl(
     cx: &mut compositor::Context,
     path: Option<&str>,
@@ -357,6 +359,9 @@ fn write_impl(
     doc.append_changes_to_history(view);
 
     let (view, doc) = current_ref!(cx.editor);
+    #[cfg(not(feature = "dap_lsp"))]
+    let fmt: Option<()> = None;
+    #[cfg(feature = "dap_lsp")]
     let fmt = if config.auto_format && options.auto_format {
         doc.auto_format(cx.editor).map(|fmt| {
             let callback = make_format_callback(
@@ -530,6 +535,16 @@ fn new_file(cx: &mut compositor::Context, _args: Args, event: PromptEvent) -> an
     Ok(())
 }
 
+// `format` requires LSP/DAP support, which is not compiled into this build.
+#[cfg(not(feature = "dap_lsp"))]
+fn format(_cx: &mut compositor::Context, _args: Args, event: PromptEvent) -> anyhow::Result<()> {
+    if event != PromptEvent::Validate {
+        return Ok(());
+    }
+    bail!("LSP/DAP support is not compiled into this build")
+}
+
+#[cfg(feature = "dap_lsp")]
 fn format(cx: &mut compositor::Context, _args: Args, event: PromptEvent) -> anyhow::Result<()> {
     if event != PromptEvent::Validate {
         return Ok(());
@@ -768,6 +783,7 @@ pub struct WriteAllOptions {
     pub auto_format: bool,
 }
 
+#[cfg_attr(not(feature = "dap_lsp"), allow(unused_variables))]
 pub fn write_all_impl(
     cx: &mut compositor::Context,
     options: WriteAllOptions,
@@ -817,6 +833,9 @@ pub fn write_all_impl(
         // Save an undo checkpoint for any outstanding changes.
         doc.append_changes_to_history(view);
 
+        #[cfg(not(feature = "dap_lsp"))]
+        let fmt: Option<()> = None;
+        #[cfg(feature = "dap_lsp")]
         let fmt = if options.auto_format && config.auto_format {
             let doc = doc!(cx.editor, &doc_id);
             doc.auto_format(cx.editor).map(|fmt| {
@@ -1397,6 +1416,7 @@ fn reload(cx: &mut compositor::Context, _args: Args, event: PromptEvent) -> anyh
     doc.reload(view, &cx.editor.diff_providers).map(|_| {
         view.ensure_cursor_in_view(doc, scrolloff);
     })?;
+    #[cfg(feature = "dap_lsp")]
     if let Some(path) = doc.path() {
         cx.editor
             .language_servers
@@ -1443,6 +1463,7 @@ fn reload_all(cx: &mut compositor::Context, _args: Args, event: PromptEvent) -> 
             continue;
         }
 
+        #[cfg(feature = "dap_lsp")]
         if let Some(path) = doc.path() {
             cx.editor
                 .language_servers
@@ -1475,6 +1496,20 @@ fn update(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> anyho
     }
 }
 
+// `lsp_workspace_command` requires LSP/DAP support, which is not compiled into this build.
+#[cfg(not(feature = "dap_lsp"))]
+fn lsp_workspace_command(
+    _cx: &mut compositor::Context,
+    _args: Args,
+    event: PromptEvent,
+) -> anyhow::Result<()> {
+    if event != PromptEvent::Validate {
+        return Ok(());
+    }
+    bail!("LSP/DAP support is not compiled into this build")
+}
+
+#[cfg(feature = "dap_lsp")]
 fn lsp_workspace_command(
     cx: &mut compositor::Context,
     args: Args,
@@ -1575,6 +1610,20 @@ fn lsp_workspace_command(
     Ok(())
 }
 
+// `lsp_restart` requires LSP/DAP support, which is not compiled into this build.
+#[cfg(not(feature = "dap_lsp"))]
+fn lsp_restart(
+    _cx: &mut compositor::Context,
+    _args: Args,
+    event: PromptEvent,
+) -> anyhow::Result<()> {
+    if event != PromptEvent::Validate {
+        return Ok(());
+    }
+    bail!("LSP/DAP support is not compiled into this build")
+}
+
+#[cfg(feature = "dap_lsp")]
 fn lsp_restart(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> anyhow::Result<()> {
     if event != PromptEvent::Validate {
         return Ok(());
@@ -1660,6 +1709,16 @@ fn lsp_restart(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> 
     }
 }
 
+// `lsp_stop` requires LSP/DAP support, which is not compiled into this build.
+#[cfg(not(feature = "dap_lsp"))]
+fn lsp_stop(_cx: &mut compositor::Context, _args: Args, event: PromptEvent) -> anyhow::Result<()> {
+    if event != PromptEvent::Validate {
+        return Ok(());
+    }
+    bail!("LSP/DAP support is not compiled into this build")
+}
+
+#[cfg(feature = "dap_lsp")]
 fn lsp_stop(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> anyhow::Result<()> {
     if event != PromptEvent::Validate {
         return Ok(());
@@ -1854,6 +1913,20 @@ fn hsplit_new(cx: &mut compositor::Context, _args: Args, event: PromptEvent) -> 
     Ok(())
 }
 
+// `debug_eval` requires LSP/DAP support, which is not compiled into this build.
+#[cfg(not(feature = "dap_lsp"))]
+fn debug_eval(
+    _cx: &mut compositor::Context,
+    _args: Args,
+    event: PromptEvent,
+) -> anyhow::Result<()> {
+    if event != PromptEvent::Validate {
+        return Ok(());
+    }
+    bail!("LSP/DAP support is not compiled into this build")
+}
+
+#[cfg(feature = "dap_lsp")]
 fn debug_eval(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> anyhow::Result<()> {
     if event != PromptEvent::Validate {
         return Ok(());
@@ -1876,6 +1949,20 @@ fn debug_eval(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> a
     Ok(())
 }
 
+// `debug_start` requires LSP/DAP support, which is not compiled into this build.
+#[cfg(not(feature = "dap_lsp"))]
+fn debug_start(
+    _cx: &mut compositor::Context,
+    _args: Args,
+    event: PromptEvent,
+) -> anyhow::Result<()> {
+    if event != PromptEvent::Validate {
+        return Ok(());
+    }
+    bail!("LSP/DAP support is not compiled into this build")
+}
+
+#[cfg(feature = "dap_lsp")]
 fn debug_start(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> anyhow::Result<()> {
     if event != PromptEvent::Validate {
         return Ok(());
@@ -1889,6 +1976,20 @@ fn debug_start(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> 
     dap_start_impl(cx, name.as_deref(), None, Some(args))
 }
 
+// `debug_remote` requires LSP/DAP support, which is not compiled into this build.
+#[cfg(not(feature = "dap_lsp"))]
+fn debug_remote(
+    _cx: &mut compositor::Context,
+    _args: Args,
+    event: PromptEvent,
+) -> anyhow::Result<()> {
+    if event != PromptEvent::Validate {
+        return Ok(());
+    }
+    bail!("LSP/DAP support is not compiled into this build")
+}
+
+#[cfg(feature = "dap_lsp")]
 fn debug_remote(
     cx: &mut compositor::Context,
     args: Args,
@@ -2156,12 +2257,15 @@ fn language(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> any
     }
     doc.detect_indent_and_line_ending();
 
-    let id = doc.id();
-    cx.editor.refresh_language_servers(id);
-    let doc = doc_mut!(cx.editor);
-    let diagnostics =
-        Editor::doc_diagnostics(&cx.editor.language_servers, &cx.editor.diagnostics, doc);
-    doc.replace_diagnostics(diagnostics, &[], None);
+    #[cfg(feature = "dap_lsp")]
+    {
+        let id = doc.id();
+        cx.editor.refresh_language_servers(id);
+        let doc = doc_mut!(cx.editor);
+        let diagnostics =
+            Editor::doc_diagnostics(&cx.editor.language_servers, &cx.editor.diagnostics, doc);
+        doc.replace_diagnostics(diagnostics, &[], None);
+    }
     Ok(())
 }
 
@@ -2417,6 +2521,20 @@ fn run_shell_command(
     Ok(())
 }
 
+// Reverting diff hunks requires VCS support, which is not compiled into this build.
+#[cfg(not(feature = "vcs"))]
+fn reset_diff_change(
+    _cx: &mut compositor::Context,
+    _args: Args,
+    event: PromptEvent,
+) -> anyhow::Result<()> {
+    if event != PromptEvent::Validate {
+        return Ok(());
+    }
+    bail!("VCS support is not compiled into this build")
+}
+
+#[cfg(feature = "vcs")]
 fn reset_diff_change(
     cx: &mut compositor::Context,
     _args: Args,

@@ -1,6 +1,6 @@
+use helix_core::diagnostic::LanguageServerId;
 use helix_core::{ChangeSet, Rope};
 use helix_event::events;
-use helix_lsp::LanguageServerId;
 
 use crate::{editor::Config, Document, DocumentId, Editor, ViewId};
 

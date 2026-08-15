@@ -32,8 +32,8 @@ assets = [
 
 [features]
 default = ["git", "dap_lsp", "vcs"]
-dap_lsp = ["dep:helix-lsp", "dep:helix-dap"]
-vcs = ["dep:helix-vcs"]
+dap_lsp = ["dep:helix-lsp", "dep:helix-dap", "helix-view/dap_lsp"]
+vcs = ["dep:helix-vcs", "helix-view/vcs"]
 git = ["helix-vcs/git"]
 unicode-lines = ["helix-core/unicode-lines", "helix-view/unicode-lines"]
 integration = ["helix-event/integration_test"]
@@ -55,8 +55,8 @@ anyhow = "1"
 once_cell = "1.21"
 
 arc-swap = { version = "1.7.1" }
-termini = "1"
 indexmap = "2.10"
+futures-executor.workspace = true
 
 # Logging
 fern = "0.7"
@@ -73,7 +73,6 @@ content_inspector = "0.2.4"
 thiserror.workspace = true
 
 # opening URLs
-open = "5.3.2"
 url = "2.5.4"
 
 # config
@@ -94,12 +93,15 @@ instant = { version = "0.1", features = ["wasm-bindgen"] }
 futures-util = { version = "0.3", features = ["async-await"], default-features = false }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-helix-view = { path = "../helix-view" }
+helix-view = { path = "../helix-view", default-features = false, features = ["term"] }
 tui = { path = "../helix-tui", package = "helix-tui", default-features = false, features = ["crossterm"] }
 crossterm = { version = "0.28", features = ["event-stream"] }
 tokio = { version = "1", features = ["rt", "rt-multi-thread", "io-util", "io-std", "time", "process", "macros", "fs", "parking_lot"] }
 signal-hook = "0.3"
 tokio-stream = "0.1"
+# terminfo and URL-opening only make sense with an OS terminal around
+termini = "1"
+open = "5.3.2"
 futures-util = { version = "0.3", features = ["std", "async-await"], default-features = false }
 
 [target.'cfg(not(any(windows, target_family = "wasm")))'.dependencies] # https://github.com/vorner/signal-hook/issues/100

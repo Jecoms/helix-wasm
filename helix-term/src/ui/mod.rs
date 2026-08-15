@@ -1,7 +1,9 @@
+#[cfg(feature = "dap_lsp")]
 mod completion;
 mod document;
 pub(crate) mod editor;
 mod info;
+#[cfg(feature = "dap_lsp")]
 pub mod lsp;
 mod markdown;
 pub mod menu;
@@ -17,6 +19,7 @@ mod text_decorations;
 use crate::compositor::Compositor;
 use crate::filter_picker_entry;
 use crate::job::{self, Callback};
+#[cfg(feature = "dap_lsp")]
 pub use completion::Completion;
 pub use editor::EditorView;
 use helix_stdx::rope;
@@ -373,6 +376,7 @@ pub mod completers {
     use crate::ui::prompt::Completion;
     use helix_core::command_line::{self, Tokenizer};
     use helix_core::fuzzy::fuzzy_match;
+    #[cfg(feature = "dap_lsp")]
     use helix_core::syntax::config::LanguageServerFeature;
     use helix_view::document::SCRATCH_BUFFER_NAME;
     use helix_view::theme;
@@ -433,7 +437,20 @@ pub mod completers {
         }
     }
 
+    /// There are no active language servers without LSP support compiled in.
+    #[cfg(not(feature = "dap_lsp"))]
+    pub fn active_language_servers(_editor: &Editor, _input: &str) -> Vec<Completion> {
+        Vec::new()
+    }
+
+    /// There are no workspace commands without LSP support compiled in.
+    #[cfg(not(feature = "dap_lsp"))]
+    pub fn lsp_workspace_command(_editor: &Editor, _input: &str) -> Vec<Completion> {
+        Vec::new()
+    }
+
     /// Completes names of language servers which are running for the current document.
+    #[cfg(feature = "dap_lsp")]
     pub fn active_language_servers(editor: &Editor, input: &str) -> Vec<Completion> {
         let language_servers = doc!(editor).language_servers().map(|ls| ls.name());
 
@@ -507,6 +524,7 @@ pub mod completers {
             .collect()
     }
 
+    #[cfg(feature = "dap_lsp")]
     pub fn lsp_workspace_command(editor: &Editor, input: &str) -> Vec<Completion> {
         let commands = doc!(editor)
             .language_servers_with_feature(LanguageServerFeature::WorkspaceCommand)

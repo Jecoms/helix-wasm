@@ -2,6 +2,7 @@ use std::borrow::Cow;
 
 use helix_core::indent::IndentStyle;
 use helix_core::{coords_at_pos, encoding, Position};
+#[cfg(feature = "dap_lsp")]
 use helix_lsp::lsp::DiagnosticSeverity;
 use helix_view::document::DEFAULT_LANGUAGE_NAME;
 use helix_view::{
@@ -22,6 +23,8 @@ pub struct RenderContext<'a> {
     pub doc: &'a Document,
     pub view: &'a View,
     pub focused: bool,
+    // read by the lsp spinner element only
+    #[cfg_attr(not(feature = "dap_lsp"), allow(dead_code))]
     pub spinners: &'a ProgressSpinners,
     pub parts: RenderBuffer<'a>,
 }
@@ -133,7 +136,10 @@ where
 {
     match element_id {
         helix_view::editor::StatusLineElement::Mode => render_mode,
+        #[cfg(feature = "dap_lsp")]
         helix_view::editor::StatusLineElement::Spinner => render_lsp_spinner,
+        #[cfg(not(feature = "dap_lsp"))]
+        helix_view::editor::StatusLineElement::Spinner => render_spacer,
         helix_view::editor::StatusLineElement::FileBaseName => render_file_base_name,
         helix_view::editor::StatusLineElement::FileName => render_file_name,
         helix_view::editor::StatusLineElement::FileAbsolutePath => render_file_absolute_path,
@@ -146,7 +152,11 @@ where
         helix_view::editor::StatusLineElement::FileIndentStyle => render_file_indent_style,
         helix_view::editor::StatusLineElement::FileType => render_file_type,
         helix_view::editor::StatusLineElement::Diagnostics => render_diagnostics,
+        #[cfg(feature = "dap_lsp")]
         helix_view::editor::StatusLineElement::WorkspaceDiagnostics => render_workspace_diagnostics,
+        // Workspace diagnostics are collected from the language servers.
+        #[cfg(not(feature = "dap_lsp"))]
+        helix_view::editor::StatusLineElement::WorkspaceDiagnostics => render_spacer,
         helix_view::editor::StatusLineElement::Selections => render_selections,
         helix_view::editor::StatusLineElement::PrimarySelectionLength => {
             render_primary_selection_length
@@ -194,6 +204,7 @@ where
 }
 
 // TODO think about handling multiple language servers
+#[cfg(feature = "dap_lsp")]
 fn render_lsp_spinner<'a, F>(context: &mut RenderContext<'a>, write: F)
 where
     F: Fn(&mut RenderContext<'a>, Span<'a>) + Copy,
@@ -263,6 +274,7 @@ where
     }
 }
 
+#[cfg(feature = "dap_lsp")]
 fn render_workspace_diagnostics<'a, F>(context: &mut RenderContext<'a>, write: F)
 where
     F: Fn(&mut RenderContext<'a>, Span<'a>) + Copy,

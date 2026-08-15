@@ -1,5 +1,6 @@
 use std::fmt::Write;
 
+#[cfg(feature = "dap_lsp")]
 use helix_core::syntax::config::LanguageServerFeature;
 
 use crate::{
@@ -26,12 +27,20 @@ impl GutterType {
         is_focused: bool,
     ) -> GutterFn<'doc> {
         match self {
+            #[cfg(feature = "dap_lsp")]
             GutterType::Diagnostics => {
                 diagnostics_or_breakpoints(editor, doc, view, theme, is_focused)
             }
+            // Diagnostics come in via the language servers; without them only
+            // breakpoints remain in this gutter.
+            #[cfg(not(feature = "dap_lsp"))]
+            GutterType::Diagnostics => breakpoints(editor, doc, view, theme, is_focused),
             GutterType::LineNumbers => line_numbers(editor, doc, view, theme, is_focused),
             GutterType::Spacer => padding(editor, doc, view, theme, is_focused),
+            #[cfg(feature = "vcs")]
             GutterType::Diff => diff(editor, doc, view, theme, is_focused),
+            #[cfg(not(feature = "vcs"))]
+            GutterType::Diff => padding(editor, doc, view, theme, is_focused),
         }
     }
 
@@ -45,6 +54,7 @@ impl GutterType {
     }
 }
 
+#[cfg(feature = "dap_lsp")]
 pub fn diagnostic<'doc>(
     _editor: &'doc Editor,
     doc: &'doc Document,
@@ -87,6 +97,7 @@ pub fn diagnostic<'doc>(
     )
 }
 
+#[cfg(feature = "vcs")]
 pub fn diff<'doc>(
     _editor: &'doc Editor,
     doc: &'doc Document,
@@ -271,6 +282,7 @@ pub fn breakpoints<'doc>(
     )
 }
 
+#[cfg(feature = "dap_lsp")]
 fn execution_pause_indicator<'doc>(
     editor: &'doc Editor,
     doc: &'doc Document,
@@ -306,6 +318,7 @@ fn execution_pause_indicator<'doc>(
     )
 }
 
+#[cfg(feature = "dap_lsp")]
 pub fn diagnostics_or_breakpoints<'doc>(
     editor: &'doc Editor,
     doc: &'doc Document,

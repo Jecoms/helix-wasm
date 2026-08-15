@@ -1571,6 +1571,7 @@ dependencies = [
  "content_inspector",
  "crossterm",
  "fern",
+ "futures-executor",
  "futures-util",
  "grep-regex",
  "grep-searcher",

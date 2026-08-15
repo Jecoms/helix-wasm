@@ -15,11 +15,20 @@ use crate::{
     Document, DocumentId, View, ViewId,
 };
 use helix_event::dispatch;
+#[cfg(feature = "vcs")]
 use helix_vcs::DiffProviderRegistry;
 
+#[cfg(not(feature = "vcs"))]
+use crate::document::DiffProviderRegistry;
+
+#[cfg(feature = "dap_lsp")]
+use futures_util::future;
 use futures_util::stream::select_all::SelectAll;
-use futures_util::{future, StreamExt};
-use helix_lsp::{Call, LanguageServerId};
+use futures_util::StreamExt;
+#[cfg(feature = "dap_lsp")]
+use helix_core::diagnostic::LanguageServerId;
+#[cfg(feature = "dap_lsp")]
+use helix_lsp::Call;
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
 use std::{
@@ -34,24 +43,34 @@ use std::{
     sync::Arc,
 };
 
-use tokio::{
-    sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
-    time::{sleep, Duration, Instant, Sleep},
-};
+use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
+
+use std::time::Duration;
+
+#[cfg(not(target_arch = "wasm32"))]
+use tokio::time::{sleep, Instant, Sleep};
+
+#[cfg(target_arch = "wasm32")]
+use gloo_timers::future::TimeoutFuture;
+#[cfg(target_arch = "wasm32")]
+use instant::Instant;
 
 use anyhow::{anyhow, bail, Error};
 
 pub use helix_core::diagnostic::Severity;
 use helix_core::{
     auto_pairs::AutoPairs,
-    diagnostic::DiagnosticProvider,
     syntax::{
         self,
-        config::{AutoPairConfig, IndentationHeuristic, LanguageServerFeature, SoftWrap},
+        config::{AutoPairConfig, IndentationHeuristic, SoftWrap},
     },
-    Change, LineEnding, Position, Range, Selection, Uri, NATIVE_LINE_ENDING,
+    Change, LineEnding, Position, Range, Selection, NATIVE_LINE_ENDING,
 };
+#[cfg(feature = "dap_lsp")]
+use helix_core::{diagnostic::DiagnosticProvider, syntax::config::LanguageServerFeature, Uri};
+#[cfg(feature = "dap_lsp")]
 use helix_dap::{self as dap, registry::DebugAdapterId};
+#[cfg(feature = "dap_lsp")]
 use helix_lsp::lsp;
 use helix_stdx::path::canonicalize;
 
@@ -424,6 +443,12 @@ pub fn get_terminal_provider() -> Option<TerminalConfig> {
         command: "conhost".to_string(),
         args: vec!["cmd".to_string(), "/C".to_string()],
     })
+}
+
+// No external terminals to spawn on wasm32.
+#[cfg(target_arch = "wasm32")]
+pub fn get_terminal_provider() -> Option<TerminalConfig> {
+    None
 }
 
 #[cfg(not(any(windows, target_arch = "wasm32")))]
@@ -1063,7 +1088,49 @@ pub struct Breakpoint {
 
 use futures_util::stream::{Flatten, Once};
 
+#[cfg(feature = "dap_lsp")]
 type Diagnostics = BTreeMap<Uri, Vec<(lsp::Diagnostic, DiagnosticProvider)>>;
+
+// A timer future for wasm32, filling in for `tokio::time::Sleep` which needs a
+// tokio runtime with time support (unavailable on wasm32).
+#[cfg(target_arch = "wasm32")]
+pub struct Sleep {
+    timeout: TimeoutFuture,
+    deadline: Instant,
+}
+
+const THIRTY_YEARS_IN_SECS: u64 = 86400 * 365 * 30;
+
+#[cfg(target_arch = "wasm32")]
+impl Sleep {
+    // A logical deadline far enough out to mean "never" (30 years), matching
+    // internal Instant::far_future(). The backing browser timeout is capped
+    // at ~24.8 days (see `until`); `wait_event` re-arms timers that fire
+    // before their logical deadline.
+    fn far_future() -> Self {
+        Self::until(Instant::now() + Duration::from_secs(THIRTY_YEARS_IN_SECS))
+    }
+
+    fn new(duration: Duration) -> Self {
+        Self::until(Instant::now() + duration)
+    }
+
+    fn until(deadline: Instant) -> Self {
+        // Browsers cap setTimeout delays at i32::MAX ms (~24.8 days) and fire
+        // larger values immediately, so clamp; `deadline` keeps the real
+        // target and `wait_event` re-arms on an early fire.
+        let now = Instant::now();
+        let ms = if deadline > now {
+            (deadline - now).as_millis().min(i32::MAX as u128) as u32
+        } else {
+            0
+        };
+        Self {
+            timeout: TimeoutFuture::new(ms),
+            deadline,
+        }
+    }
+}
 
 pub struct Editor {
     /// Current editing mode.
@@ -1083,10 +1150,13 @@ pub struct Editor {
     pub registers: Registers,
     pub macro_recording: Option<(char, Vec<KeyEvent>)>,
     pub macro_replaying: Vec<char>,
+    #[cfg(feature = "dap_lsp")]
     pub language_servers: helix_lsp::Registry,
+    #[cfg(feature = "dap_lsp")]
     pub diagnostics: Diagnostics,
     pub diff_providers: DiffProviderRegistry,
 
+    #[cfg(feature = "dap_lsp")]
     pub debug_adapters: dap::registry::Registry,
     pub breakpoints: HashMap<PathBuf, Vec<Breakpoint>>,
 
@@ -1144,7 +1214,9 @@ pub type Motion = Box<dyn Fn(&mut Editor)>;
 pub enum EditorEvent {
     DocumentSaved(DocumentSavedEventResult),
     ConfigEvent(ConfigEvent),
+    #[cfg(feature = "dap_lsp")]
     LanguageServerMessage((LanguageServerId, Call)),
+    #[cfg(feature = "dap_lsp")]
     DebuggerEvent((DebugAdapterId, dap::Payload)),
     IdleTimer,
     Redraw,
@@ -1209,6 +1281,7 @@ impl Editor {
         config: Arc<dyn DynAccess<Config>>,
         handlers: Handlers,
     ) -> Self {
+        #[cfg(feature = "dap_lsp")]
         let language_servers = helix_lsp::Registry::new(syn_loader.clone());
         let conf = config.load();
         let auto_pairs = (&conf.auto_pairs).into();
@@ -1229,9 +1302,12 @@ impl Editor {
             macro_recording: None,
             macro_replaying: Vec::new(),
             theme: theme_loader.default(),
+            #[cfg(feature = "dap_lsp")]
             language_servers,
+            #[cfg(feature = "dap_lsp")]
             diagnostics: Diagnostics::new(),
             diff_providers: DiffProviderRegistry::default(),
+            #[cfg(feature = "dap_lsp")]
             debug_adapters: dap::registry::Registry::new(),
             breakpoints: HashMap::new(),
             syn_loader,
@@ -1244,8 +1320,14 @@ impl Editor {
             ))),
             status_msg: None,
             autoinfo: None,
+            #[cfg(not(target_arch = "wasm32"))]
             idle_timer: Box::pin(sleep(conf.idle_timeout)),
+            #[cfg(not(target_arch = "wasm32"))]
             redraw_timer: Box::pin(sleep(Duration::MAX)),
+            #[cfg(target_arch = "wasm32")]
+            idle_timer: Box::pin(Sleep::new(conf.idle_timeout)),
+            #[cfg(target_arch = "wasm32")]
+            redraw_timer: Box::pin(Sleep::far_future()),
             last_motion: None,
             last_completion: None,
             last_cwd: None,
@@ -1306,18 +1388,33 @@ impl Editor {
         })
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn clear_idle_timer(&mut self) {
         // equivalent to internal Instant::far_future() (30 years)
         self.idle_timer
             .as_mut()
-            .reset(Instant::now() + Duration::from_secs(86400 * 365 * 30));
+            .reset(Instant::now() + Duration::from_secs(THIRTY_YEARS_IN_SECS));
     }
 
+    #[cfg(target_arch = "wasm32")]
+    pub fn clear_idle_timer(&mut self) {
+        self.idle_timer.as_mut().set(Sleep::far_future());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn reset_idle_timer(&mut self) {
         let config = self.config();
         self.idle_timer
             .as_mut()
             .reset(Instant::now() + config.idle_timeout);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn reset_idle_timer(&mut self) {
+        let config = self.config();
+        self.idle_timer
+            .as_mut()
+            .set(Sleep::new(config.idle_timeout));
     }
 
     pub fn clear_status(&mut self) {
@@ -1399,6 +1496,7 @@ impl Editor {
         self._refresh();
     }
 
+    #[cfg(feature = "dap_lsp")]
     #[inline]
     pub fn language_server_by_id(
         &self,
@@ -1410,6 +1508,7 @@ impl Editor {
     }
 
     /// Refreshes the language server for a given document
+    #[cfg(feature = "dap_lsp")]
     pub fn refresh_language_servers(&mut self, doc_id: DocumentId) {
         self.launch_language_servers(doc_id)
     }
@@ -1422,26 +1521,31 @@ impl Editor {
         if old_path == new_path {
             return Ok(());
         }
-        let is_dir = old_path.is_dir();
-        let language_servers: Vec<_> = self
-            .language_servers
-            .iter_clients()
-            .filter(|client| client.is_initialized())
-            .cloned()
-            .collect();
-        for language_server in language_servers {
-            let Some(request) = language_server.will_rename(old_path, &new_path, is_dir) else {
-                continue;
-            };
-            let edit = match helix_lsp::block_on(request) {
-                Ok(edit) => edit.unwrap_or_default(),
-                Err(err) => {
-                    log::error!("invalid willRename response: {err:?}");
+        #[cfg(feature = "dap_lsp")]
+        {
+            let is_dir = old_path.is_dir();
+            let language_servers: Vec<_> = self
+                .language_servers
+                .iter_clients()
+                .filter(|client| client.is_initialized())
+                .cloned()
+                .collect();
+            for language_server in language_servers {
+                let Some(request) = language_server.will_rename(old_path, &new_path, is_dir) else {
                     continue;
+                };
+                let edit = match helix_lsp::block_on(request) {
+                    Ok(edit) => edit.unwrap_or_default(),
+                    Err(err) => {
+                        log::error!("invalid willRename response: {err:?}");
+                        continue;
+                    }
+                };
+                if let Err(err) =
+                    self.apply_workspace_edit(language_server.offset_encoding(), &edit)
+                {
+                    log::error!("failed to apply workspace edit: {err:?}")
                 }
-            };
-            if let Err(err) = self.apply_workspace_edit(language_server.offset_encoding(), &edit) {
-                log::error!("failed to apply workspace edit: {err:?}")
             }
         }
 
@@ -1452,21 +1556,24 @@ impl Editor {
         if let Some(doc) = self.document_by_path(old_path) {
             self.set_doc_path(doc.id(), &new_path);
         }
-        let is_dir = new_path.is_dir();
-        for ls in self.language_servers.iter_clients() {
-            // A new language server might have been started in `set_doc_path` and won't
-            // be initialized yet. Skip the `did_rename` notification for this server.
-            if !ls.is_initialized() {
-                continue;
+        #[cfg(feature = "dap_lsp")]
+        {
+            let is_dir = new_path.is_dir();
+            for ls in self.language_servers.iter_clients() {
+                // A new language server might have been started in `set_doc_path` and won't
+                // be initialized yet. Skip the `did_rename` notification for this server.
+                if !ls.is_initialized() {
+                    continue;
+                }
+                ls.did_rename(old_path, &new_path, is_dir);
             }
-            ls.did_rename(old_path, &new_path, is_dir);
+            self.language_servers
+                .file_event_handler
+                .file_changed(old_path.to_owned());
+            self.language_servers
+                .file_event_handler
+                .file_changed(new_path);
         }
-        self.language_servers
-            .file_event_handler
-            .file_changed(old_path.to_owned());
-        self.language_servers
-            .file_event_handler
-            .file_changed(new_path);
         Ok(())
     }
 
@@ -1481,6 +1588,7 @@ impl Editor {
                 return;
             }
             // if we are open in LSPs send did_close notification
+            #[cfg(feature = "dap_lsp")]
             for language_server in doc.language_servers() {
                 language_server.text_document_did_close(doc.identifier());
             }
@@ -1489,6 +1597,7 @@ impl Editor {
         // refresh_doc_language/refresh_language_servers doesn't resend
         // text_document_did_close. Since we called `text_document_did_close`
         // we have fully unregistered this document from its LS
+        #[cfg(feature = "dap_lsp")]
         doc.language_servers.clear();
         doc.set_path(Some(path));
         doc.detect_editor_config();
@@ -1501,14 +1610,20 @@ impl Editor {
         doc.detect_language(&loader);
         doc.detect_editor_config();
         doc.detect_indent_and_line_ending();
-        self.refresh_language_servers(doc_id);
+        #[cfg(feature = "dap_lsp")]
+        {
+            self.refresh_language_servers(doc_id);
+            let doc = doc_mut!(self, &doc_id);
+            let diagnostics =
+                Editor::doc_diagnostics(&self.language_servers, &self.diagnostics, doc);
+            doc.replace_diagnostics(diagnostics, &[], None);
+        }
         let doc = doc_mut!(self, &doc_id);
-        let diagnostics = Editor::doc_diagnostics(&self.language_servers, &self.diagnostics, doc);
-        doc.replace_diagnostics(diagnostics, &[], None);
         doc.reset_all_inlay_hints();
     }
 
     /// Launch a language server for a given document
+    #[cfg(feature = "dap_lsp")]
     fn launch_language_servers(&mut self, doc_id: DocumentId) {
         if !self.config().lsp.enable {
             return;
@@ -1796,6 +1911,7 @@ impl Editor {
         let id = if let Some(id) = id {
             id
         } else {
+            #[cfg_attr(not(any(feature = "dap_lsp", feature = "vcs")), allow(unused_mut))]
             let mut doc = Document::open(
                 &path,
                 None,
@@ -1804,16 +1920,23 @@ impl Editor {
                 self.syn_loader.clone(),
             )?;
 
-            let diagnostics =
-                Editor::doc_diagnostics(&self.language_servers, &self.diagnostics, &doc);
-            doc.replace_diagnostics(diagnostics, &[], None);
-
-            if let Some(diff_base) = self.diff_providers.get_diff_base(&path) {
-                doc.set_diff_base(diff_base);
+            #[cfg(feature = "dap_lsp")]
+            {
+                let diagnostics =
+                    Editor::doc_diagnostics(&self.language_servers, &self.diagnostics, &doc);
+                doc.replace_diagnostics(diagnostics, &[], None);
             }
-            doc.set_version_control_head(self.diff_providers.get_current_head_name(&path));
+
+            #[cfg(feature = "vcs")]
+            {
+                if let Some(diff_base) = self.diff_providers.get_diff_base(&path) {
+                    doc.set_diff_base(diff_base);
+                }
+                doc.set_version_control_head(self.diff_providers.get_current_head_name(&path));
+            }
 
             let id = self.new_document(doc);
+            #[cfg(feature = "dap_lsp")]
             self.launch_language_servers(id);
 
             helix_event::dispatch(DocumentDidOpen {
@@ -1932,13 +2055,16 @@ impl Editor {
 
         // When a file is written to, notify the file event handler.
         // Note: This can be removed once proper file watching is implemented.
-        let handler = self.language_servers.file_event_handler.clone();
-        let future = async move {
-            let res = doc_save_future.await;
-            if let Ok(event) = &res {
-                handler.file_changed(event.path.clone());
+        #[cfg(feature = "dap_lsp")]
+        let doc_save_future = {
+            let handler = self.language_servers.file_event_handler.clone();
+            async move {
+                let res = doc_save_future.await;
+                if let Ok(event) = &res {
+                    handler.file_changed(event.path.clone());
+                }
+                res
             }
-            res
         };
 
         use futures_util::stream;
@@ -1946,7 +2072,7 @@ impl Editor {
         self.saves
             .get(&doc_id)
             .ok_or_else(|| anyhow::format_err!("saves are closed for this document!"))?
-            .send(stream::once(Box::pin(future)))
+            .send(stream::once(Box::pin(doc_save_future)))
             .map_err(|err| anyhow!("failed to send save event: {}", err))?;
 
         self.write_count += 1;
@@ -2050,6 +2176,7 @@ impl Editor {
     }
 
     /// Returns all supported diagnostics for the document
+    #[cfg(feature = "dap_lsp")]
     pub fn doc_diagnostics<'a>(
         language_servers: &'a helix_lsp::Registry,
         diagnostics: &'a Diagnostics,
@@ -2060,6 +2187,7 @@ impl Editor {
 
     /// Returns all supported diagnostics for the document
     /// filtered by `filter` which is invocated with the raw `lsp::Diagnostic` and the language server id it came from
+    #[cfg(feature = "dap_lsp")]
     pub fn doc_diagnostics_with_filter<'a>(
         language_servers: &'a helix_lsp::Registry,
         diagnostics: &'a Diagnostics,
@@ -2120,6 +2248,7 @@ impl Editor {
 
     /// Closes language servers with timeout. The default timeout is 10000 ms, use
     /// `timeout` parameter to override this.
+    #[cfg(feature = "dap_lsp")]
     pub async fn close_language_servers(
         &self,
         timeout: Option<u64>,
@@ -2144,6 +2273,7 @@ impl Editor {
         .map(|_| ())
     }
 
+    #[cfg(all(not(target_arch = "wasm32"), feature = "dap_lsp"))]
     pub async fn wait_event(&mut self) -> EditorEvent {
         // the loop only runs once or twice and would be better implemented with a recursion + const generic
         // however due to limitations with async functions that can not be implemented right now
@@ -2176,11 +2306,98 @@ impl Editor {
                 }
 
                 _ = &mut self.redraw_timer  => {
-                    self.redraw_timer.as_mut().reset(Instant::now() + Duration::from_secs(86400 * 365 * 30));
+                    self.redraw_timer.as_mut().reset(Instant::now() + Duration::from_secs(THIRTY_YEARS_IN_SECS));
                     return EditorEvent::Redraw
                 }
                 _ = &mut self.idle_timer  => {
                     return EditorEvent::IdleTimer
+                }
+            }
+        }
+    }
+
+    #[cfg(all(not(target_arch = "wasm32"), not(feature = "dap_lsp")))]
+    pub async fn wait_event(&mut self) -> EditorEvent {
+        // same as the `dap_lsp` variant above minus the language server and
+        // debugger event sources (`tokio::select!` cannot cfg-gate branches)
+        loop {
+            tokio::select! {
+                biased;
+
+                Some(event) = self.save_queue.next() => {
+                    self.write_count -= 1;
+                    return EditorEvent::DocumentSaved(event)
+                }
+                Some(config_event) = self.config_events.1.recv() => {
+                    return EditorEvent::ConfigEvent(config_event)
+                }
+
+                _ = helix_event::redraw_requested() => {
+                    if  !self.needs_redraw{
+                        self.needs_redraw = true;
+                        let timeout = Instant::now() + Duration::from_millis(33);
+                        if timeout < self.idle_timer.deadline() && timeout < self.redraw_timer.deadline(){
+                            self.redraw_timer.as_mut().reset(timeout)
+                        }
+                    }
+                }
+
+                _ = &mut self.redraw_timer  => {
+                    self.redraw_timer.as_mut().reset(Instant::now() + Duration::from_secs(THIRTY_YEARS_IN_SECS));
+                    return EditorEvent::Redraw
+                }
+                _ = &mut self.idle_timer  => {
+                    return EditorEvent::IdleTimer
+                }
+            }
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub async fn wait_event(&mut self) -> EditorEvent {
+        // wasm32 variant of the above: no language servers or debuggers, and
+        // timers are driven by `gloo_timers` instead of the tokio runtime.
+        loop {
+            tokio::select! {
+                biased;
+
+                Some(event) = self.save_queue.next() => {
+                    self.write_count -= 1;
+                    return EditorEvent::DocumentSaved(event)
+                }
+                Some(config_event) = self.config_events.1.recv() => {
+                    return EditorEvent::ConfigEvent(config_event)
+                }
+
+                _ = helix_event::redraw_requested() => {
+                    if !self.needs_redraw {
+                        self.needs_redraw = true;
+                        let timeout = Instant::now() + Duration::from_millis(33);
+                        if timeout < self.idle_timer.deadline && timeout < self.redraw_timer.deadline {
+                            self.redraw_timer.as_mut().set(Sleep::until(timeout))
+                        }
+                    }
+                }
+
+                _ = &mut self.redraw_timer.timeout => {
+                    // The browser timeout is capped below the logical
+                    // deadline (see Sleep::until); on an early fire, re-arm
+                    // instead of emitting a spurious redraw.
+                    let deadline = self.redraw_timer.deadline;
+                    if Instant::now() < deadline {
+                        self.redraw_timer.as_mut().set(Sleep::until(deadline));
+                    } else {
+                        self.redraw_timer.as_mut().set(Sleep::far_future());
+                        return EditorEvent::Redraw
+                    }
+                }
+                _ = &mut self.idle_timer.timeout => {
+                    let deadline = self.idle_timer.deadline;
+                    if Instant::now() < deadline {
+                        self.idle_timer.as_mut().set(Sleep::until(deadline));
+                    } else {
+                        return EditorEvent::IdleTimer
+                    }
                 }
             }
         }
@@ -2237,6 +2454,7 @@ impl Editor {
         }
     }
 
+    #[cfg(feature = "dap_lsp")]
     pub fn current_stack_frame(&self) -> Option<&dap::StackFrame> {
         self.debug_adapters.current_stack_frame()
     }

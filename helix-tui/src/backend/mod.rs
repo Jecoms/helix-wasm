@@ -1,18 +1,36 @@
 //! Provides interface for controlling the terminal
 
 use std::io;
+use std::io::Write;
 
 use crate::{buffer::Cell, terminal::Config};
 
 use helix_view::graphics::{CursorKind, Rect};
 
-#[cfg(feature = "crossterm")]
+#[cfg(all(feature = "crossterm", not(target_arch = "wasm32")))]
 mod crossterm;
-#[cfg(feature = "crossterm")]
+#[cfg(all(feature = "crossterm", not(target_arch = "wasm32")))]
 pub use self::crossterm::CrosstermBackend;
 
 mod test;
 pub use self::test::TestBackend;
+
+/// The writer a backend renders into.
+///
+/// On native targets any [`Write`] implementor qualifies. On wasm32 the writer
+/// must also report the terminal geometry and cursor position, since there is
+/// no OS terminal to query for them.
+#[cfg(not(target_arch = "wasm32"))]
+pub trait Buffer: Write {}
+#[cfg(not(target_arch = "wasm32"))]
+impl<T: Write> Buffer for T {}
+
+#[cfg(target_arch = "wasm32")]
+pub trait Buffer: Write {
+    fn size(&self) -> std::io::Result<Rect>;
+    fn cursor_x(&self) -> u16;
+    fn cursor_y(&self) -> u16;
+}
 
 /// Representation of a terminal backend.
 pub trait Backend {

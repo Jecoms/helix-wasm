@@ -1,6 +1,11 @@
-use std::{collections::HashMap, time::Instant};
+use std::collections::HashMap;
 
-use helix_lsp::LanguageServerId;
+#[cfg(target_arch = "wasm32")]
+use instant::Instant;
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
+
+use helix_core::diagnostic::LanguageServerId;
 
 #[derive(Default, Debug)]
 pub struct ProgressSpinners {
