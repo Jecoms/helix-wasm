@@ -5,9 +5,9 @@ use tokio::sync::mpsc::Sender;
 
 #[cfg(feature = "dap_lsp")]
 use crate::handlers::lsp::SignatureHelpInvoked;
-use crate::{DocumentId, ViewId};
 #[cfg(feature = "dap_lsp")]
 use crate::Editor;
+use crate::{DocumentId, ViewId};
 
 pub mod completion;
 #[cfg(feature = "dap_lsp")]

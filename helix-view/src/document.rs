@@ -10,9 +10,9 @@ use helix_core::chars::char_is_word;
 #[cfg(feature = "dap_lsp")]
 use helix_core::command_line::Token;
 use helix_core::diagnostic::DiagnosticProvider;
+use helix_core::diagnostic::LanguageServerId;
 use helix_core::doc_formatter::TextFormat;
 use helix_core::encoding::Encoding;
-use helix_core::diagnostic::LanguageServerId;
 use helix_core::snippets::{ActiveSnippet, SnippetRenderCtx};
 #[cfg(feature = "dap_lsp")]
 use helix_core::syntax::config::LanguageServerFeature;
@@ -1087,131 +1087,132 @@ impl Document {
         let future = async move {
             #[cfg(not(target_arch = "wasm32"))]
             let save_time = {
-            use tokio::fs;
-            if let Some(parent) = path.parent() {
-                // TODO: display a prompt asking the user if the directories should be created
-                if !parent.exists() {
-                    if force {
-                        std::fs::DirBuilder::new().recursive(true).create(parent)?;
-                    } else {
-                        bail!("can't save file, parent directory does not exist (use :w! to create it)");
-                    }
-                }
-            }
-
-            // Protect against overwriting changes made externally
-            if !force {
-                if let Ok(metadata) = fs::metadata(&path).await {
-                    if let Ok(mtime) = metadata.modified() {
-                        if last_saved_time < mtime {
-                            bail!("file modified by an external process, use :w! to overwrite");
+                use tokio::fs;
+                if let Some(parent) = path.parent() {
+                    // TODO: display a prompt asking the user if the directories should be created
+                    if !parent.exists() {
+                        if force {
+                            std::fs::DirBuilder::new().recursive(true).create(parent)?;
+                        } else {
+                            bail!("can't save file, parent directory does not exist (use :w! to create it)");
                         }
                     }
                 }
-            }
-            let write_path = tokio::fs::read_link(&path)
-                .await
-                .ok()
-                .and_then(|p| {
-                    if p.is_relative() {
-                        path.parent().map(|parent| parent.join(p))
-                    } else {
-                        Some(p)
+
+                // Protect against overwriting changes made externally
+                if !force {
+                    if let Ok(metadata) = fs::metadata(&path).await {
+                        if let Ok(mtime) = metadata.modified() {
+                            if last_saved_time < mtime {
+                                bail!("file modified by an external process, use :w! to overwrite");
+                            }
+                        }
                     }
-                })
-                .unwrap_or_else(|| path.clone());
+                }
+                let write_path = tokio::fs::read_link(&path)
+                    .await
+                    .ok()
+                    .and_then(|p| {
+                        if p.is_relative() {
+                            path.parent().map(|parent| parent.join(p))
+                        } else {
+                            Some(p)
+                        }
+                    })
+                    .unwrap_or_else(|| path.clone());
 
-            if readonly(&write_path) {
-                bail!(std::io::Error::new(
-                    std::io::ErrorKind::PermissionDenied,
-                    "Path is read only"
-                ));
-            }
+                if readonly(&write_path) {
+                    bail!(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        "Path is read only"
+                    ));
+                }
 
-            // Assume it is a hardlink to prevent data loss if the metadata cant be read (e.g. on certain Windows configurations)
-            let is_hardlink = helix_stdx::faccess::hardlink_count(&write_path).unwrap_or(2) > 1;
-            let backup = if path.exists() && atomic_save {
-                let path_ = write_path.clone();
-                // hacks: we use tempfile to handle the complex task of creating
-                // non clobbered temporary path for us we don't want
-                // the whole automatically delete path on drop thing
-                // since the path doesn't exist yet, we just want
-                // the path
-                tokio::task::spawn_blocking(move || -> Option<PathBuf> {
-                    let mut builder = tempfile::Builder::new();
-                    builder.prefix(path_.file_name()?).suffix(".bck");
+                // Assume it is a hardlink to prevent data loss if the metadata cant be read (e.g. on certain Windows configurations)
+                let is_hardlink = helix_stdx::faccess::hardlink_count(&write_path).unwrap_or(2) > 1;
+                let backup = if path.exists() && atomic_save {
+                    let path_ = write_path.clone();
+                    // hacks: we use tempfile to handle the complex task of creating
+                    // non clobbered temporary path for us we don't want
+                    // the whole automatically delete path on drop thing
+                    // since the path doesn't exist yet, we just want
+                    // the path
+                    tokio::task::spawn_blocking(move || -> Option<PathBuf> {
+                        let mut builder = tempfile::Builder::new();
+                        builder.prefix(path_.file_name()?).suffix(".bck");
 
-                    let backup_path = if is_hardlink {
-                        builder
-                            .make_in(path_.parent()?, |backup| std::fs::copy(&path_, backup))
-                            .ok()?
-                            .into_temp_path()
-                    } else {
-                        builder
-                            .make_in(path_.parent()?, |backup| std::fs::rename(&path_, backup))
-                            .ok()?
-                            .into_temp_path()
-                    };
+                        let backup_path = if is_hardlink {
+                            builder
+                                .make_in(path_.parent()?, |backup| std::fs::copy(&path_, backup))
+                                .ok()?
+                                .into_temp_path()
+                        } else {
+                            builder
+                                .make_in(path_.parent()?, |backup| std::fs::rename(&path_, backup))
+                                .ok()?
+                                .into_temp_path()
+                        };
 
-                    backup_path.keep().ok()
-                })
-                .await
-                .ok()
-                .flatten()
-            } else {
-                None
-            };
+                        backup_path.keep().ok()
+                    })
+                    .await
+                    .ok()
+                    .flatten()
+                } else {
+                    None
+                };
 
-            let write_result: anyhow::Result<_> = async {
-                let mut dst = tokio::fs::File::create(&write_path).await?;
-                to_writer(&mut dst, encoding_with_bom_info, &text).await?;
-                dst.sync_all().await?;
-                Ok(())
-            }
-            .await;
+                let write_result: anyhow::Result<_> = async {
+                    let mut dst = tokio::fs::File::create(&write_path).await?;
+                    to_writer(&mut dst, encoding_with_bom_info, &text).await?;
+                    dst.sync_all().await?;
+                    Ok(())
+                }
+                .await;
 
-            let save_time = match fs::metadata(&write_path).await {
-                Ok(metadata) => metadata.modified().map_or(SystemTime::now(), |mtime| mtime),
-                Err(_) => SystemTime::now(),
-            };
+                let save_time = match fs::metadata(&write_path).await {
+                    Ok(metadata) => metadata.modified().map_or(SystemTime::now(), |mtime| mtime),
+                    Err(_) => SystemTime::now(),
+                };
 
-            if let Some(backup) = backup {
-                if is_hardlink {
-                    let mut delete = true;
-                    if write_result.is_err() {
-                        // Restore backup
-                        let _ = tokio::fs::copy(&backup, &write_path).await.map_err(|e| {
-                            delete = false;
+                if let Some(backup) = backup {
+                    if is_hardlink {
+                        let mut delete = true;
+                        if write_result.is_err() {
+                            // Restore backup
+                            let _ = tokio::fs::copy(&backup, &write_path).await.map_err(|e| {
+                                delete = false;
+                                log::error!("Failed to restore backup on write failure: {e}")
+                            });
+                        }
+
+                        if delete {
+                            // Delete backup
+                            let _ = tokio::fs::remove_file(backup).await.map_err(|e| {
+                                log::error!("Failed to remove backup file on write: {e}")
+                            });
+                        }
+                    } else if write_result.is_err() {
+                        // restore backup
+                        let _ = tokio::fs::rename(&backup, &write_path).await.map_err(|e| {
                             log::error!("Failed to restore backup on write failure: {e}")
                         });
+                    } else {
+                        // copy metadata and delete backup
+                        let _ = tokio::task::spawn_blocking(move || {
+                            let _ = copy_metadata(&backup, &write_path)
+                                .map_err(|e| log::error!("Failed to copy metadata on write: {e}"));
+                            let _ = std::fs::remove_file(backup).map_err(|e| {
+                                log::error!("Failed to remove backup file on write: {e}")
+                            });
+                        })
+                        .await;
                     }
-
-                    if delete {
-                        // Delete backup
-                        let _ = tokio::fs::remove_file(backup)
-                            .await
-                            .map_err(|e| log::error!("Failed to remove backup file on write: {e}"));
-                    }
-                } else if write_result.is_err() {
-                    // restore backup
-                    let _ = tokio::fs::rename(&backup, &write_path)
-                        .await
-                        .map_err(|e| log::error!("Failed to restore backup on write failure: {e}"));
-                } else {
-                    // copy metadata and delete backup
-                    let _ = tokio::task::spawn_blocking(move || {
-                        let _ = copy_metadata(&backup, &write_path)
-                            .map_err(|e| log::error!("Failed to copy metadata on write: {e}"));
-                        let _ = std::fs::remove_file(backup)
-                            .map_err(|e| log::error!("Failed to remove backup file on write: {e}"));
-                    })
-                    .await;
                 }
-            }
 
-            write_result?;
+                write_result?;
 
-            save_time
+                save_time
             };
 
             // There is no file system on wasm32; documents are persisted to the

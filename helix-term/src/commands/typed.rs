@@ -537,11 +537,7 @@ fn new_file(cx: &mut compositor::Context, _args: Args, event: PromptEvent) -> an
 
 // `format` requires LSP/DAP support, which is not compiled into this build.
 #[cfg(not(feature = "dap_lsp"))]
-fn format(
-    _cx: &mut compositor::Context,
-    _args: Args,
-    event: PromptEvent,
-) -> anyhow::Result<()> {
+fn format(_cx: &mut compositor::Context, _args: Args, event: PromptEvent) -> anyhow::Result<()> {
     if event != PromptEvent::Validate {
         return Ok(());
     }
@@ -1715,11 +1711,7 @@ fn lsp_restart(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> 
 
 // `lsp_stop` requires LSP/DAP support, which is not compiled into this build.
 #[cfg(not(feature = "dap_lsp"))]
-fn lsp_stop(
-    _cx: &mut compositor::Context,
-    _args: Args,
-    event: PromptEvent,
-) -> anyhow::Result<()> {
+fn lsp_stop(_cx: &mut compositor::Context, _args: Args, event: PromptEvent) -> anyhow::Result<()> {
     if event != PromptEvent::Validate {
         return Ok(());
     }

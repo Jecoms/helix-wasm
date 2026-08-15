@@ -1,5 +1,3 @@
-#[cfg(feature = "dap_lsp")]
-use crate::{handlers::completion::CompletionItem, ui::Completion};
 use crate::{
     commands::{self, OnKeyCallback, OnKeyCallbackKind},
     compositor::{Component, Context, Event, EventResult},
@@ -13,6 +11,8 @@ use crate::{
         ProgressSpinners,
     },
 };
+#[cfg(feature = "dap_lsp")]
+use crate::{handlers::completion::CompletionItem, ui::Completion};
 
 use helix_core::{
     diagnostic::NumberOrString,

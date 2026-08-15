@@ -35,11 +35,7 @@ mod dap_lsp_stubs {
         };
     }
 
-    pub fn dap_toggle_breakpoint_impl(
-        cx: &mut Context,
-        _path: std::path::PathBuf,
-        _line: usize,
-    ) {
+    pub fn dap_toggle_breakpoint_impl(cx: &mut Context, _path: std::path::PathBuf, _line: usize) {
         cx.editor
             .set_error("LSP/DAP support is not compiled into this build");
     }
@@ -85,6 +81,8 @@ use tui::{
 };
 pub use typed::*;
 
+#[cfg(feature = "dap_lsp")]
+use helix_core::syntax::config::LanguageServerFeature;
 use helix_core::{
     char_idx_at_visual_offset,
     chars::char_is_word,
@@ -109,8 +107,6 @@ use helix_core::{
     visual_offset_from_block, Deletion, LineEnding, Position, Range, Rope, RopeReader, RopeSlice,
     Selection, SmallVec, Syntax, Tendril, Transaction,
 };
-#[cfg(feature = "dap_lsp")]
-use helix_core::syntax::config::LanguageServerFeature;
 #[cfg(feature = "dap_lsp")]
 use helix_view::document::FormatterError;
 use helix_view::{
@@ -137,8 +133,6 @@ use crate::{
 };
 
 use crate::job::{self, Jobs};
-#[cfg(feature = "dap_lsp")]
-use std::{error::Error, future::Future};
 use std::{
     char::{ToLowercase, ToUppercase},
     cmp::Ordering,
@@ -147,6 +141,8 @@ use std::{
     io::Read,
     num::NonZeroUsize,
 };
+#[cfg(feature = "dap_lsp")]
+use std::{error::Error, future::Future};
 
 use std::{
     borrow::Cow,

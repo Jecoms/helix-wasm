@@ -33,13 +33,13 @@ use crate::{
     ui::{self, overlay::overlaid},
 };
 
+use log::{debug, warn};
 #[cfg(feature = "dap_lsp")]
 use log::{error, info};
-use log::{debug, warn};
-#[cfg(all(not(feature = "integration"), not(target_arch = "wasm32")))]
-use std::io::stdout;
 #[cfg(not(target_arch = "wasm32"))]
 use std::io::stdin;
+#[cfg(all(not(feature = "integration"), not(target_arch = "wasm32")))]
+use std::io::stdout;
 use std::{path::Path, sync::Arc};
 
 #[cfg(not(any(windows, target_arch = "wasm32")))]

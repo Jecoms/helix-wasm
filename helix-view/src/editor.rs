@@ -21,10 +21,10 @@ use helix_vcs::DiffProviderRegistry;
 #[cfg(not(feature = "vcs"))]
 use crate::document::DiffProviderRegistry;
 
-use futures_util::stream::select_all::SelectAll;
-use futures_util::StreamExt;
 #[cfg(feature = "dap_lsp")]
 use futures_util::future;
+use futures_util::stream::select_all::SelectAll;
+use futures_util::StreamExt;
 #[cfg(feature = "dap_lsp")]
 use helix_core::diagnostic::LanguageServerId;
 #[cfg(feature = "dap_lsp")]
@@ -58,8 +58,6 @@ use instant::Instant;
 use anyhow::{anyhow, bail, Error};
 
 pub use helix_core::diagnostic::Severity;
-#[cfg(feature = "dap_lsp")]
-use helix_core::{diagnostic::DiagnosticProvider, syntax::config::LanguageServerFeature, Uri};
 use helix_core::{
     auto_pairs::AutoPairs,
     syntax::{
@@ -68,6 +66,8 @@ use helix_core::{
     },
     Change, LineEnding, Position, Range, Selection, NATIVE_LINE_ENDING,
 };
+#[cfg(feature = "dap_lsp")]
+use helix_core::{diagnostic::DiagnosticProvider, syntax::config::LanguageServerFeature, Uri};
 #[cfg(feature = "dap_lsp")]
 use helix_dap::{self as dap, registry::DebugAdapterId};
 #[cfg(feature = "dap_lsp")]
@@ -1399,7 +1399,9 @@ impl Editor {
     #[cfg(target_arch = "wasm32")]
     pub fn reset_idle_timer(&mut self) {
         let config = self.config();
-        self.idle_timer.as_mut().set(Sleep::new(config.idle_timeout));
+        self.idle_timer
+            .as_mut()
+            .set(Sleep::new(config.idle_timeout));
     }
 
     pub fn clear_status(&mut self) {
@@ -1516,8 +1518,7 @@ impl Editor {
                 .cloned()
                 .collect();
             for language_server in language_servers {
-                let Some(request) = language_server.will_rename(old_path, &new_path, is_dir)
-                else {
+                let Some(request) = language_server.will_rename(old_path, &new_path, is_dir) else {
                     continue;
                 };
                 let edit = match helix_lsp::block_on(request) {
