@@ -12,6 +12,12 @@ mod crossterm;
 #[cfg(all(feature = "crossterm", not(target_arch = "wasm32")))]
 pub use self::crossterm::CrosstermBackend;
 
+// Hand-written ANSI emission for wasm32 backends (crossterm does not compile
+// there). Also compiled on native hosts under `cfg(test)` so its byte-level
+// unit tests run in `cargo test --workspace`.
+#[cfg(any(target_arch = "wasm32", test))]
+pub mod ansi;
+
 mod test;
 pub use self::test::TestBackend;
 

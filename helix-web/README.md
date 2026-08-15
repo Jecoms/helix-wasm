@@ -56,7 +56,9 @@ export AR_wasm32_unknown_unknown=/opt/homebrew/opt/llvm/bin/llvm-ar
 Note: `wasm-pack build` installs a `wasm-bindgen-cli` matching the version
 locked in `Cargo.lock` (currently 0.2.117, the newest whose CLI still builds
 with the Rust 1.82.0 toolchain this repo pins). If that install fails on
-edition-2024 dependencies, pre-install it with a newer toolchain:
+edition-2024 dependencies, pre-install it with a newer toolchain into
+wasm-pack's cache directory. On macOS that cache is
+`~/Library/Caches/.wasm-pack`:
 
 ```sh
 cargo +stable install --locked wasm-bindgen-cli --version 0.2.117 \
@@ -64,6 +66,9 @@ cargo +stable install --locked wasm-bindgen-cli --version 0.2.117 \
 cp "$HOME/Library/Caches/.wasm-pack/wasm-bindgen-cargo-install-0.2.117/bin/"* \
   "$HOME/Library/Caches/.wasm-pack/wasm-bindgen-cargo-install-0.2.117/"
 ```
+
+On Linux the cache lives at `~/.cache/.wasm-pack` instead; substitute that
+path in the `--root` and `cp` commands above.
 
 ### Build
 
