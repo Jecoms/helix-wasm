@@ -200,11 +200,8 @@ fn generate_registration(out_dir: &Path, grammars: &[(&str, &str, &str)]) {
             "    register_grammar(\"{name}\", unsafe {{ tree_sitter_{symbol}() }});"
         )
         .unwrap();
-        assert!(
-            queries_dir.join(name).is_dir(),
-            "no vendored queries for grammar '{name}' in queries/"
-        );
     }
+    assert_vendored_queries(&queries_dir, grammars);
 
     // Query registration walks the vendored directory rather than the
     // grammar list: `; inherits:` directives can pull in query-only base
@@ -240,4 +237,74 @@ fn generate_registration(out_dir: &Path, grammars: &[(&str, &str, &str)]) {
     code.push_str("}\n");
 
     std::fs::write(out_dir.join("grammar_registration.rs"), code).unwrap();
+}
+
+/// Asserts that every selected grammar has vendored queries — including the
+/// full `; inherits:` closure. A directive can pull in query-only base
+/// languages (javascript inherits `ecma`/`_javascript`), and a missing base
+/// dir is invisible at runtime: `load_runtime_file` feeds
+/// `unwrap_or_default()`, so the inherited part of the query is silently
+/// empty and highlighting quietly degrades. Failing the build here turns
+/// the manual re-vendor rule in `queries/README.md` into a checked one.
+fn assert_vendored_queries(queries_dir: &Path, grammars: &[(&str, &str, &str)]) {
+    let mut pending: Vec<(String, String)> = grammars
+        .iter()
+        .map(|&(name, _, _)| (name.to_owned(), format!("selected grammar '{name}'")))
+        .collect();
+    let mut seen: std::collections::BTreeSet<String> =
+        pending.iter().map(|(name, _)| name.clone()).collect();
+    while let Some((lang, needed_by)) = pending.pop() {
+        let dir = queries_dir.join(&lang);
+        assert!(
+            dir.is_dir(),
+            "no vendored queries for '{lang}' in queries/ (required by {needed_by}; \
+             see queries/README.md for the re-vendor rule)"
+        );
+        let mut files: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().path())
+            .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("scm"))
+            .collect();
+        files.sort();
+        for path in files {
+            let text = std::fs::read_to_string(&path).unwrap();
+            let file = path.file_name().unwrap().to_str().unwrap().to_owned();
+            for target in inherits_targets(&text) {
+                if seen.insert(target.clone()) {
+                    pending.push((target, format!("`; inherits:` in {lang}/{file}")));
+                }
+            }
+        }
+    }
+}
+
+/// The languages named by `; inherits:` directives in a query file.
+/// Mirrors tree-house's `INHERITS_REGEX` (`;+\s*inherits\s*:?\s*([a-z_,()-]+)`)
+/// applied per line. Parenthesized names pass through tree-house's language
+/// lookup verbatim, never resolve, and read as empty — effectively optional
+/// — so they are skipped here rather than asserted.
+fn inherits_targets(text: &str) -> Vec<String> {
+    let mut targets = Vec::new();
+    for line in text.lines() {
+        let line = line.trim_start();
+        if !line.starts_with(';') {
+            continue;
+        }
+        let rest = line.trim_start_matches(';').trim_start();
+        let Some(rest) = rest.strip_prefix("inherits") else {
+            continue;
+        };
+        let rest = rest.trim_start();
+        let rest = rest.strip_prefix(':').unwrap_or(rest).trim_start();
+        let names: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_lowercase() || matches!(c, '_' | ',' | '(' | ')' | '-'))
+            .collect();
+        for name in names.split(',') {
+            if !name.is_empty() && !name.contains(['(', ')']) {
+                targets.push(name.to_owned());
+            }
+        }
+    }
+    targets
 }
