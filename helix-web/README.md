@@ -73,20 +73,30 @@ path in the `--root` and `cp` commands above.
 ### Build
 
 ```sh
-wasm-pack build
+wasm-pack build --target web
 ```
+
+`--target web` matters: it emits ES-module glue that fetches and instantiates
+`helix_web_bg.wasm` itself at runtime, so the JS bundler never parses the wasm
+binary (Rust 1.82 emits wasm features like reference types that older bundler
+wasm parsers reject).
 
 The first build needs network access: `build.rs` fetches the tree-sitter
 grammar sources listed in `languages`.
 
 ### Run
 
+The demo app in `www/` is built with [Vite](https://vitejs.dev/); it consumes
+the `pkg/` output of `wasm-pack` as a `file:` dependency.
+
 ```sh
 cd www/
 
-NODE_OPTIONS=--openssl-legacy-provider npm run start
+npm run dev       # dev server, visit http://localhost:5173
 
-# then visit https://localhost:8080
+# or, production build + local preview:
+npm run build     # outputs www/dist/
+npm run preview
 ```
 
 ### Deploy
