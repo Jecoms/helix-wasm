@@ -1,6 +1,6 @@
 /* libc shims for wasm32-unknown-unknown, compiled by the web crate's build
- * script and linked with the statically compiled tree-sitter runtime (and,
- * later, grammars).
+ * script and linked with the statically compiled tree-sitter runtime and
+ * grammars.
  *
  * The stdio family only backs tree-sitter's debug logging and dot-graph
  * output, which are never enabled in the wasm build, so those are no-ops.
@@ -83,7 +83,10 @@ _Noreturn void abort(void) {
   __builtin_trap();
 }
 
-/* Parse timeouts are never set by helix, so a frozen clock is harmless. */
+/* tree-sitter reads this clock to enforce parse timeouts (helix sets a
+ * 500ms one). Frozen at zero, elapsed time is always zero, so timeouts
+ * never fire and every parse runs to completion — acceptable for the
+ * grammar set shipped here; a real clock needs a wasm import, not libc. */
 int clock_gettime(clockid_t clk_id, struct timespec *tp) {
   (void)clk_id;
   if (tp) {

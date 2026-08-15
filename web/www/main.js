@@ -59,3 +59,8 @@ terminal.onData((data) => {
 });
 terminal.onResize(({ cols, rows }) => resize(cols, rows));
 window.addEventListener("resize", () => fitAddon.fit());
+
+// Smoke-test hook: lets a browser-automation harness read the terminal
+// buffer (text and colors) to assert on rendered output. Not part of the
+// page's own behavior.
+window.__helixTerminal = terminal;

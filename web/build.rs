@@ -1,10 +1,50 @@
-//! Compiles the C support code the statically linked tree-sitter runtime
-//! needs on wasm32: the sysroot's libc shims and wctype implementation.
-//! `cargo check` compiles the runtime's C against the sysroot headers, but
-//! only the final wasm link resolves symbols, and this crate produces that
-//! final artifact — so the definitions are linked here. The wasm C compiler
-//! (the `sysroot/wasm-cc` clang shim) comes from `.cargo/config.toml` via
-//! `CC_wasm32_unknown_unknown`; cc-rs picks it up automatically.
+//! Compiles the C side of the statically linked tree-sitter setup on wasm32:
+//! the sysroot's libc shims and wctype implementation, plus the parsers of
+//! the static grammar set. `cargo check` compiles the runtime's C against
+//! the sysroot headers, but only the final wasm link resolves symbols, and
+//! this crate produces that final artifact — so the definitions are linked
+//! here. The wasm C compiler (the `sysroot/wasm-cc` clang shim) comes from
+//! `.cargo/config.toml` via `CC_wasm32_unknown_unknown`; cc-rs picks it up
+//! automatically.
+//!
+//! Grammar sources are fetched at build time, shallow, pinned by revision
+//! (the same name/remote/rev entries as helix's own `languages.toml`), into
+//! OUT_DIR — nothing is vendored and no fork is involved. The queries for
+//! each grammar are vendored in `queries/` (helix's own files; see the
+//! README there) and embedded via generated registration code that the
+//! `grammars` module includes.
+
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+/// The static grammar set: (name, git remote, pinned revision). The pins
+/// mirror the `[[grammar]]` entries in helix's `languages.toml` at the tag
+/// the workspace tracks. To add a grammar: add a row here, vendor its
+/// queries under `queries/<name>/`, and keep the name in sync with helix's
+/// language configuration (the `tree_sitter_<name>` symbol is derived from
+/// it).
+const GRAMMARS: &[(&str, &str, &str)] = &[
+    (
+        "c",
+        "https://github.com/tree-sitter/tree-sitter-c",
+        "7175a6dd5fc1cee660dce6fe23f6043d75af424a",
+    ),
+    (
+        "regex",
+        "https://github.com/tree-sitter/tree-sitter-regex",
+        "e1cfca3c79896ff79842f057ea13e529b66af636",
+    ),
+    (
+        "rust",
+        "https://github.com/tree-sitter/tree-sitter-rust",
+        "1f63b33efee17e833e0ea29266dd3d713e27e321",
+    ),
+    (
+        "toml",
+        "https://github.com/ikatyang/tree-sitter-toml",
+        "7cff70bbcbbc62001b465603ca1ea88edd668704",
+    ),
+];
 
 fn main() {
     // Watch the whole sysroot: the .c files include the sysroot headers
@@ -12,6 +52,7 @@ fn main() {
     // the wasm-cc shim shapes the compile too — a per-file list here
     // under-declared and let local incremental builds link stale objects.
     println!("cargo:rerun-if-changed=../sysroot");
+    println!("cargo:rerun-if-changed=queries");
 
     if std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() != Ok("wasm32") {
         return;
@@ -21,4 +62,109 @@ fn main() {
         .file("../sysroot/shims.c")
         .file("../sysroot/wctype.c")
         .compile("helix_web_libc_shims");
+
+    let out_dir = PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
+    for &(name, remote, rev) in GRAMMARS {
+        let src_dir = fetch_grammar(name, remote, rev, &out_dir).join("src");
+
+        let mut build = cc::Build::new();
+        build.include(&src_dir).file(src_dir.join("parser.c"));
+        let scanner = src_dir.join("scanner.c");
+        if scanner.exists() {
+            build.file(scanner);
+        }
+        build.compile(&format!("tree-sitter-{name}"));
+    }
+
+    generate_registration(&out_dir);
+}
+
+/// Shallow-fetches the pinned revision of a grammar repository into
+/// `<out_dir>/grammar-sources/<name>`, reusing it when it is already at the
+/// pin. Requires `git` on PATH, like helix's own grammar fetching.
+fn fetch_grammar(name: &str, remote: &str, rev: &str, out_dir: &Path) -> PathBuf {
+    let dir = out_dir.join("grammar-sources").join(name);
+    if dir.join(".git").exists() {
+        let head = git(&dir, &["rev-parse", "HEAD"]);
+        if head.as_deref() == Some(rev) {
+            return dir;
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+    std::fs::create_dir_all(&dir).unwrap();
+    git(&dir, &["init", "--quiet"]).unwrap();
+    git(&dir, &["fetch", "--quiet", "--depth", "1", remote, rev])
+        .unwrap_or_else(|| panic!("failed to fetch grammar '{name}' at {rev} from {remote}"));
+    git(&dir, &["checkout", "--quiet", rev]).unwrap();
+    dir
+}
+
+/// Runs a git subcommand in `dir`; gives its trimmed stdout, or None on
+/// failure.
+fn git(dir: &Path, args: &[&str]) -> Option<String> {
+    let output = Command::new("git")
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .expect("failed to run git; the grammar fetch requires git on PATH");
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+/// Generates `grammar_registration.rs`: a `register()` function that hands
+/// every grammar in the set, and every vendored query file, to
+/// `helix_loader`'s wasm32 static registry. Generated so the grammar list
+/// above stays the single source of truth.
+fn generate_registration(out_dir: &Path) {
+    use std::fmt::Write;
+
+    let queries_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("queries");
+
+    let mut code = String::from(
+        "/// Registers the static grammar set and its queries with\n\
+         /// `helix_loader`. Generated by build.rs.\n\
+         pub fn register() {\n\
+         \x20   use helix_wasm::helix_loader::grammar::{register_grammar, register_runtime_file};\n\
+         \x20   use tree_house::tree_sitter::Grammar;\n\n\
+         \x20   extern \"C\" {\n",
+    );
+    for &(name, _, _) in GRAMMARS {
+        let symbol = name.replace('-', "_");
+        writeln!(code, "        fn tree_sitter_{symbol}() -> Grammar;").unwrap();
+    }
+    code.push_str(
+        "    }\n\n\
+         \x20   // SAFETY: a generated grammar entry point takes no arguments, returns\n\
+         \x20   // a pointer to its static TSLanguage, and has no preconditions.\n",
+    );
+    for &(name, _, _) in GRAMMARS {
+        let symbol = name.replace('-', "_");
+        writeln!(
+            code,
+            "    register_grammar(\"{name}\", unsafe {{ tree_sitter_{symbol}() }});"
+        )
+        .unwrap();
+
+        let lang_dir = queries_dir.join(name);
+        let mut files: Vec<_> = std::fs::read_dir(&lang_dir)
+            .unwrap_or_else(|_| panic!("no vendored queries for grammar '{name}' in queries/"))
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .filter(|file| file.ends_with(".scm"))
+            .collect();
+        files.sort();
+        for file in files {
+            let path = lang_dir.join(&file);
+            writeln!(
+                code,
+                "    register_runtime_file(\"{name}\", \"{file}\", include_str!(r\"{}\"));",
+                path.display()
+            )
+            .unwrap();
+        }
+    }
+    code.push_str("}\n");
+
+    std::fs::write(out_dir.join("grammar_registration.rs"), code).unwrap();
 }

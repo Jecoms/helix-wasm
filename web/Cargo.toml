@@ -18,6 +18,10 @@ helix-wasm = { path = ".." }
 # Resolves to the browser shim in stubs/ via the workspace [patch] table;
 # the frontend needs its `bridge` module directly.
 crossterm = "0.28"
+# For the `Grammar` type the statically linked `tree_sitter_<lang>` entry
+# points return — the same tree-house build the helix crates use (its
+# bindings resolve to the patched fork via the workspace [patch] table).
+tree-house = { version = "0.3.0", default-features = false }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
