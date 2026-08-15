@@ -2,7 +2,7 @@
 
 This is `Helix`, compiling to `wasm32` and running in a browser.
 
-Live demp: https://makemeunsee.github.io/helix/demo
+Live demo: https://jecoms.github.io/helix-wasm/demo/
 
 ## What works
 
