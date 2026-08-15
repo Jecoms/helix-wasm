@@ -6,8 +6,6 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
       - name: Checkout sources
@@ -55,10 +53,33 @@ jobs:
           npm install
           npm run build
 
-      - name: Deploy
-        uses: peaceiris/actions-gh-pages@v4
+      # Keep the demo under /demo so its URL matches the gh-pages layout the
+      # docs reference (https://<owner>.github.io/helix-wasm/demo/).
+      - name: Stage site under /demo
+        run: |
+          mkdir -p _site/demo
+          cp -r helix-web/www/dist/. _site/demo/
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./helix-web/www/dist/
-          destination_dir: ./demo
-          force_orphan: true
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Enable Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
