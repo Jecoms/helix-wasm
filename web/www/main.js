@@ -11,6 +11,8 @@ import init, {
   vfs_write,
   vfs_read,
   vfs_list,
+  editor_state,
+  editor_text,
 } from "helix-web";
 
 const terminal = new Terminal({
@@ -79,3 +81,12 @@ window.__helixTerminal = terminal;
 // browser-automation harness. Note `write` throws on paths that name no
 // file (`""`, `"."`, `"/"`, ...).
 window.helixVfs = { write: vfs_write, read: vfs_read, list: vfs_list };
+
+// Read-only editor state inspection (issue #18): `state()` returns
+// { mode, path, cursor: { row, col }, selections: [{ anchor, head }] },
+// `text()` the focused buffer's live text (unsaved edits included — unlike
+// `helixVfs.read`, which sees what was last saved). Both return `undefined`
+// when helix is not running, and throw if called from inside the editor's
+// own output callback (defer to a microtask there). The intended assertion
+// surface for embedders and browser-automation harnesses.
+window.helixState = { state: editor_state, text: editor_text };
