@@ -277,9 +277,12 @@ except where noted. Still open for the rest of Phase 3:
   the first render. The trap remains for other embedders: size the bridge
   before booting the app.
 - No `block_on` on the browser main thread; the event loop runs as a
-  wasm-bindgen future (`spawn_local(app.run(...))`) — works with pristine
-  helix-term because the crossterm stub's `EventStream` and the
-  gloo-timers `Sleep` are plain futures needing no runtime.
+  wasm-bindgen future — a `spawn_local`'d poll-driver (`drive()` in
+  `web/src/session.rs`, PR #43) that recreates `app.event_loop_until_idle`
+  each poll so the `Application` stays inspectable from JS between polls
+  (previously `spawn_local(app.run(...))`). Works with pristine helix-term
+  because the crossterm stub's `EventStream` and the gloo-timers `Sleep`
+  are plain futures needing no runtime.
 - tokio `time`/`fs` features compile but panic at runtime if actually
   driven (no runtime is entered; see Phase 3 status above).
 - `std::env::current_dir`/`current_exe` and etcetera's `$HOME` lookup are
