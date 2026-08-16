@@ -38,7 +38,12 @@ pub fn convert(code: u16, column: u16, row: u16, pressed: bool) -> Option<MouseE
         (0, true) => MouseEventKind::Drag(MouseButton::Left),
         (1, true) => MouseEventKind::Drag(MouseButton::Middle),
         (2, true) => MouseEventKind::Drag(MouseButton::Right),
-        // Button 3 is "no button": motion with no button held.
+        // Button 3 is "no button". Without motion that's a release — the
+        // legacy encoding's only release form; upstream also accepts it in
+        // SGR and calls the unknown button Left. Conforming SGR terminals
+        // report releases as the pressed code with a final `m` instead.
+        (3, false) => MouseEventKind::Up(MouseButton::Left),
+        // With motion: the mouse moved with no button held.
         (3, true) | (4, true) | (5, true) => MouseEventKind::Moved,
         (4, false) => MouseEventKind::ScrollUp,
         (5, false) => MouseEventKind::ScrollDown,
@@ -81,6 +86,10 @@ mod tests {
             kind(2, false),
             Some(MouseEventKind::Up(MouseButton::Right))
         );
+        // Legacy-style release: button 3 without motion, whatever the
+        // final byte; the button is unknown, so it maps to Left.
+        assert_eq!(kind(3, true), Some(MouseEventKind::Up(MouseButton::Left)));
+        assert_eq!(kind(3, false), Some(MouseEventKind::Up(MouseButton::Left)));
     }
 
     #[test]
