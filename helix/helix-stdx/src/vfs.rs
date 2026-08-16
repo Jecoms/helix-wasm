@@ -27,9 +27,19 @@ fn normalize(path: impl AsRef<Path>) -> PathBuf {
 /// crash directory-shaped consumers (e.g. the file picker's path column
 /// expects every key to have a file name). Best-effort — a key that only
 /// *later* becomes the cwd (via `:cd`) cannot be caught here.
+///
+/// Mirrors [`crate::path::canonicalize`] but snapshots the cwd once, so the
+/// "normalizes to the cwd" comparison cannot race a concurrent cwd change
+/// (the test harness runs cwd-mutating tests in parallel).
 fn validated(path: impl AsRef<Path>) -> io::Result<PathBuf> {
-    let key = normalize(path);
-    if key.file_name().is_none() || key == normalize(crate::env::current_working_dir()) {
+    let path = crate::path::expand_tilde(path.as_ref());
+    let cwd = crate::env::current_working_dir();
+    let key = if path.is_relative() {
+        crate::path::normalize(cwd.join(&path))
+    } else {
+        crate::path::normalize(&path)
+    };
+    if key.file_name().is_none() || key == crate::path::normalize(&cwd) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             "path names no virtual file",
@@ -93,7 +103,8 @@ pub struct VfsWriter {
 /// A [`VfsWriter`] for the file at `path`.
 pub fn writer(path: impl AsRef<Path>) -> VfsWriter {
     VfsWriter {
-        path: normalize(path),
+        // Kept as given: `flush` normalizes and validates in one step.
+        path: path.as_ref().to_path_buf(),
         staged: Vec::new(),
     }
 }
@@ -105,8 +116,9 @@ impl Write for VfsWriter {
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        // Validation happens here rather than in `writer` so an invalid path
-        // (e.g. `:w /`) surfaces as an ordinary IO error on the save path.
+        // Normalization and validation both happen here rather than in
+        // `writer` so an invalid path (e.g. `:w /`) surfaces as an ordinary
+        // IO error on the save path.
         let key = validated(&self.path)?;
         FILES.write().unwrap().insert(key, self.staged.clone());
         Ok(())
@@ -119,6 +131,11 @@ mod tests {
 
     // The store is a process-wide static and the harness runs tests in
     // parallel, so every test works under its own absolute directory.
+    //
+    // Store keys are normalized with `path::canonicalize`, which on Windows
+    // hosts prefixes rooted-but-driveless paths like `/vfs-test/a.txt` with
+    // the cwd's drive (`C:\vfs-test\a.txt`). Key comparisons therefore go
+    // through `normalize` too, never against literal `/`-rooted `PathBuf`s.
 
     #[test]
     fn write_read_roundtrip() {
@@ -187,13 +204,13 @@ mod tests {
         write("/vfs-test-list/a.txt", "a".as_bytes()).unwrap();
         let mine: Vec<_> = list()
             .into_iter()
-            .filter(|p| p.starts_with("/vfs-test-list"))
+            .filter(|p| p.starts_with(normalize("/vfs-test-list")))
             .collect();
         assert_eq!(
             mine,
             vec![
-                PathBuf::from("/vfs-test-list/a.txt"),
-                PathBuf::from("/vfs-test-list/b.txt")
+                normalize("/vfs-test-list/a.txt"),
+                normalize("/vfs-test-list/b.txt")
             ]
         );
 
