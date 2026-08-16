@@ -1,6 +1,6 @@
-# Vendored copy of upstream helix-lsp 25.07.1 (from the `helix-patched`
-# branch) with the language-server subprocess machinery removed so the crate
-# builds for wasm32-unknown-unknown:
+# Vendored copy of upstream helix-lsp 25.07.1 (from the `helix/25.07.1`
+# snapshot) with the language-server subprocess machinery removed so the
+# crate builds for wasm32-unknown-unknown:
 #   - tokio's `process` feature is dropped (it pulls in mio, which does not
 #     build for wasm32)
 #   - `Client::start` keeps upstream's `which(cmd)?` line (which always
@@ -23,10 +23,10 @@ license = "MPL-2.0"
 publish = false
 
 [dependencies]
-helix-stdx = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix-patched" }
-helix-core = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix-patched" }
-helix-loader = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix-patched" }
-helix-lsp-types = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix-patched" }
+helix-stdx = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1" }
+helix-core = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1" }
+helix-loader = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1" }
+helix-lsp-types = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1" }
 
 anyhow = "1.0"
 futures-executor = "0.3"
