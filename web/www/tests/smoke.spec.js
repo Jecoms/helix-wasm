@@ -17,8 +17,12 @@ const getText = (page) =>
 const vfsRead = (page, path) =>
   page.evaluate((p) => window.helixVfs.read(p), path);
 
-// The rendered terminal, as text. Only the boot test asserts on this —
-// everything else reads editor state, not pixels.
+// The rendered terminal, as text. Only the boot test and the theme tests
+// assert on rendered output (this helper or raw xterm cells) — there the
+// pixels are the point: boot proves a statusline drew at all, and the theme
+// tests prove the theme actually painted the screen, which no editor-state
+// read can show. Everything else reads editor state, not pixels (the
+// state-over-scraping rule from the issue #18 inspection API).
 const terminalText = (page) =>
   page.evaluate(() => {
     const buffer = window.__helixTerminal.buffer.active;
@@ -27,6 +31,15 @@ const terminalText = (page) =>
       lines.push(buffer.getLine(i).translateToString(true));
     }
     return lines.join("\n");
+  });
+
+// The top-left cell's background as an RGB number, or -1 while it still has
+// the terminal's (non-RGB) default background. Theme tests only — see the
+// note on terminalText.
+const topLeftBg = (page) =>
+  page.evaluate(() => {
+    const cell = window.__helixTerminal.buffer.active.getLine(0).getCell(0);
+    return cell.isBgRGB() ? cell.getBgColor() : -1;
   });
 
 // Wait out the wasm fetch + instantiation, then make sure keystrokes land in
@@ -182,4 +195,38 @@ test(":w names the buffer in the vfs; live text diverges until re-saved", async 
   await expect
     .poll(async () => vfsRead(page, "scratch.txt"))
     .toBe(await getText(page));
+});
+
+test(":theme lists a vendored theme and applying it recolors the screen", async ({
+  page,
+}) => {
+  await bootEditor(page);
+
+  // The prompt's completion menu lists the runtime themes directory, which
+  // startup seeds with the vendored set (web/themes/).
+  await page.keyboard.type(":theme ");
+  await expect.poll(() => terminalText(page)).toContain("gruvbox");
+
+  await page.keyboard.type("gruvbox");
+  await page.keyboard.press("Enter");
+
+  // gruvbox paints `ui.background` with bg0 (#282828) while the built-in
+  // default theme leaves the terminal's default background, so the top-left
+  // cell flipping to that RGB value proves the theme really applied.
+  await expect.poll(() => topLeftBg(page)).toBe(0x282828);
+});
+
+test("a theme using inherits resolves through its parent", async ({
+  page,
+}) => {
+  await bootEditor(page);
+
+  // catppuccin_latte only sets a palette and inherits everything else from
+  // catppuccin_mocha, so its `ui.background` (mocha's key, latte's `base`
+  // color #eff1f5) can only render if the loader resolved the parent theme
+  // through the vfs at runtime. A failed resolution refuses the theme
+  // silently, leaving the default background — and this poll red.
+  await page.keyboard.type(":theme catppuccin_latte");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => topLeftBg(page)).toBe(0xeff1f5);
 });

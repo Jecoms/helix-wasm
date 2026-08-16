@@ -25,6 +25,8 @@ mod mouse;
 #[cfg(target_family = "wasm")]
 mod session;
 #[cfg(target_family = "wasm")]
+mod themes;
+#[cfg(target_family = "wasm")]
 mod vfs;
 
 #[cfg(target_family = "wasm")]

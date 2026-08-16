@@ -40,7 +40,9 @@ npm run dev      # serves the demo on a local vite dev server
 
 The demo boots helix into an xterm.js terminal with a scratch buffer, with
 syntax highlighting for a small static grammar set (c, go, java,
-javascript, python, regex, rust, toml — try `:set-language rust`).
+javascript, python, regex, rust, toml — try `:set-language rust`) and a
+curated set of bundled color schemes (vendored in `web/themes/` — try
+`:theme gruvbox`).
 Notable limitations: no LSP or DAP (the browser has no subprocesses), and
 documents live in an in-memory virtual file system.
 The grammar build fetches pinned parser sources at
