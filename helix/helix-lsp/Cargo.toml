@@ -1,3 +1,19 @@
+# Patched for wasm32-unknown-unknown: the language-server subprocess
+# machinery is removed, since the browser has no subprocesses. The delta
+# from upstream 25.07.1:
+#   - tokio's `process` feature is dropped (it pulls in mio, which does not
+#     build for wasm32)
+#   - `Client::start` keeps upstream's `which(cmd)?` line (which always
+#     fails on wasm32, yielding `Error::ExecutableNotFound`) and drops the
+#     server spawn that followed; the `Client._process: Child` field and its
+#     construction are removed with it
+#   - transport.rs is trimmed to the `Payload` type; the stdio pump is gone
+#   - `file_event::Handler::new` spawns its worker only when a tokio runtime
+#     exists (`Handle::try_current()`); upstream spawns unconditionally,
+#     which would panic on wasm32 where no runtime is ever entered
+# Everything else (util conversions, jsonrpc, Registry, progress tracking)
+# is the pristine upstream code, so editor logic behaves identically —
+# there is simply never a running language server.
 [package]
 name = "helix-lsp"
 description = "LSP client implementation for Helix project"
@@ -25,7 +41,7 @@ globset = "0.4.16"
 log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tokio = { version = "1.46", features = ["rt", "rt-multi-thread", "io-util", "io-std", "time", "process", "macros", "fs", "parking_lot", "sync"] }
+tokio = { version = "1.46", features = ["rt", "rt-multi-thread", "io-util", "io-std", "time", "macros", "fs", "parking_lot", "sync"] }
 tokio-stream.workspace = true
 parking_lot.workspace = true
 arc-swap = "1"

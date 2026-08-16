@@ -1,7 +1,7 @@
 use crate::{
     file_operations::FileOperationsInterest,
     find_lsp_workspace, jsonrpc,
-    transport::{Payload, Transport},
+    transport::Payload,
     Call, Error, LanguageServerId, OffsetEncoding, Result,
 };
 
@@ -24,15 +24,11 @@ use std::{
         Arc,
     },
 };
+use std::path::Path;
 use std::{future::Future, sync::OnceLock};
-use std::{path::Path, process::Stdio};
-use tokio::{
-    io::{BufReader, BufWriter},
-    process::{Child, Command},
-    sync::{
-        mpsc::{channel, UnboundedReceiver, UnboundedSender},
-        Notify, OnceCell,
-    },
+use tokio::sync::{
+    mpsc::{channel, UnboundedReceiver, UnboundedSender},
+    Notify, OnceCell,
 };
 
 fn workspace_for_uri(uri: lsp::Url) -> WorkspaceFolder {
@@ -50,7 +46,6 @@ fn workspace_for_uri(uri: lsp::Url) -> WorkspaceFolder {
 pub struct Client {
     id: LanguageServerId,
     name: String,
-    _process: Child,
     server_tx: UnboundedSender<Payload>,
     request_counter: AtomicU64,
     pub(crate) capabilities: OnceCell<lsp::ServerCapabilities>,
@@ -199,7 +194,13 @@ impl Client {
         }
     }
 
-    #[allow(clippy::type_complexity, clippy::too_many_arguments)]
+    /// wasm32 stub: there are no subprocesses, so a language server can
+    /// never be spawned. Upstream's `which(cmd)?` line is kept — the `which`
+    /// stub fails unconditionally on wasm32, so this returns
+    /// `Error::ExecutableNotFound`, the variant helix-view's
+    /// `launch_language_servers` logs quietly at debug level, and the editor
+    /// runs without LSP.
+    #[allow(clippy::type_complexity, clippy::too_many_arguments, unused_variables)]
     pub fn start(
         cmd: &str,
         args: &[String],
@@ -215,52 +216,17 @@ impl Client {
         UnboundedReceiver<(LanguageServerId, Call)>,
         Arc<Notify>,
     )> {
-        // Resolve path to the binary
-        let cmd = helix_stdx::env::which(cmd)?;
+        // Resolve path to the binary — always fails on wasm32, yielding
+        // Error::ExecutableNotFound exactly as upstream does for a missing
+        // server binary.
+        helix_stdx::env::which(cmd)?;
 
-        let process = Command::new(cmd)
-            .envs(server_environment)
-            .args(args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .current_dir(&root_path)
-            // make sure the process is reaped on drop
-            .kill_on_drop(true)
-            .spawn();
-
-        let mut process = process?;
-
-        // TODO: do we need bufreader/writer here? or do we use async wrappers on unblock?
-        let writer = BufWriter::new(process.stdin.take().expect("Failed to open stdin"));
-        let reader = BufReader::new(process.stdout.take().expect("Failed to open stdout"));
-        let stderr = BufReader::new(process.stderr.take().expect("Failed to open stderr"));
-
-        let (server_rx, server_tx, initialize_notify) =
-            Transport::start(reader, writer, stderr, id, name.clone());
-
-        let workspace_folders = root_uri
-            .clone()
-            .map(|root| vec![workspace_for_uri(root)])
-            .unwrap_or_default();
-
-        let client = Self {
-            id,
-            name,
-            _process: process,
-            server_tx,
-            request_counter: AtomicU64::new(0),
-            capabilities: OnceCell::new(),
-            file_operation_interest: OnceLock::new(),
-            config,
-            req_timeout,
-            root_path,
-            root_uri,
-            workspace_folders: Mutex::new(workspace_folders),
-            initialize_notify: initialize_notify.clone(),
-        };
-
-        Ok((client, server_rx, initialize_notify))
+        // Unreachable on wasm32 (which() above never succeeds); kept so the
+        // signature stays total without the subprocess spawn that follows in
+        // upstream.
+        Err(Error::Other(anyhow::anyhow!(
+            "cannot spawn language server '{cmd}': no subprocess support on wasm32"
+        )))
     }
 
     pub fn name(&self) -> &str {

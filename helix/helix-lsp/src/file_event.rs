@@ -53,7 +53,14 @@ impl Default for Handler {
 impl Handler {
     pub fn new() -> Self {
         let (tx, rx) = mpsc::unbounded_channel();
-        tokio::spawn(Self::run(rx));
+        // Stub deviation: only spawn the worker when a runtime exists. On
+        // wasm32 there is no tokio runtime; no server ever registers watchers
+        // through this stub, so the events have no consumer anyway.
+        if tokio::runtime::Handle::try_current().is_ok() {
+            tokio::spawn(Self::run(rx));
+        } else {
+            drop(rx);
+        }
         Self { tx }
     }
 

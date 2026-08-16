@@ -13,23 +13,18 @@ use anyhow::anyhow;
 use std::{
     collections::HashMap,
     future::Future,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::SocketAddr,
     path::PathBuf,
-    process::Stdio,
     sync::atomic::{AtomicU64, Ordering},
 };
 use tokio::{
-    io::{AsyncBufRead, AsyncWrite, BufReader, BufWriter},
-    net::TcpStream,
-    process::{Child, Command},
+    io::{AsyncBufRead, AsyncWrite},
     sync::mpsc::{channel, unbounded_channel, UnboundedReceiver, UnboundedSender},
-    time,
 };
 
 #[derive(Debug)]
 pub struct Client {
     id: DebugAdapterId,
-    _process: Option<Child>,
     server_tx: UnboundedSender<Payload>,
     request_counter: AtomicU64,
     connection_type: Option<ConnectionType>,
@@ -49,8 +44,6 @@ pub struct Client {
 }
 
 impl Client {
-    // Spawn a process and communicate with it by either TCP or stdio
-    // The returned stream includes the Client ID so consumers can differentiate between multiple clients
     pub async fn process(
         transport: &str,
         command: &str,
@@ -73,14 +66,12 @@ impl Client {
         tx: Box<dyn AsyncWrite + Unpin + Send>,
         err: Option<Box<dyn AsyncBufRead + Unpin + Send>>,
         id: DebugAdapterId,
-        process: Option<Child>,
     ) -> Result<(Self, UnboundedReceiver<(DebugAdapterId, Payload)>)> {
         let (server_rx, server_tx) = Transport::start(rx, tx, err, id);
         let (client_tx, client_rx) = unbounded_channel();
 
         let client = Self {
             id,
-            _process: process,
             server_tx,
             request_counter: AtomicU64::new(0),
             caps: None,
@@ -100,104 +91,52 @@ impl Client {
         Ok((client, client_rx))
     }
 
+    /// wasm32 stub: no TCP sockets in the browser.
+    #[allow(unused_variables)]
     pub async fn tcp(
         addr: std::net::SocketAddr,
         id: DebugAdapterId,
     ) -> Result<(Self, UnboundedReceiver<(DebugAdapterId, Payload)>)> {
-        let stream = TcpStream::connect(addr).await?;
-        let (rx, tx) = stream.into_split();
-        Self::streams(Box::new(BufReader::new(rx)), Box::new(tx), None, id, None)
+        Err(Error::Other(anyhow!(
+            "cannot connect to debug adapter: no TCP support on wasm32"
+        )))
     }
 
+    /// wasm32 stub: no subprocesses. Upstream's `which(cmd)?` line is kept —
+    /// the `which` stub fails unconditionally on wasm32, so a stdio adapter
+    /// launch surfaces as `Error::ExecutableNotFound`, exactly as a missing
+    /// adapter binary does upstream.
+    #[allow(unused_variables)]
     pub fn stdio(
         cmd: &str,
         args: Vec<&str>,
         id: DebugAdapterId,
     ) -> Result<(Self, UnboundedReceiver<(DebugAdapterId, Payload)>)> {
-        // Resolve path to the binary
-        let cmd = helix_stdx::env::which(cmd)?;
+        // Resolve path to the binary — always fails on wasm32.
+        helix_stdx::env::which(cmd)?;
 
-        let process = Command::new(cmd)
-            .args(args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            // make sure the process is reaped on drop
-            .kill_on_drop(true)
-            .spawn();
-
-        let mut process = process?;
-
-        // TODO: do we need bufreader/writer here? or do we use async wrappers on unblock?
-        let writer = BufWriter::new(process.stdin.take().expect("Failed to open stdin"));
-        let reader = BufReader::new(process.stdout.take().expect("Failed to open stdout"));
-        let stderr = BufReader::new(process.stderr.take().expect("Failed to open stderr"));
-
-        Self::streams(
-            Box::new(reader),
-            Box::new(writer),
-            Some(Box::new(stderr)),
-            id,
-            Some(process),
-        )
-    }
-
-    async fn get_port() -> Option<u16> {
-        Some(
-            tokio::net::TcpListener::bind(SocketAddr::new(
-                IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)),
-                0,
-            ))
-            .await
-            .ok()?
-            .local_addr()
-            .ok()?
-            .port(),
-        )
+        // Unreachable on wasm32 (which() above never succeeds); kept so the
+        // signature stays total without upstream's subprocess spawn.
+        Err(Error::Other(anyhow!(
+            "cannot launch debug adapter '{cmd}': no subprocess support on wasm32"
+        )))
     }
 
     pub fn starting_request_args(&self) -> Option<&Value> {
         self.starting_request_args.as_ref()
     }
 
+    /// wasm32 stub: no subprocesses or TCP sockets.
+    #[allow(unused_variables)]
     pub async fn tcp_process(
         cmd: &str,
         args: Vec<&str>,
         port_format: &str,
         id: DebugAdapterId,
     ) -> Result<(Self, UnboundedReceiver<(DebugAdapterId, Payload)>)> {
-        let port = Self::get_port().await.unwrap();
-
-        let process = Command::new(cmd)
-            .args(args)
-            .args(port_format.replace("{}", &port.to_string()).split(' '))
-            // silence messages
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            // Do not kill debug adapter when leaving, it should exit automatically
-            .spawn()?;
-
-        // Wait for adapter to become ready for connection
-        time::sleep(time::Duration::from_millis(500)).await;
-        let socket = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), port);
-        let stream = TcpStream::connect(socket).await?;
-
-        let (rx, tx) = stream.into_split();
-        let mut result = Self::streams(
-            Box::new(BufReader::new(rx)),
-            Box::new(tx),
-            None,
-            id,
-            Some(process),
-        );
-
-        // Set the socket address for the client
-        if let Ok((client, _)) = &mut result {
-            client.socket = Some(socket);
-        }
-
-        result
+        Err(Error::Other(anyhow!(
+            "cannot launch debug adapter '{cmd}': no subprocess support on wasm32"
+        )))
     }
 
     async fn recv(
