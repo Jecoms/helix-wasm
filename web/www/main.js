@@ -63,8 +63,11 @@ const BRACKETED_START = "\x1b[200~";
 const BRACKETED_END = "\x1b[201~";
 // Global: xterm.js batches several reports into one onData chunk during a
 // drag or a wheel flick, so every match gets forwarded, not just the first.
-const SGR_MOUSE = /\x1b\[<(\d+);(\d+);(\d+)([Mm])/g;
-const FOCUS_REPORT = /\x1b\[([IO])/g;
+// Mouse (SGR \x1b[<code;col;row M/m) and focus (\x1b[I / \x1b[O) reports
+// share one alternation so a single scan forwards them in stream order —
+// the bridge queues events in call order, and two separate passes would
+// reorder a mixed chunk to all-mouse-then-focus.
+const INPUT_REPORT = /\x1b\[(?:<(\d+);(\d+);(\d+)([Mm])|([IO]))/g;
 terminal.onData((data) => {
   const fromKey = dataIsFromKey;
   dataIsFromKey = false;
@@ -74,11 +77,14 @@ terminal.onData((data) => {
   if (data.startsWith(BRACKETED_START) && data.endsWith(BRACKETED_END)) {
     paste(data.slice(BRACKETED_START.length, -BRACKETED_END.length));
   } else if (data.startsWith("\x1b")) {
-    for (const [, code, col, row, press] of data.matchAll(SGR_MOUSE)) {
-      mouse_event(Number(code), Number(col), Number(row), press === "M");
-    }
-    for (const [, inOut] of data.matchAll(FOCUS_REPORT)) {
-      focus_event(inOut === "I");
+    for (const [, code, col, row, press, inOut] of data.matchAll(
+      INPUT_REPORT,
+    )) {
+      if (inOut) {
+        focus_event(inOut === "I");
+      } else {
+        mouse_event(Number(code), Number(col), Number(row), press === "M");
+      }
     }
   } else {
     paste(data);
