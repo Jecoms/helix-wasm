@@ -5,55 +5,17 @@
 // keyboard events, so they exercise the true xterm → `key_event()` path.
 //
 // Boot and the save queue are asynchronous, so every post-action assertion
-// polls (`expect.poll`) instead of reading once.
+// polls (`expect.poll`) instead of reading once. Boot and the read surfaces
+// themselves live in ./helpers.js, shared with tutor.spec.js.
 import { test, expect } from "@playwright/test";
-
-const getState = (page) =>
-  page.evaluate(() => window.helixState.state());
-
-const getText = (page) =>
-  page.evaluate(() => window.helixState.text());
-
-const vfsRead = (page, path) =>
-  page.evaluate((p) => window.helixVfs.read(p), path);
-
-// The rendered terminal, as text. Only the boot test and the theme tests
-// assert on rendered output (this helper or raw xterm cells) — there the
-// pixels are the point: boot proves a statusline drew at all, and the theme
-// tests prove the theme actually painted the screen, which no editor-state
-// read can show. Everything else reads editor state, not pixels (the
-// state-over-scraping rule from the issue #18 inspection API).
-const terminalText = (page) =>
-  page.evaluate(() => {
-    const buffer = window.__helixTerminal.buffer.active;
-    const lines = [];
-    for (let i = 0; i < buffer.length; i += 1) {
-      lines.push(buffer.getLine(i).translateToString(true));
-    }
-    return lines.join("\n");
-  });
-
-// The top-left cell's background as an RGB number, or -1 while it still has
-// the terminal's (non-RGB) default background. Theme tests only — see the
-// note on terminalText.
-const topLeftBg = (page) =>
-  page.evaluate(() => {
-    const cell = window.__helixTerminal.buffer.active.getLine(0).getCell(0);
-    return cell.isBgRGB() ? cell.getBgColor() : -1;
-  });
-
-// Wait out the wasm fetch + instantiation, then make sure keystrokes land in
-// xterm's hidden textarea.
-async function bootEditor(page) {
-  await page.goto("/");
-  await expect
-    .poll(async () => page.evaluate(() => window.helixState?.state()?.mode), {
-      message: "editor did not reach normal mode after boot",
-      timeout: 30_000,
-    })
-    .toBe("normal");
-  await page.locator("#terminal").click();
-}
+import {
+  bootEditor,
+  getState,
+  getText,
+  terminalText,
+  topLeftBg,
+  vfsRead,
+} from "./helpers.js";
 
 test("boots into a normal-mode scratch buffer with a rendered statusline", async ({
   page,
@@ -145,6 +107,57 @@ test("page background matches the terminal's, with no phantom scrollbar (issue #
       })),
     )
     .toEqual({ w: 600, h: 400 });
+});
+
+test("a dead wasm instance is announced instead of looking like a hang", async ({
+  page,
+}) => {
+  await bootEditor(page);
+
+  // Calibrate first: how long does a keystroke really take to land on this
+  // machine? The gate check at the end has to prove a negative — the editor
+  // never saw the key — and the only thing separating that from "it has not
+  // arrived yet" is outwaiting a real round trip. Nothing on the exported
+  // surface can be injected past the page's own gate to serve as a barrier,
+  // so a multiple of a measured round trip stands in for one; a fixed
+  // window would just pass on any runner slower than itself.
+  const startedAt = Date.now();
+  await page.keyboard.press("i");
+  await expect.poll(() => getState(page).then((s) => s.mode)).toBe("insert");
+  const settle = Math.max(500, (Date.now() - startedAt) * 10);
+  await page.keyboard.press("Escape");
+  await expect.poll(() => getState(page).then((s) => s.mode)).toBe("normal");
+
+  // A panic poisons the instance: the last frame stays on screen and every
+  // later keystroke disappears into a module that traps on entry — visually
+  // a frozen page. The host page's liveness gate turns that into a notice
+  // and stops forwarding input. (The clean `:q` counterpart, which has its
+  // own notice from the wasm side, is in tutor.spec.js.)
+  //
+  // The trigger here is a synthetic uncaught error rather than a real
+  // panic, because nothing on the exported surface panics on demand — but
+  // it is the same signal: a wasm trap reaches the page as an uncaught
+  // `unreachable` error, which is exactly what the gate listens for.
+  await page.evaluate(() => {
+    window.dispatchEvent(
+      new ErrorEvent("error", { error: new Error("RuntimeError: unreachable") }),
+    );
+  });
+
+  await expect
+    .poll(() => terminalText(page))
+    .toContain("Helix has stopped responding. Refresh the page");
+
+  // Input forwarding really stopped: the editor never sees the keystroke,
+  // so it neither moves nor draws. Both halves are asserted — the mode is
+  // the editor's own state, and the unchanged screen catches a render that
+  // reached the terminal without changing the mode (on the restored main
+  // screen any frame helix drew would paint over the notice).
+  const frozen = await terminalText(page);
+  await page.keyboard.press("i");
+  await page.waitForTimeout(settle);
+  expect((await getState(page)).mode).toBe("normal");
+  expect(await terminalText(page)).toBe(frozen);
 });
 
 test(":tutor opens the tutorial in a pathless buffer", async ({ page }) => {

@@ -23,6 +23,8 @@ mod keys;
 // compiling it everywhere lets its unit tests run under a native cargo test.
 mod mouse;
 #[cfg(target_family = "wasm")]
+mod samples;
+#[cfg(target_family = "wasm")]
 mod session;
 #[cfg(target_family = "wasm")]
 mod themes;

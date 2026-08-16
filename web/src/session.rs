@@ -23,7 +23,15 @@ thread_local! {
     /// bridge's sink is a plain `fn` (it can't capture JS values); wasm32 is
     /// single-threaded, so this is effectively a global.
     static OUTPUT: RefCell<Option<Function>> = const { RefCell::new(None) };
+    /// The host page's exit callback, registered with [`on_exit`].
+    static EXIT: RefCell<Option<Function>> = const { RefCell::new(None) };
     static STARTED: Cell<bool> = const { Cell::new(false) };
+    /// Whether there is an editor left to receive input: `false` until
+    /// [`start`] hands the app to [`drive`], and again the moment helix
+    /// exits. The input exports queue events for the event loop to drain,
+    /// so once the loop is gone every further event is one nothing will
+    /// ever take back out of [`bridge`]'s queue — see [`forward`].
+    static RUNNING: Cell<bool> = const { Cell::new(false) };
     /// The running editor: `None` before [`start`] and again once helix
     /// exits. Owning the `Application` here — instead of moving it into an
     /// `app.run()` future — is what makes inspection possible: [`drive`]
@@ -121,6 +129,10 @@ pub fn start(output: Function, columns: u16, rows: u16) -> Result<(), JsValue> {
     )
     .map_err(|err| JsValue::from_str(&format!("failed to seed the tutor file: {err}")))?;
 
+    // Sample files, so the file picker and `:o` open on something worth
+    // selecting (see samples.rs).
+    crate::samples::seed();
+
     // Default args: no files, so helix opens a scratch buffer.
     let app = Application::new(Args::default(), config, lang_loader)
         .map_err(|err| JsValue::from_str(&format!("failed to initialize helix: {err}")))?;
@@ -140,6 +152,7 @@ pub fn start(output: Function, columns: u16, rows: u16) -> Result<(), JsValue> {
     bridge::inject_event(Event::Resize(columns, rows));
 
     APP.with(|cell| *cell.borrow_mut() = Some(app));
+    RUNNING.with(|running| running.set(true));
     spawn_local(drive());
 
     Ok(())
@@ -189,6 +202,11 @@ async fn drive() {
     })
     .await;
 
+    // The loop that drains the bridge queue is done; stop the input exports
+    // from filling it (see [`forward`]) before anything gets a chance to
+    // run between here and the exit announcement.
+    RUNNING.with(|running| running.set(false));
+
     // Take the app out before awaiting close(): the cell stays unborrowed
     // across those awaits, and inspection reports not-running from here on.
     let Some(mut app) = APP.with(|cell| cell.borrow_mut().take()) else {
@@ -196,8 +214,19 @@ async fn drive() {
     };
 
     let mut exit_code = app.editor.exit_code;
-    for err in app.close().await {
-        log::error!("error on close: {err}");
+    // `Application::close` is unusable here: its third step,
+    // `Editor::close_language_servers`, wraps the shutdown in a
+    // `tokio::time::timeout`, and building that timer calls
+    // `std::time::Instant::now()` — which traps on wasm32-unknown-unknown
+    // ("time not implemented on this platform"), poisoning the module
+    // mid-teardown, so `:q` took the page down instead of exiting. The two
+    // steps worth keeping are covered: pending writes flush below, and
+    // `Jobs::finish` only awaits jobs that asked to be waited on, which
+    // upstream creates solely for format-on-write — unreachable without a
+    // formatter or a language server (and `jobs` is private, so it could
+    // not be drained on its own regardless).
+    if let Err(err) = app.editor.flush_writes().await {
+        log::error!("error flushing writes on exit: {err}");
         exit_code = 1;
     }
     let mouse = app.editor.config().mouse;
@@ -206,6 +235,56 @@ async fn drive() {
         log::error!("failed to restore the terminal: {err}");
     }
     log::info!("helix exited with code {exit_code}");
+    announce_exit(exit_code);
+}
+
+/// Tells the reader — and the embedder — that helix is gone.
+///
+/// `:q` is a dead end in a browser tab: there is no shell to return to, and
+/// the editor cannot be restarted in place (`start` is once per page load).
+/// Left alone, the tutorial's chapter 1.2 exercise drops the reader on a
+/// blank terminal that silently swallows every keystroke — indistinguishable
+/// from a frozen page. So the exit gets said out loud, on the restored main
+/// screen, and handed to the host page through the [`on_exit`] callback.
+/// `:q` itself is untouched: it really does quit.
+fn announce_exit(exit_code: i32) {
+    let mut out = bridge::Output::new();
+    // Plain English first: a demo visitor should be able to act on this line
+    // without knowing what an exit code is.
+    let notice = format!(
+        "\r\nHelix has exited. Refresh the page to start a new session. (exit code {exit_code})\r\n"
+    );
+    if let Err(err) = out.write_all(notice.as_bytes()).and_then(|()| out.flush()) {
+        log::error!("failed to write the exit notice: {err}");
+    }
+
+    // Take the handler out of the cell before calling into JS, rather than
+    // calling through a live borrow: a handler that re-enters `on_exit` (to
+    // detach itself, say) would otherwise hit `borrow_mut()` on that borrow
+    // and panic — and a wasm32 panic doesn't unwind, so the cell would stay
+    // borrowed for the life of the page. `bridge::Output::flush` copies its
+    // sink out of the mutex first for the same reason. Taking it also makes
+    // this doc's "invoked once" structural instead of incidental.
+    let handler = EXIT.with(|slot| slot.borrow_mut().take());
+    if let Some(handler) = handler {
+        let _ = handler.call1(&JsValue::NULL, &JsValue::from_f64(exit_code.into()));
+    }
+}
+
+/// Registers a callback for helix exiting, invoked once with the exit code.
+///
+/// The editor cannot be restarted afterwards; a host page that wants a live
+/// editor back has to reload. Register before [`start`] — a `:q` on the
+/// first keystroke would otherwise beat the registration.
+///
+/// The input exports ([`key_event`], [`paste`], [`mouse_event`],
+/// [`focus_event`], [`resize`]) stay callable once this fires but stop doing
+/// anything, so a host page that keeps forwarding is inert rather than
+/// harmful. Treating this callback as "stop forwarding" is still the right
+/// thing to do: the page has a dead editor on screen and needs to say so.
+#[wasm_bindgen]
+pub fn on_exit(handler: Function) {
+    EXIT.with(|slot| *slot.borrow_mut() = Some(handler));
 }
 
 /// What `Application::run` does before entering its event loop (`claim_term`
@@ -254,29 +333,50 @@ fn restore_terminal(mouse: bool) -> std::io::Result<()> {
     terminal::disable_raw_mode()
 }
 
+/// Queues one input event for the event loop, or drops it if helix is gone.
+///
+/// The exports below hand events to [`bridge`]'s queue, which only the event
+/// loop drains — so after the exit every further event is one nothing will
+/// ever take back out, and a host page that keeps forwarding (a `:q` leaves
+/// the module perfectly callable now) would grow that queue without bound.
+/// Dropping them here covers every embedder, rather than making a correct
+/// liveness gate each host page's problem. Events sent before [`start`] are
+/// dropped for the same reason: nothing has been booted to consume them.
+fn forward(event: Event) {
+    if RUNNING.with(Cell::get) {
+        bridge::inject_event(event);
+    }
+}
+
 /// Feeds one keyboard event, as the fields of a DOM `KeyboardEvent`.
+///
+/// A no-op once helix has exited (see [`on_exit`]).
 #[wasm_bindgen]
 pub fn key_event(key: &str, ctrl: bool, alt: bool, shift: bool, meta: bool) {
     if let Some(event) = keys::convert(key, ctrl, alt, shift, meta) {
-        bridge::inject_event(Event::Key(event));
+        forward(Event::Key(event));
     }
 }
 
 /// Feeds one mouse event, as the fields of an SGR mouse report from the
 /// terminal emulator: the button/modifier code, the 1-based column and row,
 /// and whether the final byte was `M` (press) rather than `m` (release).
+///
+/// A no-op once helix has exited (see [`on_exit`]).
 #[wasm_bindgen]
 pub fn mouse_event(code: u16, column: u16, row: u16, pressed: bool) {
     if let Some(event) = mouse::convert(code, column, row, pressed) {
-        bridge::inject_event(Event::Mouse(event));
+        forward(Event::Mouse(event));
     }
 }
 
 /// Feeds a terminal focus change (from the emulator's focus reports —
 /// helix enables focus reporting at boot).
+///
+/// A no-op once helix has exited (see [`on_exit`]).
 #[wasm_bindgen]
 pub fn focus_event(gained: bool) {
-    bridge::inject_event(if gained {
+    forward(if gained {
         Event::FocusGained
     } else {
         Event::FocusLost
@@ -284,14 +384,20 @@ pub fn focus_event(gained: bool) {
 }
 
 /// Feeds pasted text (from the terminal emulator's paste handling).
+///
+/// A no-op once helix has exited (see [`on_exit`]).
 #[wasm_bindgen]
 pub fn paste(text: &str) {
-    bridge::inject_event(Event::Paste(text.to_owned()));
+    forward(Event::Paste(text.to_owned()));
 }
 
 /// Reports new terminal dimensions and triggers a re-layout.
+///
+/// A no-op once helix has exited (see [`on_exit`]).
 #[wasm_bindgen]
 pub fn resize(columns: u16, rows: u16) {
-    bridge::set_size(columns, rows);
-    bridge::inject_event(Event::Resize(columns, rows));
+    if RUNNING.with(Cell::get) {
+        bridge::set_size(columns, rows);
+    }
+    forward(Event::Resize(columns, rows));
 }

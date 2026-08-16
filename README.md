@@ -46,6 +46,8 @@ curated set of bundled color schemes (vendored in `web/themes/` — try
 It is helix, not a subset of it — but the browser has no subprocesses, no
 filesystem and no threads, so some things behave differently and some do not
 work at all. "Limitations and behavioral differences" below collects them.
+`:tutor` works, with a handful of steps the browser cannot honor as written;
+`web/runtime/README.md` lists those under "Known gaps in the browser".
 
 The grammar build fetches pinned parser sources at
 build time, so it needs network access and `git`. Set `HELIX_WEB_GRAMMARS`
@@ -65,7 +67,8 @@ embedding page can inject and extract files; the demo page exposes them
 as `window.helixVfs` — try `helixVfs.write("hello.rs", "fn main() {}")`
 in the devtools console, then `:o hello.rs` in the editor. Persistent
 backends (localStorage/OPFS) can be layered on those hooks by the host
-page.
+page. Boot seeds a couple of sample files (`web/src/samples.rs`) so the
+picker opens on something selectable.
 
 ### Editor state inspection
 
@@ -111,9 +114,11 @@ them on a snapshot repin (see "Branch and tag map").
 
 `Jobs::add` spawns onto a tokio runtime, and there is no runtime in the
 browser, so a command that queues a background job panics rather than bailing
-out politely. A panic wedges the instance: the screen freezes on whatever it
-was drawing and keystrokes stop landing, so the only recovery is a page
-reload. This is a bug rather than something the browser forces — tracked in
+out politely. A panic wedges the instance: the editor stops drawing and
+keystrokes stop landing. The page notices, prints `Helix has stopped
+responding. Refresh the page.` on the terminal and stops forwarding input, so
+a reload is still the only recovery — but a wedged editor never passes for a
+hung page. This is a bug rather than something the browser forces — tracked in
 [#71](https://github.com/Jecoms/helix-wasm/issues/71). Confirmed triggers:
 
 - **`gd`, `gD`, `gy`, `gi`, `gr`** — goto definition, declaration, type
@@ -238,8 +243,10 @@ web page:
   the browser's copy.
 - **Your browser claims some chords first.** `C-w` — helix's entire window
   prefix — closes the tab in most browsers, as do `C-n` and `C-t`, and
-  `Ctrl-Shift-<key>` is generally spoken for too. Reach splits through
-  `:vsplit`, `:hsplit` and `:wclose` instead. Which chords get taken is the
+  `Ctrl-Shift-<key>` is generally spoken for too. Upstream binds the same
+  window menu under `space w`, so reach it that way (`space w v` splits,
+  `space w hjkl` moves, `space w q` closes); `:vsplit`, `:hsplit` and
+  `:wclose` work too. Which chords get taken is the
   browser's policy rather than this port's, so check yours — this is the one
   entry here taken from that policy rather than from a run, because
   automation drivers hand these straight to the page and a headless run says
@@ -259,7 +266,10 @@ web page:
   compiled in either, so there is no SIGUSR1 config reload and no graceful
   SIGTERM exit.
 - **One editor per page.** `start()` refuses a second call, and `:q` ends the
-  session for good — the terminal stops accepting input until you reload.
+  session for good. Quitting restores the main screen and prints `Helix has
+  exited. Refresh the page to start a new session. (exit code N)`, then calls
+  the `on_exit` handler an embedding page registered; the page stops
+  forwarding input from there on. Reload to start over.
 
 Mouse input is forwarded (click to move the cursor, drag to select, wheel to
 scroll), and so are focus changes.
@@ -310,9 +320,17 @@ the statically linked grammar parsers). Consume it the way the demo's
 (fetches and instantiates the wasm module), then `start(writeBytes, cols,
 rows)` with a callback that feeds editor output bytes to an xterm.js
 `Terminal`, and forward input with `key_event(...)`, `paste(...)`, and
-`resize(cols, rows)`. Beyond the terminal loop, the module exports the
-file-injection hooks (`vfs_write` / `vfs_read` / `vfs_list`, see "Virtual
-file system" above) and the read-only inspection surface (`editor_state()`
+`resize(cols, rows)`. Register `on_exit(handler)` before `start` to learn
+when helix quits (`:q` and friends really do exit, and nothing can restart
+it in place — the page has to reload), and route the calls into wasm
+through a `try`/`catch` as the demo page does: a panicked instance traps on
+every later call, and a host that keeps forwarding into it silently
+swallows the user's input. Input calls made after a clean exit are inert
+(the module drops them rather than queueing for an event loop that is gone),
+but a page still forwarding is a page still pretending to have an editor —
+stop on the exit and tell the reader. Beyond the terminal loop, the module
+exports the file-injection hooks (`vfs_write` / `vfs_read` / `vfs_list`,
+see "Virtual file system" above) and the read-only inspection surface (`editor_state()`
 / `editor_text()`, see "Editor state inspection") — the intended surface
 for tutorial-style embedders that drive and assert on the editor rather
 than scrape the rendered terminal. The JS surface is unstable by design
