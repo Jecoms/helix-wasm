@@ -131,12 +131,13 @@ pub fn config_dir() -> PathBuf {
     path
 }
 
-/// There is no OS user directory on wasm32; return a fixed relative path.
-/// Nothing joins it against the virtual working directory — how relative
-/// paths resolve is up to whatever fs layer a wasm embedder provides.
+/// There is no OS user directory on wasm32; return a fixed absolute path.
+/// Absolute so that consumers resolving it through a virtual fs (e.g.
+/// `helix_stdx::vfs`, which joins relative paths against the virtual
+/// working directory) get the same location regardless of the cwd.
 #[cfg(target_arch = "wasm32")]
 pub fn config_dir() -> PathBuf {
-    PathBuf::from(".config/helix")
+    PathBuf::from("/.config/helix")
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -148,12 +149,13 @@ pub fn cache_dir() -> PathBuf {
     path
 }
 
-/// There is no OS user directory on wasm32; return a fixed relative path.
-/// Nothing joins it against the virtual working directory — how relative
-/// paths resolve is up to whatever fs layer a wasm embedder provides.
+/// There is no OS user directory on wasm32; return a fixed absolute path.
+/// Absolute so that consumers resolving it through a virtual fs (e.g.
+/// `helix_stdx::vfs`, which joins relative paths against the virtual
+/// working directory) get the same location regardless of the cwd.
 #[cfg(target_arch = "wasm32")]
 pub fn cache_dir() -> PathBuf {
-    PathBuf::from(".cache/helix")
+    PathBuf::from("/.cache/helix")
 }
 
 pub fn config_file() -> PathBuf {
