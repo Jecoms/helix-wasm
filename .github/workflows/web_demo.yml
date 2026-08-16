@@ -31,7 +31,14 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
+      # Root the cache at web/ so the in-tree helix/ and stubs/ crates survive
+      # rust-cache's pre-save cleanup, and hand it the lockfile hash by hand
+      # because it looks for a Cargo.lock at that root. Full rationale in
+      # wasm-check.yml.
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: web -> ../target
+          key: ${{ hashFiles('Cargo.lock') }}
 
       - name: Install wasm-pack
         uses: taiki-e/install-action@v2

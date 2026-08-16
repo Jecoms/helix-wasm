@@ -22,7 +22,28 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
+      # `workspaces` decides what survives rust-cache's pre-save cleanup: it
+      # keeps the packages whose manifest lives *outside* the workspace root
+      # and deletes the rest — a filesystem path test, not cargo workspace
+      # membership (`getPackagesOutsideWorkspaceRoot` in the action's
+      # src/workspace.ts). helix/ and stubs/ sit inside the checkout, so the
+      # default root (`.`) drops all 21 in-tree crates, plus the registry
+      # crates that depend on them, and every run recompiles them. Rooting the
+      # action at web/ keeps everything except the `helix-web` crate itself —
+      # the crate that changes every commit and is cheap to rebuild — while
+      # `../target` stays the single shared target dir (a target is resolved
+      # relative to its workspace root). The keep-set is a path test, so
+      # renaming web/ would silently empty it: move this alongside.
+      #
+      # `key` carries the lockfile hash because the action only looks for a
+      # Cargo.lock at the workspace root and web/ has none. Without it a dep
+      # bump would never rotate the cache key, and since the action skips the
+      # save entirely on an exact key hit, the cache would stay frozen at its
+      # pre-bump contents.
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: web -> ../target
+          key: ${{ hashFiles('Cargo.lock') }}
 
       - name: Check helix-core for wasm32
         run: cargo check -p helix-core --target wasm32-unknown-unknown --locked
@@ -39,7 +60,11 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
+      # Cache config rationale: see the helix-core job above.
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: web -> ../target
+          key: ${{ hashFiles('Cargo.lock') }}
 
       - name: Check helix-view for wasm32
         run: cargo check -p helix-view --target wasm32-unknown-unknown --locked
@@ -56,7 +81,11 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
+      # Cache config rationale: see the helix-core job above.
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: web -> ../target
+          key: ${{ hashFiles('Cargo.lock') }}
 
       - name: Check helix-term for wasm32
         run: cargo check -p helix-term --target wasm32-unknown-unknown --locked
@@ -73,7 +102,11 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
+      # Cache config rationale: see the helix-core job above.
       - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: web -> ../target
+          key: ${{ hashFiles('Cargo.lock') }}
 
       - name: Install wasm-pack
         uses: taiki-e/install-action@v2
