@@ -1,20 +1,25 @@
 # helix-wasm
 
-A wasm32 port of [Helix](https://github.com/helix-editor/helix) that consumes
-**pristine upstream source at a release tag** — no fork, no vendored tree.
-All wasm accommodation lives on this side of the fence, so updating to a new
-Helix release is a tag bump, not a patch-set rebase.
+A wasm32 port of [Helix](https://github.com/helix-editor/helix). `main` is a
+**version line rooted at an upstream release**: `helix/` carries the pristine
+25.07.1 release tree with the wasm patch set as ordinary commits on top, and
+everything that does not belong in helix — the browser frontend, the
+dependency stubs, the C sysroot — sits alongside it. The helix crates are
+path dependencies, so patching helix is editing a file in this workspace, and
+the repo has no cargo git dependencies at all: a checkout of `main` is the
+whole build input.
 
 ## Layout
 
 | Path | Purpose |
 | --- | --- |
-| `Cargo.toml` | Wrapper workspace: helix crates as git dependencies pinned to a frozen `helix/<version>` snapshot ref, plus `[patch.crates-io]` stub swaps |
-| `stubs/` | Stand-ins for dependencies with no wasm32 support: transitive crates (`home`, `which`, `libloading`, and `url` with a wasm cfg), vendored copies of `helix-lsp`/`helix-dap` with the server-subprocess machinery removed, a vendored `crossterm` whose OS terminal layer is replaced by a browser bridge, and a vendored `nucleo` that runs picker matching inline instead of on a threadpool. Plus one that is not a wasm32 gap: a vendored `tree-house-bindings` carrying a one-declaration ABI fix, without which every syntax-highlighted buffer traps on wasm32 — the only stub shipping third-party C (a vendored tree-sitter; see `web/NOTICE.md`) |
+| `helix/` | The patched Helix source: upstream's `25.07.1` release tree (the parentless `upstream/25.07.1` commit) plus this port's patches. Its own cargo workspace — upstream's, left pristine — excluded from the root one and consumed as path dependencies |
+| `Cargo.toml` | Wrapper workspace: the helix crates as path dependencies on `helix/`, plus `[patch.crates-io]` stub swaps |
+| `stubs/` | Stand-ins for third-party dependencies with no wasm32 support: transitive crates (`home`, `which`, `libloading`, and `url` with a wasm cfg), a vendored `crossterm` whose OS terminal layer is replaced by a browser bridge, and a vendored `nucleo` that runs picker matching inline instead of on a threadpool. Plus one that is not a wasm32 gap: a vendored `tree-house-bindings` carrying a one-declaration ABI fix, without which every syntax-highlighted buffer traps on wasm32 — the only stub shipping third-party C (a vendored tree-sitter; see `web/NOTICE.md`) |
 | `sysroot/` | Stub libc headers, the `wasm-cc` clang shim that lets tree-sitter's stock build script compile its C for wasm32, and the libc shim implementations (`shims.c`, `wctype.c`) the final wasm link needs |
 | `web/` | The browser frontend: a wasm-bindgen cdylib that boots helix-term against the crossterm bridge, plus the xterm.js host page in `web/www/` |
 | `.cargo/config.toml` | Wires `wasm-cc` up as the C compiler for the wasm32 target |
-| `scripts/` | Release tooling: `snapshot-helix.sh` cuts the append-only `helix/<version>` snapshot refs that `Cargo.toml` pins, plus their signed `helix-<version>` attestation tags |
+| `scripts/` | `snapshot-helix.sh`, the tool that cut the retired `helix/<version>` snapshot refs. Nothing builds against those refs any more; it is kept only until they are decommissioned |
 
 ## Building
 
@@ -28,6 +33,34 @@ cargo check -p helix-term --target wasm32-unknown-unknown
 A clang that can emit wasm is required. Linux distro clang works; on macOS the
 system clang cannot emit wasm, so install LLVM (`brew install llvm`) or point
 `HELIX_WASM_CLANG` at a suitable clang.
+
+## Patching helix
+
+`helix/` is ordinary source in this workspace, so a helix change is an
+ordinary edit:
+
+```sh
+$EDITOR helix/helix-view/src/document.rs
+cargo check -p helix-view --target wasm32-unknown-unknown
+```
+
+Commit it like any other change. There is no ref to publish first, no pin to
+bump, no `cargo update` — the path dependency picks the edit up directly.
+
+Two things keep the patch set cheap to carry onto the next release. Shape:
+localized insertions and `#[cfg(target_arch = "wasm32")]` arms replay clean,
+while re-indenting a block of otherwise-untouched native code conflicts with
+any upstream edit to it — prefer extracting a native body into its own
+function over wrapping it. And blast radius: `helix/Cargo.toml` is
+byte-identical to upstream on purpose (it is the file upstream churns most),
+so declare a new dependency in the individual crate manifests rather than in
+its `[workspace.dependencies]`.
+
+What the patch set changes, at any point:
+
+```sh
+git diff upstream/25.07.1 main -- helix/
+```
 
 ## Running the browser demo
 
@@ -107,8 +140,8 @@ The aim is to be helix, not a lookalike, so this section catalogs the places
 where the browser makes that impossible. Everything below was reproduced by
 hand in a build of this tree, except where an entry says otherwise — it is
 what the port does today, not what its source suggests it might do. The
-entries track the pinned helix snapshot plus the `web/` crate, so re-check
-them on a snapshot repin (see "Branch and tag map").
+entries track `helix/` plus the `web/` crate, so re-check them when the port
+is replayed onto a new release (see "Taking a new helix release").
 
 ### Commands that crash the session
 
@@ -358,41 +391,61 @@ commit `web-v<version>` and push the tag. The workflow verifies the tag
 against the crate version, rebuilds the bundle with `--locked`, and
 attaches the tarball to a release on the tag.
 
+## Taking a new helix release
+
+Each helix release gets a permanent **base branch**: a single parentless
+commit holding that release's pristine tree under `helix/`, and nothing else.
+Cut and publish it first — nothing is built on top until it verifies.
+
+```sh
+V=25.10                                          # upstream's release tag
+SRC=$(git rev-parse "${V}^{commit}")
+ROOT=$(printf '040000 tree %s\thelix\n' "$(git rev-parse "${V}^{tree}")" | git mktree)
+BASE=$(
+  GIT_AUTHOR_NAME=$(git log -1 --format=%an "$SRC") \
+  GIT_AUTHOR_EMAIL=$(git log -1 --format=%ae "$SRC") \
+  GIT_AUTHOR_DATE=$(git log -1 --format=%ad --date=raw "$SRC") \
+  GIT_COMMITTER_NAME=$(git log -1 --format=%cn "$SRC") \
+  GIT_COMMITTER_EMAIL=$(git log -1 --format=%ce "$SRC") \
+  GIT_COMMITTER_DATE=$(git log -1 --format=%cd --date=raw "$SRC") \
+  git -c commit.gpgsign=false commit-tree "$ROOT" -m "helix ${V} (pristine upstream release tree)"
+)
+test "$(git rev-parse "${BASE}:helix")" = "$(git rev-parse "${V}^{tree}")"
+git push origin "$BASE":"refs/heads/upstream/$V"
+```
+
+Identity and dates come from the release commit and the commit is left
+unsigned, so re-running the recipe reproduces the same SHA — the base is
+verifiable by anyone rather than taken on trust. Being unsigned it needs an
+admin push past the repo-wide signature requirement; that is the one
+privileged step left, once per release instead of once per patch.
+
+Then replay the port onto it:
+
+```sh
+git checkout -b "port/$V" main
+git rebase --onto "upstream/$V" upstream/25.07.1 "port/$V"
+```
+
+Open `port/$V` → `upstream/$V`. The base is the merge base, so the diff is
+exactly this repo's commits and none of helix's source. The wrapper commits
+touch files upstream never touches and replay clean, which narrows the
+conflict set to the helix files this port patches. **Parity is the Playwright
+suite passing** (see "Browser smoke tests" above). Promote by moving `main`
+to the reviewed tip, keeping the outgoing line as a versioned branch.
+
 ## Branch and tag map
 
-- `main` (this branch) — the zero-fork port, produced by the
-  [#33](https://github.com/Jecoms/helix-wasm/issues/33) restructure.
-- `helix-patched` — the moving workbench: upstream Helix at the release tag
-  plus the few not-yet-upstreamed fixes (the `faccess` fallback fix,
-  [helix-editor/helix#16186](https://github.com/helix-editor/helix/pull/16186);
-  wasm32 trims of the subprocess and signal machinery in helix-view and
-  helix-term; repairs to helix-view's bit-rotted wasm32 clipboard/terminal
-  fallbacks; the web-time clock swap; browser-timeout editor timers; the
-  bridge render target; wasm32 fallbacks for the working directory and
-  loader paths; the wasm32 grammar/query registration API in
-  helix-loader; and the `helix_stdx::vfs` virtual file system with the
-  wasm32 document-IO and picker arms that use it).
-  Rebased onto each new upstream release — a moving target, so it is not a
-  build input. Retires as upstream PRs land.
-- `helix/<version>` (e.g. `helix/25.07.1`) — append-only snapshot refs, the
-  actual build inputs: each is a single parentless commit of the workbench's
-  tree at that release, cut by `scripts/snapshot-helix.sh`. Pinning these
-  keeps a fresh `cargo fetch` to one commit + one tree (no upstream history)
-  and keeps old lockfiles buildable when the workbench rebases. A snapshot
-  is never regenerated once pinned; a changed patch set against the same
-  upstream base gets a revision suffix (`helix/25.07.1-r2`, ...). Note: the
-  repo also carries upstream's pristine `25.07.1` tag — branch
-  `helix/25.07.1` intentionally does **not** match it (patches applied).
-  "Pristine" in the opening above means no helix source is vendored or
-  rewritten in this repo, not byte-identity with the tag: the snapshot is
-  upstream's tree plus the transiting patch set, which retires as its PRs
-  land. Snapshot commits are unsigned by design — a signature would tie
-  the reproducible SHA to a signing key — so each carries a signed
-  annotated tag `helix-<version>` (dash, not slash, which would make the
-  refname ambiguous with the branch) as its attestation. Both namespaces
-  are frozen by creation-only rulesets (`snapshot-branches-frozen` /
-  `snapshot-tags-frozen`, no bypass actors): new snapshot refs can be
-  pushed, existing ones can never be moved or deleted.
+- `main` (this branch) — the current version line: `upstream/25.07.1` plus
+  the wasm patch set plus the wrapper. Self-sufficient; every other ref below
+  is a label, an archive or a release artifact.
+- `upstream/<version>` (e.g. `upstream/25.07.1`) — the permanent base
+  branches described above: one parentless commit per helix release, holding
+  that release's pristine tree under `helix/` and nothing else. They are
+  `main`'s root, the merge base for release-review PRs, and the reference for
+  `git diff upstream/<version> main -- helix/`. Frozen by the
+  `upstream-branches-frozen` ruleset (creation only, no bypass actors): a new
+  base can be pushed, an existing one can never move or be deleted.
 - `web-v<semver>` (e.g. `web-v0.1.0`) — release tags for the embeddable web
   bundle. Pushing one runs the `Publish web bundle` workflow
   (`.github/workflows/web_release.yml`), which checks the tag against
@@ -400,4 +453,12 @@ attaches the tarball to a release on the tag.
   wasm-pack output, and attaches it to a GitHub release as
   `helix-web-<version>.tar.gz` — the artifact "Embedding the editor" above
   pins.
-- `legacy` — the previous in-tree port, archived at the swap.
+- `archive/snapshot-pins` — `main` as it stood under the retired snapshot-pin
+  model, kept so every commit link predating the move in-tree stays
+  reachable. Not a build input.
+- `helix-patched`, `helix/25.07.1{,-r2,-r3}` and the signed `helix-25.07.1*`
+  tags — the retired snapshot model: a rebased workbench branch and the
+  append-only single-commit snapshot refs `Cargo.toml` used to pin, each with
+  a signed attestation tag (the snapshot commits themselves were unsigned so
+  their SHAs stayed reproducible). Nothing builds against them; they are kept
+  as history for the lockfiles and commit links that reference them.

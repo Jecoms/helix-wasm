@@ -3,8 +3,11 @@ name: wasm32 check
 on:
   push:
     branches: [main]
+  # `upstream/**` too: a release-review PR targets the base branch for the
+  # release it ports, not main, and that is the PR the whole port gets
+  # reviewed in — it needs the same checks.
   pull_request:
-    branches: [main]
+    branches: [main, "upstream/**"]
 
 jobs:
   helix-core:
