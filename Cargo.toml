@@ -5,18 +5,22 @@ edition = "2021"
 license = "MPL-2.0"
 publish = false
 
+# The patched helix source lives in helix/ — upstream's 25.07.1 release tree
+# plus the wasm patch set, as ordinary commits. Path dependencies, so editing
+# a helix file is an edit in this workspace: no ref to publish, nothing to
+# pin, no `cargo update`.
 [dependencies]
-helix-core = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1-r3" }
-helix-view = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1-r3" }
+helix-core = { path = "helix/helix-core" }
+helix-view = { path = "helix/helix-view" }
 # No default features: `git` would enable helix-vcs's gix integration, which
 # is dead weight in a browser (there is no repository to diff against).
 # helix-term drags in crossterm (via helix-tui and helix-view's `term`
 # feature); the crossterm it gets is the browser shim swapped in below.
-helix-term = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1-r3", default-features = false }
-helix-loader = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1-r3" }
+helix-term = { path = "helix/helix-term", default-features = false }
+helix-loader = { path = "helix/helix-loader" }
 # For `helix_stdx::vfs`, the in-memory virtual file system document IO goes
 # through on wasm32 — re-exported so embedders can inject and extract files.
-helix-stdx = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1-r3" }
+helix-stdx = { path = "helix/helix-stdx" }
 
 # Transitive dependencies swapped for the stubs in stubs/ — all but one
 # because they have no wasm32-unknown-unknown support; the exception is
@@ -43,16 +47,14 @@ url = { path = "stubs/url" }
 # stubs/tree-house-bindings/Cargo.toml for the exact delta.
 tree-house-bindings = { path = "stubs/tree-house-bindings" }
 
-# helix-view's LSP/DAP clients exist to talk to server subprocesses, which
-# wasm32 does not have. Swap them for vendored copies whose spawn paths
-# return errors (see the stubs' Cargo.toml headers for the exact delta).
-[patch."https://github.com/Jecoms/helix-wasm.git"]
-helix-lsp = { path = "stubs/helix-lsp" }
-helix-dap = { path = "stubs/helix-dap" }
-
+# helix/ is its own workspace (upstream's, left pristine) and stays excluded
+# from this one: a package cannot belong to two workspaces, and excluding it
+# is what keeps `workspace = true` inheritance in helix/helix-*/Cargo.toml
+# resolving against helix/Cargo.toml. The helix crates still resolve — as
+# path dependencies above — and one Cargo.lock covers everything.
 [workspace]
 members = ["web"]
-exclude = ["stubs"]
+exclude = ["stubs", "helix"]
 
 # wasm-pack builds the web crate with --release; favor size, the demo ships
 # over the network.
