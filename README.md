@@ -14,7 +14,6 @@ Helix release is a tag bump, not a patch-set rebase.
 | `sysroot/` | Stub libc headers, the `wasm-cc` clang shim that lets tree-sitter's stock build script compile its C for wasm32, and the libc shim implementations (`shims.c`, `wctype.c`) the final wasm link needs |
 | `web/` | The browser frontend: a wasm-bindgen cdylib that boots helix-term against the crossterm bridge, plus the xterm.js host page in `web/www/` |
 | `.cargo/config.toml` | Wires `wasm-cc` up as the C compiler for the wasm32 target |
-| `SPIKE-NOTES.md` | The full build recipe, enumerated blockers, and known runtime traps |
 
 ## Building
 
@@ -41,7 +40,10 @@ npm run dev      # serves the demo on a local vite dev server
 The demo boots helix into an xterm.js terminal with a scratch buffer, with
 syntax highlighting for a small static grammar set (c, go, java,
 javascript, python, regex, rust, toml — try `:set-language rust`).
-See SPIKE-NOTES.md for the current limitations.
+Notable limitations: no LSP or DAP (the browser has no subprocesses),
+documents live in an in-memory virtual file system, and mouse input is not
+yet forwarded to the editor
+([#50](https://github.com/Jecoms/helix-wasm/issues/50)).
 The grammar build fetches pinned parser sources at
 build time, so it needs network access and `git`. Set `HELIX_WEB_GRAMMARS`
 to a comma-separated subset (e.g. `HELIX_WEB_GRAMMARS=rust,toml wasm-pack
@@ -81,14 +83,15 @@ The demo deploys to <https://jecoms.github.io/helix-wasm/> via the
 `Deploy web demo` workflow (`.github/workflows/web_demo.yml`), which builds
 the full-catalog bundle and publishes it with `actions/deploy-pages`.
 
-Deploys are dispatch-only (`gh workflow run web_demo.yml --ref v2`) and
-gated by the `github-pages` environment's deployment branch policy: a run
-only deploys if its branch is on the allowed list.
+Every push to `main` deploys automatically; a manual
+`gh workflow run web_demo.yml` works too. Deploys are gated by the
+`github-pages` environment's deployment branch policy — only `main` is on
+the allowed list.
 
 ## Branch map
 
-- `v2` (this branch) — the zero-fork port; becomes `main` once the browser
-  demo boots ([#33](https://github.com/Jecoms/helix-wasm/issues/33)).
+- `main` (this branch) — the zero-fork port, produced by the
+  [#33](https://github.com/Jecoms/helix-wasm/issues/33) restructure.
 - `helix-patched` — upstream Helix at the release tag plus the few
   not-yet-upstreamed fixes (the `faccess` fallback fix,
   [helix-editor/helix#16186](https://github.com/helix-editor/helix/pull/16186);
@@ -100,4 +103,4 @@ only deploys if its branch is on the allowed list.
   helix-loader; and the `helix_stdx::vfs` virtual file system with the
   wasm32 document-IO and picker arms that use it).
   Retires as upstream PRs land.
-- `main` — the previous in-tree port, to be archived as `legacy` at the swap.
+- `legacy` — the previous in-tree port, archived at the swap.
