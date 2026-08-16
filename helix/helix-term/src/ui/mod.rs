@@ -301,6 +301,7 @@ pub fn file_picker(editor: &Editor, root: PathBuf) -> FilePicker {
         }
     }
     if hit_timeout {
+        #[cfg(not(target_arch = "wasm32"))]
         std::thread::spawn(move || {
             for file in files {
                 if injector.push(file).is_err() {
@@ -308,6 +309,15 @@ pub fn file_picker(editor: &Editor, root: PathBuf) -> FilePicker {
                 }
             }
         });
+        // wasm32 cannot spawn threads (`std::thread::spawn` panics), so a
+        // large virtual file system drains inline instead — the iterator is
+        // over an in-memory listing, not a directory walk.
+        #[cfg(target_arch = "wasm32")]
+        for file in files {
+            if injector.push(file).is_err() {
+                break;
+            }
+        }
     }
     picker
 }
