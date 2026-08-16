@@ -120,6 +120,10 @@ impl Loader {
     }
 
     pub fn read_names(path: &Path) -> Vec<String> {
+        // wasm32 has no file system; themes live in the virtual one.
+        #[cfg(target_arch = "wasm32")]
+        return Self::read_names_vfs(path);
+        #[cfg(not(target_arch = "wasm32"))]
         std::fs::read_dir(path)
             .map(|entries| {
                 entries
@@ -132,6 +136,32 @@ impl Loader {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    // The wasm32 arm of `read_names`: the virtual file system has no
+    // `read_dir`, so emulate it by listing every file and keeping the
+    // direct children of `path` with a `.toml` extension.
+    #[cfg(target_arch = "wasm32")]
+    fn read_names_vfs(path: &Path) -> Vec<String> {
+        Self::toml_names_under(path, helix_stdx::vfs::list())
+    }
+
+    // The directory filter behind `read_names_vfs`, split out so the host
+    // test suite can cover it (for dependents the vfs itself only exists on
+    // wasm32). Store keys are normalized with
+    // `helix_stdx::path::canonicalize`, so `path` is normalized the same
+    // way before comparing.
+    #[cfg(any(target_arch = "wasm32", test))]
+    fn toml_names_under(path: &Path, files: Vec<PathBuf>) -> Vec<String> {
+        let dir = helix_stdx::path::canonicalize(path);
+        files
+            .into_iter()
+            .filter(|file| file.parent() == Some(&dir))
+            .filter_map(|file| {
+                (file.extension()? == "toml")
+                    .then(|| file.file_stem().unwrap().to_string_lossy().into_owned())
+            })
+            .collect()
     }
 
     // merge one theme into the parent theme
@@ -162,7 +192,12 @@ impl Loader {
 
     // Loads the theme data as `toml::Value`
     fn load_toml(&self, path: PathBuf) -> Result<Value> {
+        #[cfg(not(target_arch = "wasm32"))]
         let data = std::fs::read_to_string(path)?;
+        // wasm32 has no file system; themes are read from the virtual one,
+        // same as document IO.
+        #[cfg(target_arch = "wasm32")]
+        let data = String::from_utf8(helix_stdx::vfs::read(path)?)?;
         let value = toml::from_str(&data)?;
 
         Ok(value)
@@ -179,7 +214,12 @@ impl Loader {
             .iter()
             .find_map(|dir| {
                 let path = dir.join(&filename);
-                if !path.exists() {
+                #[cfg(not(target_arch = "wasm32"))]
+                let exists = path.exists();
+                // wasm32 has no file system; themes live in the virtual one.
+                #[cfg(target_arch = "wasm32")]
+                let exists = helix_stdx::vfs::exists(&path);
+                if !exists {
                     None
                 } else if visited_paths.contains(&path) {
                     // Avoiding cycle, continuing to look in lower priority directories
@@ -566,6 +606,27 @@ impl TryFrom<Value> for ThemePalette {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Inputs go through `canonicalize` like real vfs store keys do (on a
+    // Windows host that prefixes rooted-but-driveless paths with the cwd's
+    // drive, so literal `/`-rooted `PathBuf`s would not match).
+    #[test]
+    fn toml_names_under_keeps_direct_toml_children() {
+        let files = [
+            "/theme-test-names/themes/gruvbox.toml",
+            "/theme-test-names/themes/onedark.toml",
+            "/theme-test-names/themes/notes.txt",
+            "/theme-test-names/themes/nested/extra.toml",
+            "/theme-test-names/other.toml",
+        ]
+        .into_iter()
+        .map(helix_stdx::path::canonicalize)
+        .collect();
+
+        let mut names = Loader::toml_names_under(Path::new("/theme-test-names/themes"), files);
+        names.sort();
+        assert_eq!(names, vec!["gruvbox".to_string(), "onedark".to_string()]);
+    }
 
     #[test]
     fn test_parse_style_string() {
