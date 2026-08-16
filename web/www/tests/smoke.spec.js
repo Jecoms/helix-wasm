@@ -152,6 +152,20 @@ test("a dead wasm instance is announced instead of looking like a hang", async (
 }) => {
   await bootEditor(page);
 
+  // Calibrate first: how long does a keystroke really take to land on this
+  // machine? The gate check at the end has to prove a negative — the editor
+  // never saw the key — and the only thing separating that from "it has not
+  // arrived yet" is outwaiting a real round trip. Nothing on the exported
+  // surface can be injected past the page's own gate to serve as a barrier,
+  // so a multiple of a measured round trip stands in for one; a fixed
+  // window would just pass on any runner slower than itself.
+  const startedAt = Date.now();
+  await page.keyboard.press("i");
+  await expect.poll(() => getState(page).then((s) => s.mode)).toBe("insert");
+  const settle = Math.max(500, (Date.now() - startedAt) * 10);
+  await page.keyboard.press("Escape");
+  await expect.poll(() => getState(page).then((s) => s.mode)).toBe("normal");
+
   // A panic poisons the instance: the last frame stays on screen and every
   // later keystroke disappears into a module that traps on entry — visually
   // a frozen page. The host page's liveness gate turns that into a notice
@@ -173,10 +187,15 @@ test("a dead wasm instance is announced instead of looking like a hang", async (
     .toContain("Helix has stopped responding. Refresh the page");
 
   // Input forwarding really stopped: the editor never sees the keystroke,
-  // so it cannot leave normal mode.
+  // so it neither moves nor draws. Both halves are asserted — the mode is
+  // the editor's own state, and the unchanged screen catches a render that
+  // reached the terminal without changing the mode (on the restored main
+  // screen any frame helix drew would paint over the notice).
+  const frozen = await terminalText(page);
   await page.keyboard.press("i");
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(settle);
   expect((await getState(page)).mode).toBe("normal");
+  expect(await terminalText(page)).toBe(frozen);
 });
 
 test(":tutor opens the tutorial in a pathless buffer", async ({ page }) => {
