@@ -50,13 +50,24 @@ const CRASH_NOTICE =
   "Helix has stopped responding. Refresh the page to start a new session.";
 let editorAlive = true;
 
-// Leave the alternate screen and un-hide the cursor before writing: an
-// unclean death leaves the terminal mid-render, so the notice has to land
-// on the restored main screen rather than on top of the frozen frame.
+// Undo the terminal claim before writing: an unclean death leaves the
+// terminal mid-render with everything helix enabled at boot still on, so
+// the notice would otherwise land on top of the frozen frame, in a terminal
+// that still swallows the mouse. Mirrors the wasm side's `restore_terminal`
+// (web/src/session.rs), which the clean `:q` path runs for itself — mouse
+// capture (?1006l ?1015l ?1002l ?1000l, crossterm's DisableMouseCapture
+// set), bracketed paste (?2004l), focus reporting (?1004l), the alternate
+// screen (?1049l), and the hidden cursor (?25h). Mouse capture is the one
+// that matters most here: with `editor.mouse` on by default xterm.js keeps
+// reporting drags as SGR sequences rather than selecting text, so a reader
+// could not copy the line they are being asked to act on.
+const RESTORE_TERMINAL =
+  "\x1b[?1006l\x1b[?1015l\x1b[?1002l\x1b[?1000l\x1b[?2004l\x1b[?1004l\x1b[?1049l\x1b[?25h";
+
 function stopEditor(notice) {
   editorAlive = false;
   if (notice) {
-    terminal.write(`\x1b[?1049l\x1b[?25h\r\n${notice}\r\n`);
+    terminal.write(`${RESTORE_TERMINAL}\r\n${notice}\r\n`);
   }
 }
 
