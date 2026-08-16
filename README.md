@@ -137,8 +137,11 @@ file-injection hooks (`vfs_write` / `vfs_read` / `vfs_list`, see "Virtual
 file system" above) and the read-only inspection surface (`editor_state()`
 / `editor_text()`, see "Editor state inspection") — the intended surface
 for tutorial-style embedders that drive and assert on the editor rather
-than scrape the rendered terminal. The JS surface is unstable
-(`web/src/session.rs`); pin a tagged tarball and check its `.d.ts` when
+than scrape the rendered terminal. The JS surface is unstable by design
+(`web/src/session.rs`, `web/src/vfs.rs`), with one exception: the
+read-only inspection surface (`web/src/inspect.rs`,
+[#18](https://github.com/Jecoms/helix-wasm/issues/18)) is meant to be
+kept stable. Either way, pin a tagged tarball and check its `.d.ts` when
 upgrading.
 
 To cut a release: bump `version` in `web/Cargo.toml`, merge, then tag that
@@ -146,7 +149,7 @@ commit `web-v<version>` and push the tag. The workflow verifies the tag
 against the crate version, rebuilds the bundle with `--locked`, and
 attaches the tarball to a release on the tag.
 
-## Branch map
+## Branch and tag map
 
 - `main` (this branch) — the zero-fork port, produced by the
   [#33](https://github.com/Jecoms/helix-wasm/issues/33) restructure.
