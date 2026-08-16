@@ -114,12 +114,19 @@ test("tutor 13.7: the file picker lists sample files and opens one in a split", 
   // config path — nothing 13.7 would have a reader select.
   await press(page, " ", "f");
   await expect.poll(() => terminalText(page)).toContain("example.rs");
+  await expect.poll(() => terminalText(page)).toContain("welcome.txt");
+
+  // 13.7 has the reader type to narrow the list. Pin that on the file that
+  // has to drop out of it: `example.rs` was already on screen before a key
+  // was pressed, so asserting it again would pass with the filter doing
+  // nothing at all.
+  await page.keyboard.type("example");
+  await expect.poll(() => terminalText(page)).not.toContain("welcome.txt");
+  await expect.poll(() => terminalText(page)).toContain("example.rs");
 
   // C-v from the picker opens the selection in a vertical split. Unlike
   // C-w, xterm.js does claim C-v from the browser's paste shortcut, so this
   // step survives as written.
-  await page.keyboard.type("example");
-  await expect.poll(() => terminalText(page)).toContain("example.rs");
   await page.keyboard.press("Control+v");
 
   await expect
