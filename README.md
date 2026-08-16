@@ -81,14 +81,15 @@ The demo deploys to <https://jecoms.github.io/helix-wasm/> via the
 `Deploy web demo` workflow (`.github/workflows/web_demo.yml`), which builds
 the full-catalog bundle and publishes it with `actions/deploy-pages`.
 
-Deploys are dispatch-only (`gh workflow run web_demo.yml --ref v2`) and
-gated by the `github-pages` environment's deployment branch policy: a run
-only deploys if its branch is on the allowed list.
+Every push to `main` deploys automatically; a manual
+`gh workflow run web_demo.yml` works too. Deploys are gated by the
+`github-pages` environment's deployment branch policy — only `main` is on
+the allowed list.
 
 ## Branch map
 
-- `v2` (this branch) — the zero-fork port; becomes `main` once the browser
-  demo boots ([#33](https://github.com/Jecoms/helix-wasm/issues/33)).
+- `main` (this branch) — the zero-fork port, produced by the
+  [#33](https://github.com/Jecoms/helix-wasm/issues/33) restructure.
 - `helix-patched` — upstream Helix at the release tag plus the few
   not-yet-upstreamed fixes (the `faccess` fallback fix,
   [helix-editor/helix#16186](https://github.com/helix-editor/helix/pull/16186);
@@ -100,4 +101,4 @@ only deploys if its branch is on the allowed list.
   helix-loader; and the `helix_stdx::vfs` virtual file system with the
   wasm32 document-IO and picker arms that use it).
   Retires as upstream PRs land.
-- `main` — the previous in-tree port, to be archived as `legacy` at the swap.
+- `legacy` — the previous in-tree port, archived at the swap.
