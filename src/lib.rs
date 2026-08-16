@@ -1,8 +1,10 @@
 //! wasm32 wrapper around pristine upstream Helix.
 //!
 //! The heavy lifting happens in the manifests: helix crates come in as git
-//! dependencies pinned to the `helix-patched` branch (the upstream release
-//! tag plus not-yet-upstreamed fixes), and two `[patch]` tables swap in the
+//! dependencies pinned to an append-only `helix/<version>` snapshot ref
+//! (currently `helix/25.07.1`), a frozen single-commit capture of the
+//! `helix-patched` workbench — the upstream release tag plus
+//! not-yet-upstreamed fixes — and two `[patch]` tables swap in the
 //! stubs from `stubs/`: `[patch.crates-io]` replaces the transitive
 //! crates-io dependencies with no wasm32 support, and
 //! `[patch."<this repo's git URL>"]` replaces the vendored helix-lsp /

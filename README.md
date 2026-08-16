@@ -9,11 +9,12 @@ Helix release is a tag bump, not a patch-set rebase.
 
 | Path | Purpose |
 | --- | --- |
-| `Cargo.toml` | Wrapper workspace: helix crates as git dependencies pinned to the `helix-patched` branch, plus `[patch.crates-io]` stub swaps |
+| `Cargo.toml` | Wrapper workspace: helix crates as git dependencies pinned to a frozen `helix/<version>` snapshot ref, plus `[patch.crates-io]` stub swaps |
 | `stubs/` | Stand-ins for dependencies with no wasm32 support: transitive crates (`home`, `which`, `libloading`, and `url` with a wasm cfg), vendored copies of `helix-lsp`/`helix-dap` with the server-subprocess machinery removed, a vendored `crossterm` whose OS terminal layer is replaced by a browser bridge, and a vendored `nucleo` that runs picker matching inline instead of on a threadpool |
 | `sysroot/` | Stub libc headers, the `wasm-cc` clang shim that lets tree-sitter's stock build script compile its C for wasm32, and the libc shim implementations (`shims.c`, `wctype.c`) the final wasm link needs |
 | `web/` | The browser frontend: a wasm-bindgen cdylib that boots helix-term against the crossterm bridge, plus the xterm.js host page in `web/www/` |
 | `.cargo/config.toml` | Wires `wasm-cc` up as the C compiler for the wasm32 target |
+| `scripts/` | Release tooling: `snapshot-helix.sh` cuts the append-only `helix/<version>` snapshot refs that `Cargo.toml` pins, plus their signed `helix-<version>` attestation tags |
 
 ## Building
 
@@ -52,8 +53,8 @@ catalog, see `GRAMMARS` in `web/build.rs` and `web/queries/README.md`.
 
 ### Virtual file system
 
-Documents live in an in-memory virtual file system (`helix_stdx::vfs` on the
-`helix-patched` branch): `:w /notes.txt` saves there, `:o` and the space-f
+Documents live in an in-memory virtual file system (`helix_stdx::vfs`, part
+of the wasm patch set): `:w /notes.txt` saves there, `:o` and the space-f
 file picker (with preview) read from it, and `:reload` picks up outside
 changes. Nothing survives a page reload. The wasm module exports
 `vfs_write` / `vfs_read` / `vfs_list` so an embedding page can inject and
@@ -92,8 +93,8 @@ the allowed list.
 
 - `main` (this branch) — the zero-fork port, produced by the
   [#33](https://github.com/Jecoms/helix-wasm/issues/33) restructure.
-- `helix-patched` — upstream Helix at the release tag plus the few
-  not-yet-upstreamed fixes (the `faccess` fallback fix,
+- `helix-patched` — the moving workbench: upstream Helix at the release tag
+  plus the few not-yet-upstreamed fixes (the `faccess` fallback fix,
   [helix-editor/helix#16186](https://github.com/helix-editor/helix/pull/16186);
   wasm32 trims of the subprocess and signal machinery in helix-view and
   helix-term; repairs to helix-view's bit-rotted wasm32 clipboard/terminal
@@ -102,5 +103,25 @@ the allowed list.
   loader paths; the wasm32 grammar/query registration API in
   helix-loader; and the `helix_stdx::vfs` virtual file system with the
   wasm32 document-IO and picker arms that use it).
-  Retires as upstream PRs land.
+  Rebased onto each new upstream release — a moving target, so it is not a
+  build input. Retires as upstream PRs land.
+- `helix/<version>` (e.g. `helix/25.07.1`) — append-only snapshot refs, the
+  actual build inputs: each is a single parentless commit of the workbench's
+  tree at that release, cut by `scripts/snapshot-helix.sh`. Pinning these
+  keeps a fresh `cargo fetch` to one commit + one tree (no upstream history)
+  and keeps old lockfiles buildable when the workbench rebases. A snapshot
+  is never regenerated once pinned; a changed patch set against the same
+  upstream base gets a revision suffix (`helix/25.07.1-r2`, ...). Note: the
+  repo also carries upstream's pristine `25.07.1` tag — branch
+  `helix/25.07.1` intentionally does **not** match it (patches applied).
+  "Pristine" in the opening above means no helix source is vendored or
+  rewritten in this repo, not byte-identity with the tag: the snapshot is
+  upstream's tree plus the transiting patch set, which retires as its PRs
+  land. Snapshot commits are unsigned by design — a signature would tie
+  the reproducible SHA to a signing key — so each carries a signed
+  annotated tag `helix-<version>` (dash, not slash, which would make the
+  refname ambiguous with the branch) as its attestation. Both namespaces
+  are frozen by creation-only rulesets (`snapshot-branches-frozen` /
+  `snapshot-tags-frozen`, no bypass actors): new snapshot refs can be
+  pushed, existing ones can never be moved or deleted.
 - `legacy` — the previous in-tree port, archived at the swap.

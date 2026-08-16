@@ -1,5 +1,5 @@
-# Vendored copy of upstream helix-dap 25.07.1 (from the `helix-patched`
-# branch) with the debug-adapter subprocess/TCP machinery removed so the
+# Vendored copy of upstream helix-dap 25.07.1 (from the `helix/25.07.1`
+# snapshot) with the debug-adapter subprocess/TCP machinery removed so the
 # crate builds for wasm32-unknown-unknown. The full client.rs delta vs
 # upstream:
 #   - tokio's `process` and `net` features are dropped (both pull in mio,
@@ -23,8 +23,8 @@ license = "MPL-2.0"
 publish = false
 
 [dependencies]
-helix-stdx = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix-patched" }
-helix-core = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix-patched" }
+helix-stdx = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1" }
+helix-core = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1" }
 
 anyhow = "1.0"
 log = "0.4"

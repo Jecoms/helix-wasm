@@ -6,17 +6,17 @@ license = "MPL-2.0"
 publish = false
 
 [dependencies]
-helix-core = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix-patched" }
-helix-view = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix-patched" }
+helix-core = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1" }
+helix-view = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1" }
 # No default features: `git` would enable helix-vcs's gix integration, which
 # is dead weight in a browser (there is no repository to diff against).
 # helix-term drags in crossterm (via helix-tui and helix-view's `term`
 # feature); the crossterm it gets is the browser shim swapped in below.
-helix-term = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix-patched", default-features = false }
-helix-loader = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix-patched" }
+helix-term = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1", default-features = false }
+helix-loader = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1" }
 # For `helix_stdx::vfs`, the in-memory virtual file system document IO goes
 # through on wasm32 — re-exported so embedders can inject and extract files.
-helix-stdx = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix-patched" }
+helix-stdx = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1" }
 
 # Transitive dependencies with no wasm32-unknown-unknown support, swapped for
 # the stubs in stubs/. Each stub's Cargo.toml header documents its delta
