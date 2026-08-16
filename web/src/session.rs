@@ -99,6 +99,15 @@ pub fn start(output: Function, columns: u16, rows: u16) -> Result<(), JsValue> {
     // ("theme requires true color support"). xterm.js always renders 24-bit
     // color, so claim it unconditionally, like `true-color = true` in a
     // user's config.toml would.
+    //
+    // KNOWN LIMITATION: the override is boot-only. `:config-reload` rebuilds
+    // the config via `Config::load_default()`, which reads config.toml with
+    // `std::fs` — unconditionally Err on wasm32 (the fork's vfs patch routes
+    // only the theme loader, not config reads) — so `true_color` reverts to
+    // false: the active RGB theme is swapped for the built-in default and
+    // later `:theme <rgb-theme>` is refused until a page reload. There is no
+    // embedder-side hook into `refresh_config`; the real fix is fork-side
+    // (route config reads through the vfs, like themes).
     config.editor.true_color = true;
     let mouse = config.editor.mouse;
     let lang_loader = helix_wasm::helix_core::config::default_lang_loader();
