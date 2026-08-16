@@ -10,6 +10,10 @@ The vendored query files under `queries/` are copies of helix's own
 `runtime/queries/` (MPL-2.0, like helix itself; see the repository's
 top-level `LICENSE`), documented in `queries/README.md`.
 
+The vendored tutor text under `runtime/` is likewise a copy of helix's own
+`runtime/tutor` (MPL-2.0, like helix itself), documented in
+`runtime/README.md`.
+
 When bumping a grammar pin, re-check its `LICENSE` and update the matching
 entry here.
 
