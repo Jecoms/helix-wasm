@@ -92,6 +92,48 @@ test("tracks mode, cursor, and selection through i / Esc / v motions", async ({
   await expect.poll(() => getState(page).then((s) => s.mode)).toBe("normal");
 });
 
+test("page background matches the terminal's, with no phantom scrollbar (issue #49)", async ({
+  page,
+}) => {
+  await bootEditor(page);
+
+  // Background unification: the page body mirrors the BACKGROUND constant
+  // that drives xterm's theme.background, so the partial-cell strips the
+  // integer cell grid leaves around the editor blend in instead of framing
+  // it in a different color.
+  expect(
+    await page.evaluate(() => getComputedStyle(document.body).backgroundColor),
+  ).toBe("rgb(0, 0, 0)");
+  expect(
+    await page.evaluate(() => window.__helixTerminal.options.theme.background),
+  ).toBe("#000000");
+
+  // Phantom scrollbar: xterm.css ships the viewport with overflow-y: scroll,
+  // which keeps a track visible on classic-scrollbar systems even though
+  // scrollback: 0 means it can never overflow. The index.html override must
+  // win the cascade.
+  expect(
+    await page.evaluate(
+      () =>
+        getComputedStyle(document.querySelector("#terminal .xterm-viewport"))
+          .overflowY,
+    ),
+  ).toBe("hidden");
+
+  // Regression check on the #37 min-size floor: the override is scoped to
+  // the inner viewport, so below 600x400 the page itself must still scroll
+  // on both axes. Poll — the refit after resize is async.
+  await page.setViewportSize({ width: 500, height: 300 });
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        w: document.documentElement.scrollWidth,
+        h: document.documentElement.scrollHeight,
+      })),
+    )
+    .toEqual({ w: 600, h: 400 });
+});
+
 test(":w names the buffer in the vfs; live text diverges until re-saved", async ({
   page,
 }) => {
