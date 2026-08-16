@@ -3,16 +3,19 @@
 //! to `:o`pen and extracts what `:w` saved. Unstable, internal to the host
 //! page (see crate docs); a supported embedding API is issue #18.
 //!
-//! Paths are normalized against the editor's working directory (`/`), so
-//! `"scratch.txt"` and `"/scratch.txt"` name the same file.
+//! Paths are normalized against the editor's current working directory
+//! (initially `/`, but `:cd` moves it), so at startup `"scratch.txt"` and
+//! `"/scratch.txt"` name the same file.
 
 use helix_wasm::helix_stdx::vfs;
 use wasm_bindgen::prelude::*;
 
-/// Creates or replaces the file at `path`.
+/// Creates or replaces the file at `path`. Throws if `path` names no file
+/// (`""`, `"."`, `"/"`, ... — such a key would crash path-shaped UI like
+/// the file picker's path column).
 #[wasm_bindgen]
-pub fn vfs_write(path: &str, contents: &str) {
-    vfs::write(path, contents.as_bytes());
+pub fn vfs_write(path: &str, contents: &str) -> Result<(), JsError> {
+    vfs::write(path, contents.as_bytes()).map_err(|err| JsError::new(&err.to_string()))
 }
 
 /// The contents of the file at `path`, or `undefined` if it does not exist.
