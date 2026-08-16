@@ -19,7 +19,6 @@ whole build input.
 | `sysroot/` | Stub libc headers, the `wasm-cc` clang shim that lets tree-sitter's stock build script compile its C for wasm32, and the libc shim implementations (`shims.c`, `wctype.c`) the final wasm link needs |
 | `web/` | The browser frontend: a wasm-bindgen cdylib that boots helix-term against the crossterm bridge, plus the xterm.js host page in `web/www/` |
 | `.cargo/config.toml` | Wires `wasm-cc` up as the C compiler for the wasm32 target |
-| `scripts/` | `snapshot-helix.sh`, the tool that cut the retired `helix/<version>` snapshot refs. Nothing builds against those refs any more; it is kept only until they are decommissioned |
 
 ## Building
 
@@ -438,7 +437,7 @@ to the reviewed tip, keeping the outgoing line as a versioned branch.
 
 - `main` (this branch) — the current version line: `upstream/25.07.1` plus
   the wasm patch set plus the wrapper. Self-sufficient; every other ref below
-  is a label, an archive or a release artifact.
+  is a label or a release artifact.
 - `upstream/<version>` (e.g. `upstream/25.07.1`) — the permanent base
   branches described above: one parentless commit per helix release, holding
   that release's pristine tree under `helix/` and nothing else. They are
@@ -453,12 +452,3 @@ to the reviewed tip, keeping the outgoing line as a versioned branch.
   wasm-pack output, and attaches it to a GitHub release as
   `helix-web-<version>.tar.gz` — the artifact "Embedding the editor" above
   pins.
-- `archive/snapshot-pins` — `main` as it stood under the retired snapshot-pin
-  model, kept so every commit link predating the move in-tree stays
-  reachable. Not a build input.
-- `helix-patched`, `helix/25.07.1{,-r2,-r3}` and the signed `helix-25.07.1*`
-  tags — the retired snapshot model: a rebased workbench branch and the
-  append-only single-commit snapshot refs `Cargo.toml` used to pin, each with
-  a signed attestation tag (the snapshot commits themselves were unsigned so
-  their SHAs stayed reproducible). Nothing builds against them; they are kept
-  as history for the lockfiles and commit links that reference them.
