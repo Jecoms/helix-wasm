@@ -247,16 +247,28 @@ web page:
   window menu under `space w`, so reach it that way (`space w v` splits,
   `space w hjkl` moves, `space w q` closes); `:vsplit`, `:hsplit` and
   `:wclose` work too. Which chords get taken is the
-  browser's policy rather than this port's, so check yours — this is the one
-  entry here taken from that policy rather than from a run, because
+  browser's policy rather than this port's, so check yours — this entry is
+  taken from that policy rather than from a run, because
   automation drivers hand these straight to the page and a headless run says
   nothing about what a real tab does.
 - **On macOS, Option is Meta and stops composing.** `A-` chords reach the
   editor — the page claims Option the way iTerm's "Option as Meta" setting
   does — and the trade is that Option-composed character entry (`é`, `ß`,
-  `…`) no longer works in insert mode; paste those in instead. The chord's
-  character comes from xterm.js's own US-layout table, so on every platform
-  `A-` chords follow US key positions rather than the active layout.
+  `…`) no longer works in insert mode; paste those in instead. Where macOS
+  still composes before the page sees the keystroke, the chord's character
+  comes from xterm.js's US-layout `keyCode` table rather than from the DOM's
+  name, so those chords follow US key positions; a layout that composes
+  Option into a plain ASCII character is left alone and still forwards its
+  own (macOS UK Option-3 gives `A-#`, not `A-3`). None of this applies off
+  macOS. One gap remains: the accent starters `A-e`, `A-i`, `A-n` and `A-u`
+  work, but `` A-` `` (`switch_to_uppercase`, the chord `:tutor` 10.3 asks
+  for) does not — xterm.js drops that keystroke before the page can see it,
+  tracked in [#81](https://github.com/Jecoms/helix-wasm/issues/81). The
+  composition half of this entry is the other one here not taken from a run:
+  it is read from xterm.js's source and exercised with synthetic events,
+  because browser automation drives the renderer directly and never goes
+  through the OS input method, so nothing in this tree can compose a real
+  Option keystroke.
 - **No kitty keyboard protocol.** The bridge reports no keyboard
   enhancement, so this is the classic terminal key space: no key-release or
   repeat events, and no `Tab`/`C-i` or `Enter`/`C-m` disambiguation.

@@ -348,7 +348,11 @@ fn forward(event: Event) {
     }
 }
 
-/// Feeds one keyboard event, as the fields of a DOM `KeyboardEvent`.
+/// Feeds one keyboard event: a `KeyboardEvent.key`-shaped name plus the
+/// event's modifier flags. Usually that is the DOM's own `key`, but the host
+/// page owns the naming — the demo substitutes the character xterm.js
+/// resolved for an Alt chord that macOS composed before dispatch, where
+/// `KeyboardEvent.key` reports `"Dead"` or an accented letter instead.
 ///
 /// A no-op once helix has exited (see [`on_exit`]).
 #[wasm_bindgen]

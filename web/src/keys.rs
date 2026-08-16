@@ -6,7 +6,10 @@
 
 use crossterm::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, KeyModifiers};
 
-/// Converts the fields of a DOM `KeyboardEvent`. Returns `None` for events
+/// Converts a `KeyboardEvent.key`-shaped name and its modifier flags. The
+/// name is whatever the host page decided the keystroke was — normally the
+/// DOM's own `key`, but a host may resolve it itself where the DOM's name is
+/// unusable (see `key_event` in `session.rs`). Returns `None` for events
 /// that don't map to a terminal key press (lone modifiers, dead keys, ...).
 pub fn convert(key: &str, ctrl: bool, alt: bool, shift: bool, meta: bool) -> Option<KeyEvent> {
     let mut modifiers = KeyModifiers::NONE;

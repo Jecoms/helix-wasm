@@ -126,16 +126,43 @@ callEditor(() =>
 // from a keystroke, so track "the next onData is this keystroke's own
 // sequence" explicitly instead.
 let dataIsFromKey = false;
+// xterm.js's own platform test, mirrored (@xterm/xterm 5.5
+// common/Platform.ts): the fallback below only makes sense for events xterm
+// resolved on its macOS path, so the two checks have to agree on what "mac"
+// means.
+const IS_MAC = ["Macintosh", "MacIntel", "MacPPC", "Mac68K"].includes(
+  navigator.platform,
+);
 // For an Alt chord, macOS composes before dispatch — Option-s arrives as
-// `key: "ß"`, and the accent starters (Option-e/i/n/u) as `key: "Dead"` —
-// so `domEvent.key` names the wrong binding, or none. xterm.js has already
-// resolved the chord's character itself, off the event's keyCode and a US
-// layout, and hands it over as the sequence `ESC` + character; take it from
-// there when the DOM's own name is unusable. The guard stays narrow on
-// purpose: named keys must keep using `domEvent.key`, because xterm encodes
-// `A-Left` as `ESC b` and a looser rule would forward that as `A-b`.
+// `key: "ß"`, and the letter accent starters (Option-e/i/n/u) as
+// `key: "Dead"` — so `domEvent.key` names the wrong binding, or none.
+// xterm.js has already resolved the chord's character itself, off the
+// event's keyCode and a US layout, and hands it over as the sequence `ESC` +
+// character; take it from there when the DOM's own name is unusable.
+//
+// The guard is narrow on two axes, both load-bearing:
+//   - macOS only. Nothing else composes Option, and Chrome reports
+//     US-position keyCodes for non-Latin layouts, so running this on Linux
+//     would resolve a Russian `A-ф` through keyCode 65 into `A-a`
+//     (`select_all_siblings`) — a live command where the chord had been
+//     inert. (Windows AltGr never gets this far: xterm's
+//     `_isThirdLevelShift` drops it before `onKey`.)
+//   - named keys keep `domEvent.key`, because xterm encodes `A-Left` as
+//     `ESC b` on macOS and a looser rule would forward that as `A-b`.
+//
+// Not everything is recoverable here: xterm's dead-key branch only fires for
+// `code: "Key*"`, so a punctuation dead key (`` Option-` ``, i.e. `` A-` ``)
+// never reaches `onKey` at all — issue #81.
+//
+// This decode stays in the host page rather than moving to Rust the way #56
+// moved the SGR mouse decoding: its input is xterm.js's own `onKey` payload,
+// which exists only in the browser, and `key_event()` takes an
+// already-resolved key name rather than terminal bytes. A Rust version would
+// mean exporting a second, escape-sequence-shaped entry point — the tty
+// input path this port deliberately does not have.
 const ALT_CHAR = /^\x1b(.)$/;
-const composed = (key) => key === "Dead" || /^[^\x00-\x7f]$/.test(key);
+const composed = (key) =>
+  IS_MAC && (key === "Dead" || /^[^\x00-\x7f]$/.test(key));
 terminal.onKey(({ key, domEvent }) => {
   dataIsFromKey = true;
   let name = domEvent.key;
