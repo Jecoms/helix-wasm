@@ -100,6 +100,12 @@ pub fn start(output: Function, columns: u16, rows: u16) -> Result<(), JsValue> {
     claim_terminal(mouse)
         .map_err(|err| JsValue::from_str(&format!("failed to claim the terminal: {err}")))?;
 
+    // Unlike `Application::run`, no panic hook restoring the terminal is
+    // installed (upstream chains a `force_restore` hook before its loop):
+    // intentional — after a panic this instance is unusable anyway and a
+    // page reload resets xterm.js, so the hook stays the default
+    // console_error_panic_hook set above.
+
     // Belt and braces on top of set_size above: a resize event forces a
     // re-layout in case the embedder's size was stale at boot. It also
     // triggers the first render once the event loop starts polling.
@@ -199,12 +205,18 @@ fn claim_terminal(mouse: bool) -> std::io::Result<()> {
 }
 
 /// The counterpart of [`claim_terminal`], mirroring `Application::run`'s
-/// private `restore_term`: reset the cursor shape, then undo the claim.
+/// private `restore_term`: un-hide the cursor (the renderer commonly leaves
+/// it Hidden — helix draws its own block cursor) and reset its shape, then
+/// undo the claim.
 fn restore_terminal(mouse: bool) -> std::io::Result<()> {
+    use crossterm::cursor::{SetCursorStyle, Show};
     use crossterm::event::{DisableBracketedPaste, DisableFocusChange, DisableMouseCapture};
     use crossterm::terminal::{self, LeaveAlternateScreen};
 
     let mut out = bridge::Output::new();
+    // `restore_term`'s `show_cursor(CursorKind::Block)`: Show + SteadyBlock,
+    // ahead of the backend's own reset sequence below.
+    execute!(out, Show, SetCursorStyle::SteadyBlock)?;
     out.write_all(b"\x1B[0 q")?;
     if mouse {
         execute!(out, DisableMouseCapture)?;
