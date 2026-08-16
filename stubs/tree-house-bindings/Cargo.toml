@@ -1,19 +1,54 @@
 # Vendored copy of tree-house-bindings 0.2.4 (MPL-2.0, see LICENSE) with one
 # extern declaration corrected so tree-sitter queries do not trap on wasm32.
-# Everything outside src/query_cursor.rs is the pristine crates.io package
-# (this Cargo.toml is the cargo-normalized one from the .crate archive,
-# including the generated banner below). The delta:
+# The crate itself is MPL-2.0, but the nested vendor/ tree it ships carries
+# two further licenses: the tree-sitter C library is MIT (vendor/LICENSE) and
+# the ICU header subset that C includes is under the Unicode license
+# (vendor/src/unicode/LICENSE). Both are compiled into the distributed wasm,
+# so web/NOTICE.md reproduces their notices.
+#
+# Provenance — everything outside src/query_cursor.rs is the pristine
+# crates.io package (this Cargo.toml is the cargo-normalized one from the
+# .crate archive, including the generated banner below):
+#   archive  tree-house-bindings-0.2.4.crate
+#   sha256   e53f322db2c82a796392a01ae2687e304c4b3aafcc6520ff134b4ef35dafebeb
+#            — the crates.io registry checksum for 0.2.4
+#   vendor/  tree-sitter v0.25.9, the revision vendor.sh pins
+# To re-check that claim, or to refresh the stub on a version bump (run from
+# the repository root):
+#   v=0.2.4
+#   curl -sSLO "https://static.crates.io/crates/tree-house-bindings/tree-house-bindings-$v.crate"
+#   shasum -a 256 "tree-house-bindings-$v.crate"   # compare against the above
+#   tar -xzf "tree-house-bindings-$v.crate"
+#   diff -rq "tree-house-bindings-$v" stubs/tree-house-bindings
+# That diff must report exactly two differing files — this Cargo.toml and
+# src/query_cursor.rs — and no extra or missing ones. On a bump: replace the
+# tree with the extracted archive, re-apply the delta below, then update the
+# version, sha256, tree-sitter revision, and line citations here.
+#
+# The delta:
 #   - `ts_query_cursor_set_byte_range` is declared with the `-> bool` that the
-#     C function actually returns (`vendor/include/tree_sitter/api.h:1107`,
-#     `vendor/src/query.c:3454`). Upstream declares no return type. Native
-#     targets tolerate the mismatch; wasm32 checks indirect-call signatures
-#     and traps with `signature_mismatch` the first time a query cursor runs,
-#     which is every syntax-highlighted buffer.
+#     C function actually returns (`vendor/include/tree_sitter/api.h:1129`,
+#     `vendor/src/query.c:3210`, both line numbers in the tree-sitter v0.25.9
+#     that vendor/ holds). Upstream declares no return type. Native targets
+#     tolerate the mismatch; wasm32 checks indirect-call signatures and traps
+#     with `signature_mismatch` the first time a query cursor runs, which is
+#     every syntax-highlighted buffer.
 #
 # Both call sites discard the result, so the fix is confined to the
 # declaration. This replaces a `git =` patch on a personal fork of
 # tree-house, which was deleted (see issue #79); vendoring keeps the build
 # resolvable from this repo alone.
+#
+# build.rs is upstream's, untouched — including the fact that its
+# `cargo:rerun-if-changed` loop covers only the top level of vendor/src and
+# misses vendor/include/ plus the unicode/, portable/, and wasm/
+# subdirectories. That was moot under a `git =` dep (cargo fingerprints those
+# by pinned revision), but a `path =` dep is fingerprinted by these
+# declarations, so a hand edit under those paths would not force a rebuild.
+# Left alone deliberately: patching it would cost the pristine-except-one-
+# file property the recipe above checks, and vendor/ is regenerated wholesale
+# by vendor.sh rather than edited in place. `cargo clean -p
+# tree-house-bindings` forces the rebuild if you ever do edit it by hand.
 #
 # Retire when upstream ships the fix in a release helix depends on. As of
 # 2026-08-16 it is still absent from the newest published version (0.3.2) and

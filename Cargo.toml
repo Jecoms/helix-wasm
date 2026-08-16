@@ -18,8 +18,9 @@ helix-loader = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "hel
 # through on wasm32 — re-exported so embedders can inject and extract files.
 helix-stdx = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1-r3" }
 
-# Transitive dependencies with no wasm32-unknown-unknown support, swapped for
-# the stubs in stubs/. Each stub's Cargo.toml header documents its delta
+# Transitive dependencies swapped for the stubs in stubs/ — all but one
+# because they have no wasm32-unknown-unknown support; the exception is
+# called out inline below. Each stub's Cargo.toml header documents its delta
 # from upstream and why the substitution is safe.
 [patch.crates-io]
 # Vendored copy with the OS terminal layer replaced by a browser bridge —
@@ -34,9 +35,11 @@ nucleo = { path = "stubs/nucleo" }
 which = { path = "stubs/which" }
 libloading = { path = "stubs/libloading" }
 url = { path = "stubs/url" }
-# Vendored copy whose `ts_query_cursor_set_byte_range` extern declaration
-# carries the C function's `bool` return; without it wasm32 traps with
-# signature_mismatch the moment a query cursor runs. See
+# The exception: not a wasm32 gap — an ABI fix. This crate builds for wasm32
+# unpatched. The vendored copy declares `ts_query_cursor_set_byte_range` with
+# the C function's `bool` return; without it wasm32 traps with
+# signature_mismatch the moment a query cursor runs. It also carries the only
+# third-party C in stubs/ (a vendored tree-sitter, see web/NOTICE.md). See
 # stubs/tree-house-bindings/Cargo.toml for the exact delta.
 tree-house-bindings = { path = "stubs/tree-house-bindings" }
 

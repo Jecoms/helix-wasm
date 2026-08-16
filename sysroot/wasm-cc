@@ -3,8 +3,11 @@
 # `CC_wasm32_unknown_unknown` in .cargo/config.toml. Injects the flags the
 # stub sysroot in this directory requires:
 #
-#   -I <this dir>   stub libc headers; enough for tree-sitter's stock build
-#                   script — no vendoring, no fork
+#   -I <this dir>   stub libc headers; enough that tree-sitter's build script
+#                   runs stock — unpatched and unforked. (The tree-sitter C
+#                   it compiles is vendored, in stubs/tree-house-bindings;
+#                   what stays un-vendored here is the libc it builds
+#                   against.)
 #   -D__linux__     tree-sitter's portable/endian.h has no wasm case (it hits
 #                   "#error platform not supported"); defining __linux__ routes
 #                   it to `#include <endian.h>`, which the sysroot provides
