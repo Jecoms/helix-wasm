@@ -246,11 +246,17 @@ fn announce_exit(exit_code: i32) {
         log::error!("failed to write the exit notice: {err}");
     }
 
-    EXIT.with(|slot| {
-        if let Some(handler) = slot.borrow().as_ref() {
-            let _ = handler.call1(&JsValue::NULL, &JsValue::from_f64(exit_code.into()));
-        }
-    });
+    // Take the handler out of the cell before calling into JS, rather than
+    // calling through a live borrow: a handler that re-enters `on_exit` (to
+    // detach itself, say) would otherwise hit `borrow_mut()` on that borrow
+    // and panic — and a wasm32 panic doesn't unwind, so the cell would stay
+    // borrowed for the life of the page. `bridge::Output::flush` copies its
+    // sink out of the mutex first for the same reason. Taking it also makes
+    // this doc's "invoked once" structural instead of incidental.
+    let handler = EXIT.with(|slot| slot.borrow_mut().take());
+    if let Some(handler) = handler {
+        let _ = handler.call1(&JsValue::NULL, &JsValue::from_f64(exit_code.into()));
+    }
 }
 
 /// Registers a callback for helix exiting, invoked once with the exit code.
