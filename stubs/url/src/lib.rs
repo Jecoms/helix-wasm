@@ -2942,8 +2942,10 @@ fn path_to_file_url_segments(
     // Test for the root component directly rather than via `is_absolute()`:
     // on wasm32-unknown-unknown `is_absolute()` is always false
     // (`has_root() && prefix().is_some()`, and only Windows has prefixes),
-    // which would reject every path. Equivalent on the other targets that
-    // compile this function.
+    // which would reject every path. Equivalent on unix/wasi/hermit; on
+    // Redox (also compiled here, unbuilt by this repo) `is_absolute()`
+    // additionally accepts scheme-prefixed rootless paths, so `has_root()`
+    // is the stricter test there.
     if !path.has_root() {
         return Err(());
     }
