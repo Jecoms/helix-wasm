@@ -15,11 +15,20 @@ import init, {
   editor_text,
 } from "helix-web";
 
+// The one color every background surface derives from: xterm's default
+// background (which is also what helix's default cells render with — its
+// base16 fallback theme sets no ui.background, so cells stay on the
+// terminal default) and the partial-cell strips the integer cell grid
+// leaves around the editor. The page background in index.html mirrors this
+// value so those strips blend into the editor instead of framing it.
+const BACKGROUND = "#000000";
+
 const terminal = new Terminal({
   // helix owns the whole grid; there is no history to scroll back to.
   scrollback: 0,
   fontFamily: "'Fira Code', Menlo, Consolas, monospace",
   fontSize: 18,
+  theme: { background: BACKGROUND },
 });
 const fitAddon = new FitAddon();
 terminal.loadAddon(fitAddon);
