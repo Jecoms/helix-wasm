@@ -16,6 +16,19 @@
 # they are freeze points main's history depends on. A changed patch set
 # against the same upstream base gets a revision suffix instead:
 # `helix/<version>-r2`, `-r3`, ... (bare version = r1).
+#
+# The snapshot commit is intentionally unsigned — its SHA must stay
+# deterministic across re-cuts — so this script also cuts a signed
+# annotated tag `helix-<version>` (dash, not slash: a `helix/<version>`
+# tag would make the refname ambiguous with the branch) that supplies the
+# cryptographic attestation for the snapshot.
+#
+# Publishing: the `helix/*` branch and `helix-*` tag namespaces are frozen
+# by creation-only rulesets (snapshot-branches-frozen /
+# snapshot-tags-frozen, no bypass actors): pushing a new ref is allowed,
+# moving or deleting an existing one is refused server-side. The unsigned
+# snapshot commit passes the repo-wide required-signatures ruleset only
+# via its repo-admin bypass, so publishing takes an admin push.
 set -euo pipefail
 
 if [ $# -ne 2 ]; then
@@ -25,6 +38,7 @@ fi
 version=$1
 src=$2
 ref="helix/${version}"
+tag="helix-${version}"
 
 case $version in
 *[/\ ]* | '')
@@ -37,12 +51,14 @@ src_commit=$(git rev-parse --verify "${src}^{commit}")
 tree=$(git rev-parse "${src_commit}^{tree}")
 short=$(git rev-parse --short=8 "$src_commit")
 
-# Provenance label: "<refname>@<sha>" when a ref was passed, bare sha otherwise.
-if [ "$src" = "$src_commit" ] || [ "$src" = "$short" ]; then
-    label=$short
-else
-    label="${src}@${short}"
-fi
+# Provenance label: "<refname>@<sha>" when a ref was passed, bare short sha
+# when the source was given as the sha itself. Prefix match, not equality:
+# --short=8 can widen past 8 chars when abbreviations collide, and any
+# unambiguous hex prefix of the commit should collapse the same way.
+case $src_commit in
+"$src"*) label=$short ;;
+*) label="${src}@${short}" ;;
+esac
 msg="helix ${version} + wasm patch set (source: ${label})"
 
 snapshot=$(
@@ -54,18 +70,53 @@ snapshot=$(
     GIT_COMMITTER_DATE=$(git log -1 --format=%cd --date=raw "$src_commit") \
     git commit-tree "$tree" -m "$msg"
 )
+snapshot_short=$(git rev-parse --short=8 "$snapshot")
 
 # Append-only guard: an existing helix/* ref is never moved. Re-cutting the
 # identical snapshot is a no-op; anything else must pick a new -rN ref.
-for existing in $(git rev-parse --verify --quiet "refs/heads/$ref" || true) \
-                $(git ls-remote origin "refs/heads/$ref" | cut -f1); do
+# Plain assignments on purpose: under set -e/pipefail a failing ls-remote
+# (offline, no remote named origin) aborts the script here instead of
+# silently skipping the remote half of the check.
+local_branch=$(git rev-parse --verify --quiet "refs/heads/$ref" || true)
+remote_branch=$(git ls-remote origin "refs/heads/$ref" | cut -f1)
+for existing in $local_branch $remote_branch; do
     if [ "$existing" != "$snapshot" ]; then
         echo "error: $ref already exists at $existing (would be $snapshot)." >&2
-        echo "Snapshots are append-only; cut a respin ref instead, e.g. helix/${version%-r*}-r2." >&2
+        echo "Snapshots are append-only; cut a respin ref instead:" >&2
+        echo "helix/${version%-r*}-rN, with the next unused -rN suffix." >&2
+        exit 1
+    fi
+done
+
+# Same guard for the attestation tag. Compare peeled targets: each signing
+# produces a distinct tag object, but the commit it points at must match.
+local_tag=$(git rev-parse --verify --quiet "refs/tags/${tag}^{commit}" || true)
+remote_tag=$(git ls-remote origin "refs/tags/$tag" "refs/tags/${tag}^{}" | tail -n1 | cut -f1)
+for existing in $local_tag $remote_tag; do
+    if [ "$existing" != "$snapshot" ]; then
+        echo "error: tag $tag already points at $existing (snapshot is $snapshot)." >&2
+        echo "Tags are append-only too; a respin ref gets its own helix-<version>-rN tag." >&2
         exit 1
     fi
 done
 
 git branch --force "$ref" "$snapshot" # --force is safe: guard above proved same SHA
 echo "cut $ref -> $snapshot (tree $tree)"
-echo "publish it with: git push origin refs/heads/$ref"
+
+if [ -z "$local_tag" ] && [ -z "$remote_tag" ]; then
+    git tag -s "$tag" "$snapshot" -m "helix ${version} + wasm patch set
+
+Signed provenance tag for snapshot branch ${ref} (commit ${snapshot_short}).
+The snapshot commit itself is intentionally unsigned so its SHA stays
+deterministic (reproducible via scripts/snapshot-helix.sh from ${label});
+this tag supplies the cryptographic attestation."
+    echo "cut signed tag $tag -> $snapshot"
+elif [ -z "$local_tag" ]; then
+    echo "note: $tag already exists on origin; fetch it with: git fetch origin tag $tag"
+else
+    echo "note: $tag already exists locally; leaving it as-is"
+fi
+
+echo "publish with: git push origin refs/heads/$ref refs/tags/$tag"
+echo "(the creation-only rulesets accept new snapshot refs; the unsigned"
+echo " snapshot commit needs the required-signatures ruleset's admin bypass)"
