@@ -5,55 +5,17 @@
 // keyboard events, so they exercise the true xterm → `key_event()` path.
 //
 // Boot and the save queue are asynchronous, so every post-action assertion
-// polls (`expect.poll`) instead of reading once.
+// polls (`expect.poll`) instead of reading once. Boot and the read surfaces
+// themselves live in ./helpers.js, shared with tutor.spec.js.
 import { test, expect } from "@playwright/test";
-
-const getState = (page) =>
-  page.evaluate(() => window.helixState.state());
-
-const getText = (page) =>
-  page.evaluate(() => window.helixState.text());
-
-const vfsRead = (page, path) =>
-  page.evaluate((p) => window.helixVfs.read(p), path);
-
-// The rendered terminal, as text. Only the boot test and the theme tests
-// assert on rendered output (this helper or raw xterm cells) — there the
-// pixels are the point: boot proves a statusline drew at all, and the theme
-// tests prove the theme actually painted the screen, which no editor-state
-// read can show. Everything else reads editor state, not pixels (the
-// state-over-scraping rule from the issue #18 inspection API).
-const terminalText = (page) =>
-  page.evaluate(() => {
-    const buffer = window.__helixTerminal.buffer.active;
-    const lines = [];
-    for (let i = 0; i < buffer.length; i += 1) {
-      lines.push(buffer.getLine(i).translateToString(true));
-    }
-    return lines.join("\n");
-  });
-
-// The top-left cell's background as an RGB number, or -1 while it still has
-// the terminal's (non-RGB) default background. Theme tests only — see the
-// note on terminalText.
-const topLeftBg = (page) =>
-  page.evaluate(() => {
-    const cell = window.__helixTerminal.buffer.active.getLine(0).getCell(0);
-    return cell.isBgRGB() ? cell.getBgColor() : -1;
-  });
-
-// Wait out the wasm fetch + instantiation, then make sure keystrokes land in
-// xterm's hidden textarea.
-async function bootEditor(page) {
-  await page.goto("/");
-  await expect
-    .poll(async () => page.evaluate(() => window.helixState?.state()?.mode), {
-      message: "editor did not reach normal mode after boot",
-      timeout: 30_000,
-    })
-    .toBe("normal");
-  await page.locator("#terminal").click();
-}
+import {
+  bootEditor,
+  getState,
+  getText,
+  terminalText,
+  topLeftBg,
+  vfsRead,
+} from "./helpers.js";
 
 test("boots into a normal-mode scratch buffer with a rendered statusline", async ({
   page,

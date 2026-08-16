@@ -5,40 +5,17 @@
 // for the browser-reserved `C-w`, and sample files for the picker. These
 // tests cover only those contested steps, not all 60 tutor sections.
 //
-// Same shape as smoke.spec.js: state comes from `window.helixState`
-// (issue #18), and post-action assertions poll, since the editor's work is
-// asynchronous.
+// Same shape as smoke.spec.js, sharing its plumbing (./helpers.js): state
+// comes from `window.helixState` (issue #18), and post-action assertions
+// poll, since the editor's work is asynchronous.
 import { test, expect } from "@playwright/test";
-
-const getState = (page) => page.evaluate(() => window.helixState.state());
-const getText = (page) => page.evaluate(() => window.helixState.text());
-
-const terminalText = (page) =>
-  page.evaluate(() => {
-    const buffer = window.__helixTerminal.buffer.active;
-    const lines = [];
-    for (let i = 0; i < buffer.length; i += 1) {
-      lines.push(buffer.getLine(i).translateToString(true));
-    }
-    return lines.join("\n");
-  });
+import { bootEditor, getState, getText, terminalText } from "./helpers.js";
 
 // How many views are on screen, counted by their statuslines. The
 // inspection API reports the focused view only, so splits — the whole
 // subject of tutor chapter 13 — can only be seen in the rendered output.
 const viewCount = async (page) =>
   ((await terminalText(page)).match(/\[scratch\]/g) || []).length;
-
-async function bootEditor(page) {
-  await page.goto("/");
-  await expect
-    .poll(async () => page.evaluate(() => window.helixState?.state()?.mode), {
-      message: "editor did not reach normal mode after boot",
-      timeout: 30_000,
-    })
-    .toBe("normal");
-  await page.locator("#terminal").click();
-}
 
 // Types a chord sequence one key at a time. No settle between keys: each
 // `key_event` pushes onto the bridge queue synchronously, so the editor
