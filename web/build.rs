@@ -305,10 +305,16 @@ fn generate_theme_seed(out_dir: &Path) {
 /// The parent theme named by a top-level `inherits = "<name>"` line, if
 /// any. A line-based parse, not a TOML one: the build script has no toml
 /// dependency, and helix's theme files keep `inherits` as a plain
-/// top-level assignment.
+/// top-level assignment. The equivalent quoted-key forms
+/// (`"inherits" = ...`, `'inherits' = ...`) are accepted too, so a style
+/// change in the vendoring source can't silently skip the closure assert.
 fn inherits_parent(text: &str) -> Option<String> {
     for line in text.lines() {
-        let Some(rest) = line.trim_start().strip_prefix("inherits") else {
+        let line = line.trim_start();
+        let Some(rest) = ["inherits", "\"inherits\"", "'inherits'"]
+            .into_iter()
+            .find_map(|key| line.strip_prefix(key))
+        else {
             continue;
         };
         let rest = rest.trim_start();
