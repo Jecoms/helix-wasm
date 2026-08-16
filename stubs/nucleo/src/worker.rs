@@ -19,10 +19,16 @@ impl Matchers {
     // this is not a true mut from ref, we use a cell here
     #[allow(clippy::mut_from_ref)]
     unsafe fn get(&self) -> &mut nucleo_matcher::Matcher {
-        // Slot 0 when not on a rayon worker thread: on native every match
-        // run executes on the dedicated pool (an index is always present);
-        // wasm32 runs inline on the single main thread with a single matcher.
-        &mut *self.0[rayon::current_thread_index().unwrap_or(0)].get()
+        // Native keeps upstream's unwrap: every match run executes on the
+        // dedicated pool, so an index is always present, and an off-pool
+        // call should panic loudly rather than silently alias slot 0.
+        #[cfg(not(target_arch = "wasm32"))]
+        let idx = rayon::current_thread_index().unwrap();
+        // wasm32 runs inline on the single main thread (no rayon worker, no
+        // index) with a single matcher in slot 0.
+        #[cfg(target_arch = "wasm32")]
+        let idx = rayon::current_thread_index().unwrap_or(0);
+        &mut *self.0[idx].get()
     }
 }
 

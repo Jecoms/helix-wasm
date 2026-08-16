@@ -9,10 +9,16 @@
 #     synchronously inside `tick()`
 #   - the parallel iterators and `par_quicksort` inside a match run then
 #     execute through rayon's documented single-threaded global fallback
-#   - `Matchers::get` indexes slot 0 when not on a rayon worker thread
-#     (wasm32's inline run; on native every run is on the pool, as upstream)
+#   - on wasm32 `Matchers::get` indexes slot 0 when not on a rayon worker
+#     thread (the inline run has no worker index); native keeps upstream's
+#     unwrap
+#   - on wasm32 `Worker::new` forces `worker_threads = 1`, discarding any
+#     explicit thread count passed to `Nucleo::new` (upstream honors it;
+#     inline matching has exactly one thread to use)
 # The stub is pure Rust and compiles identically on native, where the native
-# `cargo check` type-checks helix against it.
+# `cargo check` type-checks helix against it. Deltas are gated on
+# `target_arch = "wasm32"` (not this repo's usual `target_family = "wasm"`):
+# vendored stubs keep the upstream-ecosystem cfg style, matching stubs/url.
 [package]
 name = "nucleo"
 version = "0.5.0"
