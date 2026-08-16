@@ -10,7 +10,7 @@ Helix release is a tag bump, not a patch-set rebase.
 | Path | Purpose |
 | --- | --- |
 | `Cargo.toml` | Wrapper workspace: helix crates as git dependencies pinned to the `helix-patched` branch, plus `[patch.crates-io]` stub swaps |
-| `stubs/` | Stand-ins for dependencies with no wasm32 support: transitive crates (`home`, `which`, `libloading`, and `url` with a wasm cfg), vendored copies of `helix-lsp`/`helix-dap` with the server-subprocess machinery removed, and a vendored `crossterm` whose OS terminal layer is replaced by a browser bridge |
+| `stubs/` | Stand-ins for dependencies with no wasm32 support: transitive crates (`home`, `which`, `libloading`, and `url` with a wasm cfg), vendored copies of `helix-lsp`/`helix-dap` with the server-subprocess machinery removed, a vendored `crossterm` whose OS terminal layer is replaced by a browser bridge, and a vendored `nucleo` that runs picker matching inline instead of on a threadpool |
 | `sysroot/` | Stub libc headers, the `wasm-cc` clang shim that lets tree-sitter's stock build script compile its C for wasm32, and the libc shim implementations (`shims.c`, `wctype.c`) the final wasm link needs |
 | `web/` | The browser frontend: a wasm-bindgen cdylib that boots helix-term against the crossterm bridge, plus the xterm.js host page in `web/www/` |
 | `.cargo/config.toml` | Wires `wasm-cc` up as the C compiler for the wasm32 target |
@@ -40,12 +40,25 @@ npm run dev      # serves the demo on a local vite dev server
 
 The demo boots helix into an xterm.js terminal with a scratch buffer, with
 syntax highlighting for a small static grammar set (c, go, java,
-javascript, python, regex, rust, toml — try `:set-language rust`). Nothing persists — see SPIKE-NOTES.md for the
-current limitations. The grammar build fetches pinned parser sources at
+javascript, python, regex, rust, toml — try `:set-language rust`).
+See SPIKE-NOTES.md for the current limitations.
+The grammar build fetches pinned parser sources at
 build time, so it needs network access and `git`. Set `HELIX_WEB_GRAMMARS`
 to a comma-separated subset (e.g. `HELIX_WEB_GRAMMARS=rust,toml wasm-pack
 build web --target web`) to slim the bundle; to add a grammar to the
 catalog, see `GRAMMARS` in `web/build.rs` and `web/queries/README.md`.
+
+### Virtual file system
+
+Documents live in an in-memory virtual file system (`helix_stdx::vfs` on the
+`helix-patched` branch): `:w /notes.txt` saves there, `:o` and the space-f
+file picker (with preview) read from it, and `:reload` picks up outside
+changes. Nothing survives a page reload. The wasm module exports
+`vfs_write` / `vfs_read` / `vfs_list` so an embedding page can inject and
+extract files; the demo page exposes them as `window.helixVfs` — try
+`helixVfs.write("hello.rs", "fn main() {}")` in the devtools console, then
+`:o hello.rs` in the editor. Persistent backends (localStorage/OPFS) can be
+layered on those hooks by the host page.
 
 ## Live demo
 
@@ -53,12 +66,9 @@ The demo deploys to <https://jecoms.github.io/helix-wasm/> via the
 `Deploy web demo` workflow (`.github/workflows/web_demo.yml`), which builds
 the full-catalog bundle and publishes it with `actions/deploy-pages`.
 
-> **Pending the first deploy from `v2`** — until that happens the URL still
-> serves the legacy port's demo. Deploys are gated by the `github-pages`
-> environment's deployment branch policy: a run only deploys if its branch
-> is on the allowed list, so allowing `v2` (repo Settings → Environments →
-> github-pages, or one `gh api` call) is the switch that turns the workflow
-> on.
+Deploys are dispatch-only (`gh workflow run web_demo.yml --ref v2`) and
+gated by the `github-pages` environment's deployment branch policy: a run
+only deploys if its branch is on the allowed list.
 
 ## Branch map
 
@@ -71,7 +81,8 @@ the full-catalog bundle and publishes it with `actions/deploy-pages`.
   helix-term; repairs to helix-view's bit-rotted wasm32 clipboard/terminal
   fallbacks; the web-time clock swap; browser-timeout editor timers; the
   bridge render target; wasm32 fallbacks for the working directory and
-  loader paths; and the wasm32 grammar/query registration API in
-  helix-loader).
+  loader paths; the wasm32 grammar/query registration API in
+  helix-loader; and the `helix_stdx::vfs` virtual file system with the
+  wasm32 document-IO and picker arms that use it).
   Retires as upstream PRs land.
 - `main` — the previous in-tree port, to be archived as `legacy` at the swap.

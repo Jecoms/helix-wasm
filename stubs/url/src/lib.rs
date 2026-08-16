@@ -2939,7 +2939,12 @@ fn path_to_file_url_segments(
     use wasm_os_str_ext::OsStrExt;
     #[cfg(any(unix, target_os = "redox"))]
     use std::os::unix::prelude::OsStrExt;
-    if !path.is_absolute() {
+    // Test for the root component directly rather than via `is_absolute()`:
+    // on wasm32-unknown-unknown `is_absolute()` is always false
+    // (`has_root() && prefix().is_some()`, and only Windows has prefixes),
+    // which would reject every path. Equivalent on the other targets that
+    // compile this function.
+    if !path.has_root() {
         return Err(());
     }
     let host_end = to_u32(serialization.len()).unwrap();
@@ -3089,8 +3094,10 @@ fn file_url_segments_to_pathbuf(
         .map(|path| PathBuf::from(path))
         .map_err(|_| ())?;
 
+    // `has_root()`, not `is_absolute()`: the latter is always false on
+    // wasm32-unknown-unknown (see `path_to_file_url_segments`).
     debug_assert!(
-        path.is_absolute(),
+        path.has_root(),
         "to_file_path() failed to produce an absolute Path"
     );
 
