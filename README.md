@@ -9,12 +9,12 @@ Helix release is a tag bump, not a patch-set rebase.
 
 | Path | Purpose |
 | --- | --- |
-| `Cargo.toml` | Wrapper workspace: helix crates as git dependencies pinned to the frozen `helix/25.07.1` snapshot ref, plus `[patch.crates-io]` stub swaps |
+| `Cargo.toml` | Wrapper workspace: helix crates as git dependencies pinned to a frozen `helix/<version>` snapshot ref, plus `[patch.crates-io]` stub swaps |
 | `stubs/` | Stand-ins for dependencies with no wasm32 support: transitive crates (`home`, `which`, `libloading`, and `url` with a wasm cfg), vendored copies of `helix-lsp`/`helix-dap` with the server-subprocess machinery removed, a vendored `crossterm` whose OS terminal layer is replaced by a browser bridge, and a vendored `nucleo` that runs picker matching inline instead of on a threadpool |
 | `sysroot/` | Stub libc headers, the `wasm-cc` clang shim that lets tree-sitter's stock build script compile its C for wasm32, and the libc shim implementations (`shims.c`, `wctype.c`) the final wasm link needs |
 | `web/` | The browser frontend: a wasm-bindgen cdylib that boots helix-term against the crossterm bridge, plus the xterm.js host page in `web/www/` |
 | `.cargo/config.toml` | Wires `wasm-cc` up as the C compiler for the wasm32 target |
-| `scripts/` | Release tooling: `snapshot-helix.sh` cuts the append-only `helix/<version>` snapshot refs that `Cargo.toml` pins |
+| `scripts/` | Release tooling: `snapshot-helix.sh` cuts the append-only `helix/<version>` snapshot refs that `Cargo.toml` pins, plus their signed `helix-<version>` attestation tags |
 
 ## Building
 
@@ -114,4 +114,14 @@ the allowed list.
   upstream base gets a revision suffix (`helix/25.07.1-r2`, ...). Note: the
   repo also carries upstream's pristine `25.07.1` tag — branch
   `helix/25.07.1` intentionally does **not** match it (patches applied).
+  "Pristine" in the opening above means no helix source is vendored or
+  rewritten in this repo, not byte-identity with the tag: the snapshot is
+  upstream's tree plus the transiting patch set, which retires as its PRs
+  land. Snapshot commits are unsigned by design — a signature would tie
+  the reproducible SHA to a signing key — so each carries a signed
+  annotated tag `helix-<version>` (dash, not slash, which would make the
+  refname ambiguous with the branch) as its attestation. Both namespaces
+  are frozen by creation-only rulesets (`snapshot-branches-frozen` /
+  `snapshot-tags-frozen`, no bypass actors): new snapshot refs can be
+  pushed, existing ones can never be moved or deleted.
 - `legacy` — the previous in-tree port, archived at the swap.
