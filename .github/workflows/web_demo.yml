@@ -1,18 +1,12 @@
 name: Deploy web demo
 
-# This file deliberately keeps the same path as the legacy deploy workflow
-# on `main` (.github/workflows/web_demo.yml): `workflow_dispatch` resolves
-# workflows from the default branch, and sharing the registered path is
-# what lets `gh workflow run web_demo.yml --ref v2` run this branch's
-# version before the v2 -> main swap.
-#
 # Whether a run may actually deploy is decided by the `github-pages`
 # environment's deployment branch policy, not by this file: the deploy job
 # below fails at the environment gate unless the run's branch is on the
-# allowed list.
+# allowed list (currently just `main`).
 
-# Merges to main auto-deploy (added at the v2 -> main swap, issue #33
-# step 6); workflow_dispatch stays for manual/off-cycle deploys.
+# Pushes to main auto-deploy; workflow_dispatch stays for manual/off-cycle
+# deploys.
 on:
   push:
     branches: [main]
