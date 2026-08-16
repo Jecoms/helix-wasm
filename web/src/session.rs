@@ -114,11 +114,10 @@ pub fn start(output: Function, columns: u16, rows: u16) -> Result<(), JsValue> {
 
     // Seed the vendored tutorial text (see ../runtime/README.md) into the
     // vfs so `:tutor` finds it. `runtime_file("tutor")` resolves to a path
-    // under the wasm32 config dir (relative; nothing on wasm32 exists on the
-    // real fs, so the fallback always wins), and the vfs canonicalizes it
-    // against the boot cwd `/` — the same resolution `Editor::open` applies
-    // when the command runs. After a `:cd` the paths diverge and `:tutor`
-    // degrades to helix's normal file-not-found message.
+    // under the wasm32 config dir (absolute; nothing on wasm32 exists on the
+    // real fs, so the fallback always wins), so the seeded key and the path
+    // `Editor::open` resolves when the command runs are the same regardless
+    // of the current `:cd` directory.
     helix_wasm::helix_stdx::vfs::write(
         helix_wasm::helix_loader::runtime_file("tutor"),
         include_str!("../runtime/tutor"),

@@ -2,7 +2,7 @@
 //!
 //! The heavy lifting happens in the manifests: helix crates come in as git
 //! dependencies pinned to an append-only `helix/<version>` snapshot ref
-//! (currently `helix/25.07.1-r2`), a frozen single-commit capture of the
+//! (currently `helix/25.07.1-r3`), a frozen single-commit capture of the
 //! `helix-patched` workbench — the upstream release tag plus
 //! not-yet-upstreamed fixes — and two `[patch]` tables swap in the
 //! stubs from `stubs/`: `[patch.crates-io]` replaces the transitive
