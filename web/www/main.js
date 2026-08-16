@@ -3,7 +3,15 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 // `init` fetches and instantiates the wasm module; the named exports are the
 // unstable JS surface of the `helix-web` crate (web/src/session.rs).
-import init, { start, key_event, paste, resize } from "helix-web";
+import init, {
+  start,
+  key_event,
+  paste,
+  resize,
+  vfs_write,
+  vfs_read,
+  vfs_list,
+} from "helix-web";
 
 const terminal = new Terminal({
   // helix owns the whole grid; there is no history to scroll back to.
@@ -64,3 +72,10 @@ window.addEventListener("resize", () => fitAddon.fit());
 // buffer (text and colors) to assert on rendered output. Not part of the
 // page's own behavior.
 window.__helixTerminal = terminal;
+
+// The virtual file system the editor's documents live in — usable from the
+// devtools console (inject a file, then `:o` it; `:w` saves land here).
+// Like `__helixTerminal` above, also a natural assertion surface for a
+// browser-automation harness. Note `write` throws on paths that name no
+// file (`""`, `"."`, `"/"`, ...).
+window.helixVfs = { write: vfs_write, read: vfs_read, list: vfs_list };

@@ -445,7 +445,7 @@ checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 [[package]]
 name = "helix-core"
 version = "25.7.1"
-source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#0fa3b3d390c92e50a502f41874bd12c2adde2cd9"
+source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#75eb260b385d4e3fb4ee6514dc8157392b3560ae"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -501,7 +501,7 @@ dependencies = [
 [[package]]
 name = "helix-event"
 version = "25.7.1"
-source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#0fa3b3d390c92e50a502f41874bd12c2adde2cd9"
+source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#75eb260b385d4e3fb4ee6514dc8157392b3560ae"
 dependencies = [
  "anyhow",
  "foldhash",
@@ -516,7 +516,7 @@ dependencies = [
 [[package]]
 name = "helix-loader"
 version = "25.7.1"
-source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#0fa3b3d390c92e50a502f41874bd12c2adde2cd9"
+source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#75eb260b385d4e3fb4ee6514dc8157392b3560ae"
 dependencies = [
  "anyhow",
  "cc",
@@ -557,7 +557,7 @@ dependencies = [
 [[package]]
 name = "helix-lsp-types"
 version = "0.95.1"
-source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#0fa3b3d390c92e50a502f41874bd12c2adde2cd9"
+source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#75eb260b385d4e3fb4ee6514dc8157392b3560ae"
 dependencies = [
  "bitflags",
  "serde",
@@ -568,12 +568,12 @@ dependencies = [
 [[package]]
 name = "helix-parsec"
 version = "25.7.1"
-source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#0fa3b3d390c92e50a502f41874bd12c2adde2cd9"
+source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#75eb260b385d4e3fb4ee6514dc8157392b3560ae"
 
 [[package]]
 name = "helix-stdx"
 version = "25.7.1"
-source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#0fa3b3d390c92e50a502f41874bd12c2adde2cd9"
+source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#75eb260b385d4e3fb4ee6514dc8157392b3560ae"
 dependencies = [
  "bitflags",
  "dunce",
@@ -591,7 +591,7 @@ dependencies = [
 [[package]]
 name = "helix-term"
 version = "25.7.1"
-source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#0fa3b3d390c92e50a502f41874bd12c2adde2cd9"
+source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#75eb260b385d4e3fb4ee6514dc8157392b3560ae"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -635,7 +635,7 @@ dependencies = [
 [[package]]
 name = "helix-tui"
 version = "25.7.1"
-source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#0fa3b3d390c92e50a502f41874bd12c2adde2cd9"
+source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#75eb260b385d4e3fb4ee6514dc8157392b3560ae"
 dependencies = [
  "bitflags",
  "cassowary",
@@ -652,7 +652,7 @@ dependencies = [
 [[package]]
 name = "helix-vcs"
 version = "25.7.1"
-source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#0fa3b3d390c92e50a502f41874bd12c2adde2cd9"
+source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#75eb260b385d4e3fb4ee6514dc8157392b3560ae"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -667,7 +667,7 @@ dependencies = [
 [[package]]
 name = "helix-view"
 version = "25.7.1"
-source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#0fa3b3d390c92e50a502f41874bd12c2adde2cd9"
+source = "git+https://github.com/Jecoms/helix-wasm.git?branch=helix-patched#75eb260b385d4e3fb4ee6514dc8157392b3560ae"
 dependencies = [
  "anyhow",
  "arc-swap",
@@ -707,6 +707,7 @@ version = "0.1.0"
 dependencies = [
  "helix-core",
  "helix-loader",
+ "helix-stdx",
  "helix-term",
  "helix-view",
 ]
@@ -1012,8 +1013,6 @@ dependencies = [
 [[package]]
 name = "nucleo"
 version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5262af4c94921c2646c5ac6ff7900c2af9cbb08dc26a797e18130a7019c039d4"
 dependencies = [
  "nucleo-matcher",
  "parking_lot",

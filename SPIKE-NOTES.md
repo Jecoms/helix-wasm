@@ -107,8 +107,10 @@ green and CI-gated:
   `.cargo/config.toml` sets `HELIX_DISABLE_AUTO_GRAMMAR_BUILD=1` since
   the wasm build links its grammar set statically (Phase 3).
 - The rest of term's new dep tree (helix-tui, termini, grep-searcher,
-  ignore, fern, chrono, pulldown-cmark, nucleo, ...) compiled for wasm32
-  as-is.
+  ignore, fern, chrono, pulldown-cmark, ...) compiled for wasm32 as-is —
+  except nucleo, which *compiled* as-is but panics at runtime building its
+  threadpool, and is now `[patch.crates-io]`-swapped for `stubs/nucleo`
+  (see the runtime trap list).
 - Adding helix-term reunified the cargo feature graph: helix-tui requires
   helix-view's `term` feature, and since the wrapper is a single package
   Cargo resolves one feature graph regardless of `-p`, so
@@ -181,17 +183,54 @@ except where noted. Still open for the rest of Phase 3:
     text/markdown, which some browsers download). Deliberately no page UI
     for attribution — MIT's notice condition is satisfied by the notice
     accompanying the distributed assets.
-- **Persistence / virtual storage** — nothing persists; `:w` on a path hits
-  unsupported fs APIs and reports an error. `faccess::readonly()` maps fs
-  errors to `true`, so any buffer opened *from a path* would be read-only;
-  the scratch-buffer demo doesn't hit it. Legacy solved both with
-  `helix-core/src/storage.rs` (localStorage-backed); v2 needs an equivalent
-  that doesn't fork helix-core.
+- ~~**Persistence / virtual storage**~~ — done: document IO goes through
+  `helix_stdx::vfs`, an in-memory virtual file system (Chromium-verified:
+  `:w`, `:o`, `:reload`, space-f picker with preview, JS round-trips). The
+  pieces:
+  - `helix-patched` gained `helix_stdx::vfs` (path-keyed byte store,
+    normalized keys — paths that name no file, like `""` or `/`, are
+    rejected at the boundary — atomic commit-on-flush writer; gated to
+    `cfg(any(wasm32, test))` so it stays host-tested without shipping in
+    native builds) plus wasm32 arms that route through it:
+    `Document::open`/`reload`/`save_impl` in helix-view (saving via
+    `to_writer_sync`, a synchronous sibling of `to_writer` kept
+    byte-identical by the encoding tests, BOM branch included — no tokio
+    fs/runtime on the save path), a vfs-backed `faccess` imp (so `readonly()` stops
+    reporting every path read-only), the file picker listing the vfs
+    instead of walking directories, the picker preview reading vfs
+    documents, and the pickers' `Path::exists` workspace guards skipped
+    (the virtual root exists; real fs can't see it). Legacy's equivalent
+    forked helix-core (`storage.rs`, localStorage-backed); this one lives
+    behind upstreamable wasm32 cfg arms.
+  - The web crate exports `vfs_write` / `vfs_read` / `vfs_list` (kept to
+    the obvious three; #18 owns any richer surface), and the demo page
+    exposes them as `window.helixVfs` for the devtools console and as an
+    assertion surface for browser automation (no harness is committed
+    yet).
+  - Deliberately **in-memory only**: nothing survives a reload. The JS
+    hooks are the extension point — an embedder (or a later slice) can
+    persist to localStorage/OPFS by syncing through them, without another
+    helix-patched change.
+  - Not covered: `:w` skips the native mtime "modified by an external
+    process" check (vfs entries carry no mtimes — a JS write between open
+    and save wins silently); config loading still reads the real fs on
+    every target (`Config::load_default`), so `:config-open` + `:w` saves
+    into the vfs but the result is never loaded (legacy routed this
+    through its storage layer); `:read` always fails (typed.rs guards on
+    a real-fs `path.exists()`); `:mv` silently skips the rename
+    (`Editor::move_path` guards on `old_path.exists()`, so the document
+    repoints while the vfs keeps the old key — the sharpest of these);
+    the file *explorer* (space-e) and global search still walk the real
+    fs and degrade to errors/empty; command-line path completion
+    completes nothing (real fs readdir).
 - **No tokio runtime is entered** — `AsyncHook` workers check
   `Handle::try_current()` and silently don't spawn (completion debounce,
   signature help, auto-save stay inert; harmless without LSP). Code paths
-  that `tokio::spawn` unconditionally (`Jobs::add` for non-wait jobs, saves)
-  panic if reached; same exposure the legacy port shipped with.
+  that `tokio::spawn` unconditionally (`Jobs::add` for non-wait jobs)
+  panic if reached; same exposure the legacy port shipped with. Saves are
+  no longer in this bucket: the save future runs on the main task via the
+  editor's `save_queue` and its wasm32 arm is synchronous vfs IO, so `:w`
+  needs no runtime.
 
 ## Known runtime traps (Phase 3, compile ≠ run)
 
@@ -212,10 +251,27 @@ except where noted. Still open for the rest of Phase 3:
     it would force cfg-gated `use` statements through shared code. The
     deliberate cost is that native dependency graphs gain the (inert)
     web-time crate — the one softening of the "native untouched" framing.
-- `faccess::readonly()` maps fs errors to `true` → every buffer opened from
-  a path would be read-only in the browser; virtual storage must intercept
-  fs paths (see legacy `helix-core/src/storage.rs`). Not hit by the
-  scratch-buffer demo.
+- ~~`faccess::readonly()` maps fs errors to `true`~~ → resolved on
+  `helix-patched`: a wasm32 `faccess` imp answers from `helix_stdx::vfs`
+  (always writable, exists = in the store).
+- std path/fs queries lie on wasm32-unknown-unknown — anything gating on
+  them silently takes the wrong branch. Two distinct bites:
+  `Path::is_absolute()` is **always false** (`has_root() &&
+  prefix().is_some()`, and only Windows has prefixes), so the url stub's
+  `from_file_path` rejected every path (`Document::identifier()` then
+  unwrapped None and panicked on the second `:w`); and `Path::exists()`
+  is **always false** (std::fs is unsupported), so the pickers' workspace
+  guards never passed. Fixed with `has_root()` in the url stub and
+  cfg-gated guards on `helix-patched`; audit any new
+  `is_absolute`/`exists` call sites that wasm code can reach.
+- ~~nucleo's matcher threadpool~~ → `Nucleo::new` builds a dedicated rayon
+  pool, and rayon can build **no custom pool** on wasm32 (thread spawn
+  unsupported) — every Picker construction panicked. Resolved by
+  `[patch.crates-io]` → `stubs/nucleo`, a vendored 0.5.0 whose pool
+  wrapper runs match jobs inline on wasm32 (the par_iters inside then use
+  rayon's documented single-threaded global fallback). Note rayon's
+  fallback only covers the *global* pool — `ThreadPoolBuilder::build()`
+  always errors on wasm.
 - ~~`crossterm::bridge` starts at a static 80x24~~ → the web frontend's
   `start()` calls `bridge::set_size()` and injects `Event::Resize` before
   the first render. The trap remains for other embedders: size the bridge
@@ -246,6 +302,8 @@ except where noted. Still open for the rest of Phase 3:
 - `helix-patched` — helix at tag + the not-yet-upstreamed fixes (faccess,
   tokio feature trims, web-time clocks, browser timers, bridge render
   target, loader/env fallbacks, wasm32 grammar/query registration in
-  helix-loader); Cargo git-deps point here until upstream PRs land.
+  helix-loader, the `helix_stdx::vfs` virtual file system and the wasm32
+  document-IO/picker arms that use it); Cargo git-deps point here until
+  upstream PRs land.
 - `legacy` (to create from current `main`) — the old in-tree port;
   reference for crossterm shim, storage, backend wiring, wasm-sysroot.

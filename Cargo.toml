@@ -14,6 +14,9 @@ helix-view = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix
 # feature); the crossterm it gets is the browser shim swapped in below.
 helix-term = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix-patched", default-features = false }
 helix-loader = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix-patched" }
+# For `helix_stdx::vfs`, the in-memory virtual file system document IO goes
+# through on wasm32 — re-exported so embedders can inject and extract files.
+helix-stdx = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix-patched" }
 
 # Transitive dependencies with no wasm32-unknown-unknown support, swapped for
 # the stubs in stubs/. See SPIKE-NOTES.md for why each is safe to stub.
@@ -23,6 +26,10 @@ helix-loader = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "hel
 # wasm frontend feeds. See stubs/crossterm/Cargo.toml for the exact delta.
 crossterm = { path = "stubs/crossterm" }
 home = { path = "stubs/home" }
+# Vendored copy whose matcher threadpool is optional: pickers' match runs
+# execute inline on wasm32, where rayon can build no custom pool. See
+# stubs/nucleo/Cargo.toml for the exact delta.
+nucleo = { path = "stubs/nucleo" }
 which = { path = "stubs/which" }
 libloading = { path = "stubs/libloading" }
 url = { path = "stubs/url" }

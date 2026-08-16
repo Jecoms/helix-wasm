@@ -18,6 +18,10 @@ mod grammars;
 mod keys;
 #[cfg(target_family = "wasm")]
 mod session;
+#[cfg(target_family = "wasm")]
+mod vfs;
 
 #[cfg(target_family = "wasm")]
 pub use session::*;
+#[cfg(target_family = "wasm")]
+pub use vfs::*;
