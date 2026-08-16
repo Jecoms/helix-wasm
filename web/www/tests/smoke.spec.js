@@ -134,6 +134,20 @@ test("page background matches the terminal's, with no phantom scrollbar (issue #
     .toEqual({ w: 600, h: 400 });
 });
 
+test(":tutor opens the tutorial in a pathless buffer", async ({ page }) => {
+  await bootEditor(page);
+
+  await page.keyboard.type(":tutor");
+  await page.keyboard.press("Enter");
+
+  await expect
+    .poll(() => getText(page))
+    .toContain("Welcome to the Helix tutorial!");
+  // The command unsets the document path (`set_path(None)`), so a plain `:w`
+  // cannot clobber the seeded tutor file.
+  expect((await getState(page)).path).toBeUndefined();
+});
+
 test(":w names the buffer in the vfs; live text diverges until re-saved", async ({
   page,
 }) => {

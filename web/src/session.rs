@@ -92,8 +92,20 @@ pub fn start(output: Function, columns: u16, rows: u16) -> Result<(), JsValue> {
     let mouse = config.editor.mouse;
     let lang_loader = helix_wasm::helix_core::config::default_lang_loader();
 
-    // Default args: no files, so helix opens a scratch buffer. (--tutor needs
-    // a runtime-directory read that has no backing storage here yet.)
+    // Seed the vendored tutorial text (see ../runtime/README.md) into the
+    // vfs so `:tutor` finds it. `runtime_file("tutor")` resolves to a path
+    // under the wasm32 config dir (relative; nothing on wasm32 exists on the
+    // real fs, so the fallback always wins), and the vfs canonicalizes it
+    // against the boot cwd `/` — the same resolution `Editor::open` applies
+    // when the command runs. After a `:cd` the paths diverge and `:tutor`
+    // degrades to helix's normal file-not-found message.
+    helix_wasm::helix_stdx::vfs::write(
+        helix_wasm::helix_loader::runtime_file("tutor"),
+        include_str!("../runtime/tutor"),
+    )
+    .map_err(|err| JsValue::from_str(&format!("failed to seed the tutor file: {err}")))?;
+
+    // Default args: no files, so helix opens a scratch buffer.
     let app = Application::new(Args::default(), config, lang_loader)
         .map_err(|err| JsValue::from_str(&format!("failed to initialize helix: {err}")))?;
 
