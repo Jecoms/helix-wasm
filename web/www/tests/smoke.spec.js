@@ -161,6 +161,32 @@ test(":tutor opens the tutorial in a pathless buffer", async ({ page }) => {
   expect((await getState(page)).path).toBeUndefined();
 });
 
+test(":tutor still opens after a :cd away from the boot cwd (issue #60)", async ({
+  page,
+}) => {
+  await bootEditor(page);
+
+  // Move the virtual cwd off the boot cwd `/`. The relative `:w` proves the
+  // cwd really changed — the document takes its path under the new
+  // directory — so the `:tutor` below can't pass vacuously.
+  await page.keyboard.type(":cd /elsewhere");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type(":w proof.txt");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => getState(page).then((s) => s.path))
+    .toBe("/elsewhere/proof.txt");
+
+  // The wasm32 runtime dir is absolute, so `runtime_file("tutor")` resolves
+  // to the same vfs key the boot seeding wrote, regardless of the cwd.
+  await page.keyboard.type(":tutor");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => getText(page))
+    .toContain("Welcome to the Helix tutorial!");
+  expect((await getState(page)).path).toBeUndefined();
+});
+
 test(":w names the buffer in the vfs; live text diverges until re-saved", async ({
   page,
 }) => {
@@ -229,4 +255,30 @@ test("a theme using inherits resolves through its parent", async ({
   await page.keyboard.type(":theme catppuccin_latte");
   await page.keyboard.press("Enter");
   await expect.poll(() => topLeftBg(page)).toBe(0xeff1f5);
+});
+
+test(":theme still applies after a :cd away from the boot cwd (issue #60)", async ({
+  page,
+}) => {
+  await bootEditor(page);
+
+  // Same mechanism as the `:tutor` regression above: the themes are seeded
+  // under `runtime_dirs()[0]/themes` at boot (cwd `/`), so before the r3
+  // absolute-path fix a relative runtime dir made the loader search under the
+  // *current* cwd and miss them. The relative `:w` proves the cwd really
+  // moved, so the `:theme` below can't pass vacuously.
+  await page.keyboard.type(":cd /elsewhere");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type(":w proof.txt");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => getState(page).then((s) => s.path))
+    .toBe("/elsewhere/proof.txt");
+
+  // A theme the loader can't find is refused silently, leaving the default
+  // background — so gruvbox's bg0 landing in the top-left cell is the proof
+  // it resolved the seeded file from the new cwd.
+  await page.keyboard.type(":theme gruvbox");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => topLeftBg(page)).toBe(0x282828);
 });

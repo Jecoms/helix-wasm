@@ -1,4 +1,4 @@
-# Vendored copy of upstream helix-dap 25.07.1 (from the `helix/25.07.1-r2`
+# Vendored copy of upstream helix-dap 25.07.1 (from the `helix/25.07.1-r3`
 # snapshot) with the debug-adapter subprocess/TCP machinery removed so the
 # crate builds for wasm32-unknown-unknown. The full client.rs delta vs
 # upstream:
@@ -23,8 +23,8 @@ license = "MPL-2.0"
 publish = false
 
 [dependencies]
-helix-stdx = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1-r2" }
-helix-core = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1-r2" }
+helix-stdx = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1-r3" }
+helix-core = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1-r3" }
 
 anyhow = "1.0"
 log = "0.4"
