@@ -581,23 +581,46 @@ impl<T: 'static + Send + Sync, D: 'static + Send + Sync> Picker<T, D> {
                 }
 
                 if self.preview_cache.contains_key(path) {
-                    // NOTE: we use `HashMap::get_key_value` here instead of indexing so we can
-                    // retrieve the `Arc<Path>` key. The `path` in scope here is a `&Path` and
-                    // we can cheaply clone the key for the preview highlight handler.
-                    let (path, preview) = self.preview_cache.get_key_value(path).unwrap();
-                    if matches!(preview, CachedPreview::Document(doc) if doc.syntax().is_none()) {
-                        helix_event::send_blocking(&self.preview_highlight_handler, path.clone());
+                    #[cfg(not(target_arch = "wasm32"))]
+                    {
+                        // NOTE: we use `HashMap::get_key_value` here instead of indexing so we can
+                        // retrieve the `Arc<Path>` key. The `path` in scope here is a `&Path` and
+                        // we can cheaply clone the key for the preview highlight handler.
+                        let (path, preview) = self.preview_cache.get_key_value(path).unwrap();
+                        if matches!(preview, CachedPreview::Document(doc) if doc.syntax().is_none())
+                        {
+                            helix_event::send_blocking(&self.preview_highlight_handler, path.clone());
+                        }
+                        return Some((Preview::Cached(preview), range));
                     }
-                    return Some((Preview::Cached(preview), range));
+                    // wasm32: no resend to the highlight hook — its worker only
+                    // runs inside a tokio runtime, so cached documents never
+                    // gain a syntax tree and every render would push into the
+                    // hook's bounded channel until `send_blocking` panics.
+                    #[cfg(target_arch = "wasm32")]
+                    return Some((Preview::Cached(self.preview_cache.get(path).unwrap()), range));
                 }
 
                 let path: Arc<Path> = path.into();
-                // wasm32 has no fs metadata: anything in the virtual file
-                // system is a previewable text file (`Document::open` reads
-                // from it there), everything else does not exist.
+                // wasm32 has no fs metadata: answer from the virtual file
+                // system instead — anything stored there and passing the same
+                // size cap and binary sniff as the native arm below is a
+                // previewable text file (`Document::open` reads from the vfs
+                // there), everything else does not exist. The guards matter
+                // more here, not less: decoding and language detection run
+                // synchronously on the single browser thread.
                 #[cfg(target_arch = "wasm32")]
-                let preview = if helix_stdx::vfs::exists(&path) {
-                    Document::open(
+                let preview = match helix_stdx::vfs::read(&path) {
+                    Ok(bytes) if bytes.len() as u64 > MAX_FILE_SIZE_FOR_PREVIEW => {
+                        CachedPreview::LargeFile
+                    }
+                    Ok(bytes)
+                        if content_inspector::inspect(&bytes[..bytes.len().min(1024)])
+                            .is_binary() =>
+                    {
+                        CachedPreview::Binary
+                    }
+                    Ok(_) => Document::open(
                         &path,
                         None,
                         false,
@@ -608,17 +631,14 @@ impl<T: 'static + Send + Sync, D: 'static + Send + Sync> Picker<T, D> {
                         let loader = editor.syn_loader.load();
                         if let Some(language_config) = doc.detect_language_config(&loader) {
                             doc.language = Some(language_config);
-                            // Asynchronously highlight the new document
-                            helix_event::send_blocking(
-                                &self.preview_highlight_handler,
-                                path.clone(),
-                            );
+                            // No send to the highlight hook: without a tokio
+                            // runtime its worker never runs (see the cached
+                            // branch above), so the preview stays unhighlighted.
                         }
                         CachedPreview::Document(Box::new(doc))
                     })
-                    .unwrap_or(CachedPreview::NotFound)
-                } else {
-                    CachedPreview::NotFound
+                    .unwrap_or(CachedPreview::NotFound),
+                    Err(_) => CachedPreview::NotFound,
                 };
                 #[cfg(not(target_arch = "wasm32"))]
                 let preview = std::fs::metadata(&path)
