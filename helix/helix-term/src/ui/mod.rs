@@ -193,10 +193,10 @@ pub struct FilePickerData {
 type FilePicker = Picker<PathBuf, FilePickerData>;
 
 pub fn file_picker(editor: &Editor, root: PathBuf) -> FilePicker {
+    #[cfg(not(target_arch = "wasm32"))]
     use ignore::{types::TypesBuilder, WalkBuilder};
     use web_time::Instant;
 
-    let config = editor.config();
     let data = FilePickerData {
         root: root.clone(),
         directory_style: editor.theme.get("ui.text.directory"),
@@ -204,45 +204,57 @@ pub fn file_picker(editor: &Editor, root: PathBuf) -> FilePicker {
 
     let now = Instant::now();
 
-    let dedup_symlinks = config.file_picker.deduplicate_links;
-    let absolute_root = root.canonicalize().unwrap_or_else(|_| root.clone());
+    #[cfg(not(target_arch = "wasm32"))]
+    let mut files = {
+        let config = editor.config();
+        let dedup_symlinks = config.file_picker.deduplicate_links;
+        let absolute_root = root.canonicalize().unwrap_or_else(|_| root.clone());
 
-    let mut walk_builder = WalkBuilder::new(&root);
-    walk_builder
-        .hidden(config.file_picker.hidden)
-        .parents(config.file_picker.parents)
-        .ignore(config.file_picker.ignore)
-        .follow_links(config.file_picker.follow_symlinks)
-        .git_ignore(config.file_picker.git_ignore)
-        .git_global(config.file_picker.git_global)
-        .git_exclude(config.file_picker.git_exclude)
-        .sort_by_file_name(|name1, name2| name1.cmp(name2))
-        .max_depth(config.file_picker.max_depth)
-        .filter_entry(move |entry| filter_picker_entry(entry, &absolute_root, dedup_symlinks));
+        let mut walk_builder = WalkBuilder::new(&root);
+        walk_builder
+            .hidden(config.file_picker.hidden)
+            .parents(config.file_picker.parents)
+            .ignore(config.file_picker.ignore)
+            .follow_links(config.file_picker.follow_symlinks)
+            .git_ignore(config.file_picker.git_ignore)
+            .git_global(config.file_picker.git_global)
+            .git_exclude(config.file_picker.git_exclude)
+            .sort_by_file_name(|name1, name2| name1.cmp(name2))
+            .max_depth(config.file_picker.max_depth)
+            .filter_entry(move |entry| filter_picker_entry(entry, &absolute_root, dedup_symlinks));
 
-    walk_builder.add_custom_ignore_filename(helix_loader::config_dir().join("ignore"));
-    walk_builder.add_custom_ignore_filename(".helix/ignore");
+        walk_builder.add_custom_ignore_filename(helix_loader::config_dir().join("ignore"));
+        walk_builder.add_custom_ignore_filename(".helix/ignore");
 
-    // We want to exclude files that the editor can't handle yet
-    let mut type_builder = TypesBuilder::new();
-    type_builder
-        .add(
-            "compressed",
-            "*.{zip,gz,bz2,zst,lzo,sz,tgz,tbz2,lz,lz4,lzma,lzo,z,Z,xz,7z,rar,cab}",
-        )
-        .expect("Invalid type definition");
-    type_builder.negate("all");
-    let excluded_types = type_builder
-        .build()
-        .expect("failed to build excluded_types");
-    walk_builder.types(excluded_types);
-    let mut files = walk_builder.build().filter_map(|entry| {
-        let entry = entry.ok()?;
-        if !entry.file_type()?.is_file() {
-            return None;
-        }
-        Some(entry.into_path())
-    });
+        // We want to exclude files that the editor can't handle yet
+        let mut type_builder = TypesBuilder::new();
+        type_builder
+            .add(
+                "compressed",
+                "*.{zip,gz,bz2,zst,lzo,sz,tgz,tbz2,lz,lz4,lzma,lzo,z,Z,xz,7z,rar,cab}",
+            )
+            .expect("Invalid type definition");
+        type_builder.negate("all");
+        let excluded_types = type_builder
+            .build()
+            .expect("failed to build excluded_types");
+        walk_builder.types(excluded_types);
+        walk_builder.build().filter_map(|entry| {
+            let entry = entry.ok()?;
+            if !entry.file_type()?.is_file() {
+                return None;
+            }
+            Some(entry.into_path())
+        })
+    };
+    // wasm32 has no directories to walk: list the virtual file system.
+    #[cfg(target_arch = "wasm32")]
+    let mut files = {
+        let root = root.clone();
+        helix_stdx::vfs::list()
+            .into_iter()
+            .filter(move |path| path.starts_with(&root))
+    };
     log::debug!("file_picker init {:?}", Instant::now().duration_since(now));
 
     let columns = [PickerColumn::new(

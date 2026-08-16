@@ -14,7 +14,9 @@ use helix_core::syntax::config::LanguageServerFeature;
 use helix_core::text_annotations::{InlineAnnotation, Overlay};
 use helix_event::TaskController;
 use helix_lsp::util::lsp_pos_to_pos;
-use helix_stdx::faccess::{copy_metadata, readonly};
+#[cfg(not(target_arch = "wasm32"))]
+use helix_stdx::faccess::copy_metadata;
+use helix_stdx::faccess::readonly;
 use helix_vcs::{DiffHandle, DiffProviderRegistry};
 use once_cell::sync::OnceCell;
 use thiserror;
@@ -681,6 +683,67 @@ pub async fn to_writer<'a, W: tokio::io::AsyncWriteExt + Unpin + ?Sized>(
     Ok(())
 }
 
+// The synchronous wasm32 counterpart of `to_writer()` above: there is no
+// async file IO (or tokio runtime with IO support) on wasm32, writers there
+// are in-memory `std::io::Write` implementors like `helix_stdx::vfs`. Also
+// compiled on the host under `cfg(test)` so its chunked encoding can be
+// verified against the async version (hence the distinct name).
+#[cfg(any(target_arch = "wasm32", test))]
+pub fn to_writer_sync<W: std::io::Write + ?Sized>(
+    writer: &mut W,
+    encoding_with_bom_info: (&'static Encoding, bool),
+    rope: &Rope,
+) -> Result<(), Error> {
+    let (encoding, has_bom) = encoding_with_bom_info;
+
+    let iter = rope
+        .chunks()
+        .filter(|c| !c.is_empty())
+        .chain(std::iter::once(""));
+    let mut buf = [0u8; BUF_SIZE];
+
+    let mut total_written = if has_bom {
+        apply_bom(encoding, &mut buf)
+    } else {
+        0
+    };
+
+    let mut encoder = Encoder::from_encoding(encoding);
+
+    for chunk in iter {
+        let is_empty = chunk.is_empty();
+        let mut total_read = 0usize;
+
+        loop {
+            let (result, read, written, ..) =
+                encoder.encode_from_utf8(&chunk[total_read..], &mut buf[total_written..], is_empty);
+
+            total_read += read;
+            total_written += written;
+            match result {
+                encoding::CoderResult::InputEmpty => {
+                    debug_assert_eq!(chunk.len(), total_read);
+                    debug_assert!(buf.len() >= total_written);
+                    break;
+                }
+                encoding::CoderResult::OutputFull => {
+                    debug_assert!(chunk.len() > total_read);
+                    writer.write_all(&buf[..total_written])?;
+                    total_written = 0;
+                }
+            }
+        }
+
+        if is_empty {
+            writer.write_all(&buf[..total_written])?;
+            writer.flush()?;
+            break;
+        }
+    }
+
+    Ok(())
+}
+
 fn take_with<T, F>(mut_ref: &mut T, f: F)
 where
     T: Default,
@@ -776,9 +839,17 @@ impl Document {
         encoding = encoding.or(editor_config.encoding);
 
         // Open the file if it exists, otherwise assume it is a new file (and thus empty).
-        let (rope, encoding, has_bom) = if path.exists() {
-            let mut file = std::fs::File::open(path)?;
-            from_reader(&mut file, encoding)?
+        #[cfg(not(target_arch = "wasm32"))]
+        let exists = path.exists();
+        // wasm32 has no file system; documents live in the virtual one.
+        #[cfg(target_arch = "wasm32")]
+        let exists = helix_stdx::vfs::exists(path);
+        let (rope, encoding, has_bom) = if exists {
+            #[cfg(not(target_arch = "wasm32"))]
+            let mut reader = std::fs::File::open(path)?;
+            #[cfg(target_arch = "wasm32")]
+            let mut reader = helix_stdx::vfs::reader(path)?;
+            from_reader(&mut reader, encoding)?
         } else {
             let line_ending = editor_config
                 .line_ending
@@ -1005,131 +1076,149 @@ impl Document {
 
         // We encode the file according to the `Document`'s encoding.
         let future = async move {
-            use tokio::fs;
-            if let Some(parent) = path.parent() {
-                // TODO: display a prompt asking the user if the directories should be created
-                if !parent.exists() {
-                    if force {
-                        std::fs::DirBuilder::new().recursive(true).create(parent)?;
-                    } else {
-                        bail!("can't save file, parent directory does not exist (use :w! to create it)");
-                    }
-                }
-            }
-
-            // Protect against overwriting changes made externally
-            if !force {
-                if let Ok(metadata) = fs::metadata(&path).await {
-                    if let Ok(mtime) = metadata.modified().map(from_std_system_time) {
-                        if last_saved_time < mtime {
-                            bail!("file modified by an external process, use :w! to overwrite");
+            #[cfg(not(target_arch = "wasm32"))]
+            let save_time = {
+                use tokio::fs;
+                if let Some(parent) = path.parent() {
+                    // TODO: display a prompt asking the user if the directories should be created
+                    if !parent.exists() {
+                        if force {
+                            std::fs::DirBuilder::new().recursive(true).create(parent)?;
+                        } else {
+                            bail!("can't save file, parent directory does not exist (use :w! to create it)");
                         }
                     }
                 }
-            }
-            let write_path = tokio::fs::read_link(&path)
-                .await
-                .ok()
-                .and_then(|p| {
-                    if p.is_relative() {
-                        path.parent().map(|parent| parent.join(p))
-                    } else {
-                        Some(p)
+
+                // Protect against overwriting changes made externally
+                if !force {
+                    if let Ok(metadata) = fs::metadata(&path).await {
+                        if let Ok(mtime) = metadata.modified().map(from_std_system_time) {
+                            if last_saved_time < mtime {
+                                bail!("file modified by an external process, use :w! to overwrite");
+                            }
+                        }
                     }
-                })
-                .unwrap_or_else(|| path.clone());
+                }
+                let write_path = tokio::fs::read_link(&path)
+                    .await
+                    .ok()
+                    .and_then(|p| {
+                        if p.is_relative() {
+                            path.parent().map(|parent| parent.join(p))
+                        } else {
+                            Some(p)
+                        }
+                    })
+                    .unwrap_or_else(|| path.clone());
 
-            if readonly(&write_path) {
-                bail!(std::io::Error::new(
-                    std::io::ErrorKind::PermissionDenied,
-                    "Path is read only"
-                ));
-            }
+                if readonly(&write_path) {
+                    bail!(std::io::Error::new(
+                        std::io::ErrorKind::PermissionDenied,
+                        "Path is read only"
+                    ));
+                }
 
-            // Assume it is a hardlink to prevent data loss if the metadata cant be read (e.g. on certain Windows configurations)
-            let is_hardlink = helix_stdx::faccess::hardlink_count(&write_path).unwrap_or(2) > 1;
-            let backup = if path.exists() && atomic_save {
-                let path_ = write_path.clone();
-                // hacks: we use tempfile to handle the complex task of creating
-                // non clobbered temporary path for us we don't want
-                // the whole automatically delete path on drop thing
-                // since the path doesn't exist yet, we just want
-                // the path
-                tokio::task::spawn_blocking(move || -> Option<PathBuf> {
-                    let mut builder = tempfile::Builder::new();
-                    builder.prefix(path_.file_name()?).suffix(".bck");
+                // Assume it is a hardlink to prevent data loss if the metadata cant be read (e.g. on certain Windows configurations)
+                let is_hardlink = helix_stdx::faccess::hardlink_count(&write_path).unwrap_or(2) > 1;
+                let backup = if path.exists() && atomic_save {
+                    let path_ = write_path.clone();
+                    // hacks: we use tempfile to handle the complex task of creating
+                    // non clobbered temporary path for us we don't want
+                    // the whole automatically delete path on drop thing
+                    // since the path doesn't exist yet, we just want
+                    // the path
+                    tokio::task::spawn_blocking(move || -> Option<PathBuf> {
+                        let mut builder = tempfile::Builder::new();
+                        builder.prefix(path_.file_name()?).suffix(".bck");
 
-                    let backup_path = if is_hardlink {
-                        builder
-                            .make_in(path_.parent()?, |backup| std::fs::copy(&path_, backup))
-                            .ok()?
-                            .into_temp_path()
-                    } else {
-                        builder
-                            .make_in(path_.parent()?, |backup| std::fs::rename(&path_, backup))
-                            .ok()?
-                            .into_temp_path()
-                    };
+                        let backup_path = if is_hardlink {
+                            builder
+                                .make_in(path_.parent()?, |backup| std::fs::copy(&path_, backup))
+                                .ok()?
+                                .into_temp_path()
+                        } else {
+                            builder
+                                .make_in(path_.parent()?, |backup| std::fs::rename(&path_, backup))
+                                .ok()?
+                                .into_temp_path()
+                        };
 
-                    backup_path.keep().ok()
-                })
-                .await
-                .ok()
-                .flatten()
-            } else {
-                None
-            };
+                        backup_path.keep().ok()
+                    })
+                    .await
+                    .ok()
+                    .flatten()
+                } else {
+                    None
+                };
 
-            let write_result: anyhow::Result<_> = async {
-                let mut dst = tokio::fs::File::create(&write_path).await?;
-                to_writer(&mut dst, encoding_with_bom_info, &text).await?;
-                dst.sync_all().await?;
-                Ok(())
-            }
-            .await;
+                let write_result: anyhow::Result<_> = async {
+                    let mut dst = tokio::fs::File::create(&write_path).await?;
+                    to_writer(&mut dst, encoding_with_bom_info, &text).await?;
+                    dst.sync_all().await?;
+                    Ok(())
+                }
+                .await;
 
-            let save_time = match fs::metadata(&write_path).await {
-                Ok(metadata) => metadata
-                    .modified()
-                    .map_or(SystemTime::now(), from_std_system_time),
-                Err(_) => SystemTime::now(),
-            };
+                let save_time = match fs::metadata(&write_path).await {
+                    Ok(metadata) => metadata
+                        .modified()
+                        .map_or(SystemTime::now(), from_std_system_time),
+                    Err(_) => SystemTime::now(),
+                };
 
-            if let Some(backup) = backup {
-                if is_hardlink {
-                    let mut delete = true;
-                    if write_result.is_err() {
-                        // Restore backup
-                        let _ = tokio::fs::copy(&backup, &write_path).await.map_err(|e| {
-                            delete = false;
+                if let Some(backup) = backup {
+                    if is_hardlink {
+                        let mut delete = true;
+                        if write_result.is_err() {
+                            // Restore backup
+                            let _ = tokio::fs::copy(&backup, &write_path).await.map_err(|e| {
+                                delete = false;
+                                log::error!("Failed to restore backup on write failure: {e}")
+                            });
+                        }
+
+                        if delete {
+                            // Delete backup
+                            let _ = tokio::fs::remove_file(backup).await.map_err(|e| {
+                                log::error!("Failed to remove backup file on write: {e}")
+                            });
+                        }
+                    } else if write_result.is_err() {
+                        // restore backup
+                        let _ = tokio::fs::rename(&backup, &write_path).await.map_err(|e| {
                             log::error!("Failed to restore backup on write failure: {e}")
                         });
+                    } else {
+                        // copy metadata and delete backup
+                        let _ = tokio::task::spawn_blocking(move || {
+                            let _ = copy_metadata(&backup, &write_path)
+                                .map_err(|e| log::error!("Failed to copy metadata on write: {e}"));
+                            let _ = std::fs::remove_file(backup).map_err(|e| {
+                                log::error!("Failed to remove backup file on write: {e}")
+                            });
+                        })
+                        .await;
                     }
-
-                    if delete {
-                        // Delete backup
-                        let _ = tokio::fs::remove_file(backup)
-                            .await
-                            .map_err(|e| log::error!("Failed to remove backup file on write: {e}"));
-                    }
-                } else if write_result.is_err() {
-                    // restore backup
-                    let _ = tokio::fs::rename(&backup, &write_path)
-                        .await
-                        .map_err(|e| log::error!("Failed to restore backup on write failure: {e}"));
-                } else {
-                    // copy metadata and delete backup
-                    let _ = tokio::task::spawn_blocking(move || {
-                        let _ = copy_metadata(&backup, &write_path)
-                            .map_err(|e| log::error!("Failed to copy metadata on write: {e}"));
-                        let _ = std::fs::remove_file(backup)
-                            .map_err(|e| log::error!("Failed to remove backup file on write: {e}"));
-                    })
-                    .await;
                 }
-            }
 
-            write_result?;
+                write_result?;
+
+                save_time
+            };
+
+            // wasm32 has no file system (and no tokio IO): write synchronously
+            // to the in-memory virtual file system instead. Nothing external
+            // can race a write there, so the mtime check and the backup dance
+            // above do not apply.
+            #[cfg(target_arch = "wasm32")]
+            let save_time = {
+                let _ = (force, atomic_save, last_saved_time);
+                let mut writer = helix_stdx::vfs::writer(&path);
+                to_writer_sync(&mut writer, encoding_with_bom_info, &text)?;
+                SystemTime::now()
+            };
 
             let event = DocumentSavedEvent {
                 revision: current_rev,
@@ -1238,17 +1327,26 @@ impl Document {
         let encoding = self.encoding;
         let path = match self.path() {
             None => return Ok(()),
-            Some(path) => match path.exists() {
-                true => path.to_owned(),
-                false => bail!("can't find file to reload from {:?}", self.display_name()),
-            },
+            Some(path) => {
+                #[cfg(not(target_arch = "wasm32"))]
+                let exists = path.exists();
+                #[cfg(target_arch = "wasm32")]
+                let exists = helix_stdx::vfs::exists(path);
+                match exists {
+                    true => path.to_owned(),
+                    false => bail!("can't find file to reload from {:?}", self.display_name()),
+                }
+            }
         };
 
         // Once we have a valid path we check if its readonly status has changed
         self.detect_readonly();
 
-        let mut file = std::fs::File::open(&path)?;
-        let (rope, ..) = from_reader(&mut file, Some(encoding))?;
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut reader = std::fs::File::open(&path)?;
+        #[cfg(target_arch = "wasm32")]
+        let mut reader = helix_stdx::vfs::reader(&path)?;
+        let (rope, ..) = from_reader(&mut reader, Some(encoding))?;
 
         // Calculate the difference between the buffer and source text, and apply it.
         // This is not considered a modification of the contents of the file regardless
@@ -2555,6 +2653,12 @@ mod test {
 
                 let expectation = std::fs::read(ref_path).unwrap();
                 assert_eq!(buf, expectation);
+
+                // `to_writer_sync` (the wasm32 save path) must stay
+                // byte-identical to `to_writer`.
+                let mut sync_buf: Vec<u8> = Vec::new();
+                to_writer_sync(&mut sync_buf, (encoding, false), &text).unwrap();
+                assert_eq!(sync_buf, expectation);
             }
         };
         ($name:ident, $label:expr) => {

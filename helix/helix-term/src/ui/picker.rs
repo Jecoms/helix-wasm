@@ -592,6 +592,35 @@ impl<T: 'static + Send + Sync, D: 'static + Send + Sync> Picker<T, D> {
                 }
 
                 let path: Arc<Path> = path.into();
+                // wasm32 has no fs metadata: anything in the virtual file
+                // system is a previewable text file (`Document::open` reads
+                // from it there), everything else does not exist.
+                #[cfg(target_arch = "wasm32")]
+                let preview = if helix_stdx::vfs::exists(&path) {
+                    Document::open(
+                        &path,
+                        None,
+                        false,
+                        editor.config.clone(),
+                        editor.syn_loader.clone(),
+                    )
+                    .map(|mut doc| {
+                        let loader = editor.syn_loader.load();
+                        if let Some(language_config) = doc.detect_language_config(&loader) {
+                            doc.language = Some(language_config);
+                            // Asynchronously highlight the new document
+                            helix_event::send_blocking(
+                                &self.preview_highlight_handler,
+                                path.clone(),
+                            );
+                        }
+                        CachedPreview::Document(Box::new(doc))
+                    })
+                    .unwrap_or(CachedPreview::NotFound)
+                } else {
+                    CachedPreview::NotFound
+                };
+                #[cfg(not(target_arch = "wasm32"))]
                 let preview = std::fs::metadata(&path)
                     .and_then(|metadata| {
                         if metadata.is_dir() {

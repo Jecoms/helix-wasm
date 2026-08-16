@@ -431,8 +431,30 @@ mod imp {
     }
 }
 
+// wasm32: files live in the in-memory virtual file system (`crate::vfs`),
+// which is always writable and has no permission metadata.
+#[cfg(target_arch = "wasm32")]
+mod imp {
+    use super::*;
+
+    pub fn access(p: &Path, mode: AccessMode) -> io::Result<()> {
+        if mode.contains(AccessMode::EXISTS) && !crate::vfs::exists(p) {
+            return Err(io::Error::new(io::ErrorKind::NotFound, "Path not found"));
+        }
+        Ok(())
+    }
+
+    pub fn copy_metadata(_from: &Path, _to: &Path) -> io::Result<()> {
+        Ok(())
+    }
+
+    pub fn hardlink_count(_p: &Path) -> io::Result<u64> {
+        Ok(1)
+    }
+}
+
 // Licensed under MIT from faccess except for `copy_metadata`
-#[cfg(not(any(unix, windows)))]
+#[cfg(not(any(unix, windows, target_arch = "wasm32")))]
 mod imp {
     use super::*;
 
