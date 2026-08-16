@@ -19,6 +19,9 @@ mod grammars;
 mod inspect;
 #[cfg(target_family = "wasm")]
 mod keys;
+// Not wasm-gated: pure decode over the (vendored) crossterm event types, so
+// compiling it everywhere lets its unit tests run under a native cargo test.
+mod mouse;
 #[cfg(target_family = "wasm")]
 mod session;
 #[cfg(target_family = "wasm")]

@@ -41,10 +41,8 @@ npm run dev      # serves the demo on a local vite dev server
 The demo boots helix into an xterm.js terminal with a scratch buffer, with
 syntax highlighting for a small static grammar set (c, go, java,
 javascript, python, regex, rust, toml — try `:set-language rust`).
-Notable limitations: no LSP or DAP (the browser has no subprocesses),
-documents live in an in-memory virtual file system, and mouse input is not
-yet forwarded to the editor
-([#50](https://github.com/Jecoms/helix-wasm/issues/50)).
+Notable limitations: no LSP or DAP (the browser has no subprocesses), and
+documents live in an in-memory virtual file system.
 The grammar build fetches pinned parser sources at
 build time, so it needs network access and `git`. Set `HELIX_WEB_GRAMMARS`
 to a comma-separated subset (e.g. `HELIX_WEB_GRAMMARS=rust,toml wasm-pack

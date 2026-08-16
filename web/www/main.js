@@ -6,6 +6,8 @@ import { FitAddon } from "@xterm/addon-fit";
 import init, {
   start,
   key_event,
+  mouse_event,
+  focus_event,
   paste,
   resize,
   vfs_write,
@@ -58,12 +60,23 @@ terminal.onKey(({ domEvent }) => {
 // Browser-native paste (ctrl/cmd-v reaches xterm.js as a paste, not a key).
 // helix enables bracketed paste mode at boot, so xterm.js delivers pasted
 // text wrapped in the \x1b[200~ ... \x1b[201~ markers — unwrap those and
-// forward the payload. Other ESC-prefixed payloads are skipped: xterm.js
-// answers terminal queries (cursor position, device attributes) through
-// onData with ESC sequences. Bare non-ESC data that no keystroke produced
-// (IME-composed text, paste with bracketed mode off) is forwarded as-is.
+// forward the payload. Other ESC-prefixed payloads are scanned for the
+// mouse and focus reports helix turned on at boot (mouse capture makes
+// xterm.js report mouse activity as SGR \x1b[<code;col;row M/m sequences,
+// focus reporting as \x1b[I / \x1b[O); the rest of an ESC payload is
+// dropped — xterm.js answers terminal queries (cursor position, device
+// attributes) through onData with ESC sequences too. Bare non-ESC data
+// that no keystroke produced (IME-composed text, paste with bracketed
+// mode off) is forwarded as-is.
 const BRACKETED_START = "\x1b[200~";
 const BRACKETED_END = "\x1b[201~";
+// Global: xterm.js batches several reports into one onData chunk during a
+// drag or a wheel flick, so every match gets forwarded, not just the first.
+// Mouse (SGR \x1b[<code;col;row M/m) and focus (\x1b[I / \x1b[O) reports
+// share one alternation so a single scan forwards them in stream order —
+// the bridge queues events in call order, and two separate passes would
+// reorder a mixed chunk to all-mouse-then-focus.
+const INPUT_REPORT = /\x1b\[(?:<(\d+);(\d+);(\d+)([Mm])|([IO]))/g;
 terminal.onData((data) => {
   const fromKey = dataIsFromKey;
   dataIsFromKey = false;
@@ -72,7 +85,17 @@ terminal.onData((data) => {
   }
   if (data.startsWith(BRACKETED_START) && data.endsWith(BRACKETED_END)) {
     paste(data.slice(BRACKETED_START.length, -BRACKETED_END.length));
-  } else if (!data.startsWith("\x1b")) {
+  } else if (data.startsWith("\x1b")) {
+    for (const [, code, col, row, press, inOut] of data.matchAll(
+      INPUT_REPORT,
+    )) {
+      if (inOut) {
+        focus_event(inOut === "I");
+      } else {
+        mouse_event(Number(code), Number(col), Number(row), press === "M");
+      }
+    }
+  } else {
     paste(data);
   }
 });
