@@ -1209,9 +1209,13 @@ impl Document {
             };
 
             // wasm32 has no file system (and no tokio IO): write synchronously
-            // to the in-memory virtual file system instead. Nothing external
-            // can race a write there, so the mtime check and the backup dance
-            // above do not apply.
+            // to the in-memory virtual file system instead. The mtime check
+            // above cannot be ported: vfs entries carry no timestamps, so an
+            // external modification (the embedder writing through the vfs JS
+            // hooks between open and save) is undetectable and the last write
+            // wins. The backup dance is unnecessary rather than skipped —
+            // the vfs writer stages in memory and commits on flush, so a
+            // failed save leaves the stored contents untouched.
             #[cfg(target_arch = "wasm32")]
             let save_time = {
                 let _ = (force, atomic_save, last_saved_time);
@@ -2659,6 +2663,14 @@ mod test {
                 let mut sync_buf: Vec<u8> = Vec::new();
                 to_writer_sync(&mut sync_buf, (encoding, false), &text).unwrap();
                 assert_eq!(sync_buf, expectation);
+
+                // ... on the BOM branch too (no reference file exercises
+                // `has_bom`, so compare the two writers directly).
+                let mut bom_buf: Vec<u8> = Vec::new();
+                helix_lsp::block_on(to_writer(&mut bom_buf, (encoding, true), &text)).unwrap();
+                let mut bom_sync_buf: Vec<u8> = Vec::new();
+                to_writer_sync(&mut bom_sync_buf, (encoding, true), &text).unwrap();
+                assert_eq!(bom_sync_buf, bom_buf);
             }
         };
         ($name:ident, $label:expr) => {
