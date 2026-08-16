@@ -48,11 +48,11 @@ helix-view = { path = "../helix-view" }
 helix-lsp = { path = "../helix-lsp" }
 helix-dap = { path = "../helix-dap" }
 helix-vcs = { path = "../helix-vcs" }
+helix-loader = { path = "../helix-loader" }
 
 # Drop-in std::time::{Instant, SystemTime} that does not trap on
 # wasm32-unknown-unknown; on native targets it re-exports std::time.
 web-time = "1"
-helix-loader = { path = "../helix-loader" }
 
 anyhow = "1"
 once_cell = "1.21"
