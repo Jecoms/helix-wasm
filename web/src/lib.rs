@@ -7,13 +7,16 @@
 //! functions in [`session`].
 //!
 //! The exported JS surface is an internal contract between this crate and
-//! the host page — unstable by design. A supported state-inspection /
-//! embedding API is issue #18, sequenced after the port lands.
+//! the host page — unstable by design, except [`inspect`]: the read-only
+//! state-inspection surface for embedders (issue #18), which is meant to be
+//! kept stable.
 
 #[cfg(target_family = "wasm")]
 mod c_alloc;
 #[cfg(target_family = "wasm")]
 mod grammars;
+#[cfg(target_family = "wasm")]
+mod inspect;
 #[cfg(target_family = "wasm")]
 mod keys;
 #[cfg(target_family = "wasm")]
@@ -21,6 +24,8 @@ mod session;
 #[cfg(target_family = "wasm")]
 mod vfs;
 
+#[cfg(target_family = "wasm")]
+pub use inspect::*;
 #[cfg(target_family = "wasm")]
 pub use session::*;
 #[cfg(target_family = "wasm")]

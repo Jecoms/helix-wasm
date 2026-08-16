@@ -1,7 +1,8 @@
 //! JS hooks into the in-memory virtual file system document IO goes through
 //! on wasm32 (`helix_stdx::vfs`): the host page injects files for the editor
 //! to `:o`pen and extracts what `:w` saved. Unstable, internal to the host
-//! page (see crate docs); a supported embedding API is issue #18.
+//! page (see crate docs); live (possibly unsaved) buffer state is the
+//! [`crate::inspect`] surface instead.
 //!
 //! Paths are normalized against the editor's current working directory
 //! (initially `/`, but `:cd` moves it), so at startup `"scratch.txt"` and

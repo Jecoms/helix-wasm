@@ -60,6 +60,21 @@ extract files; the demo page exposes them as `window.helixVfs` — try
 `:o hello.rs` in the editor. Persistent backends (localStorage/OPFS) can be
 layered on those hooks by the host page.
 
+### Editor state inspection
+
+The wasm module also exports a read-only inspection surface
+([#18](https://github.com/Jecoms/helix-wasm/issues/18)) so embedding pages
+(interactive docs, tutorials, test harnesses) can poll editor state instead
+of scraping the rendered terminal: `editor_state()` returns
+`{ mode, path, cursor: { row, col }, selections: [{ anchor, head }] }` for
+the focused view, and `editor_text()` returns the live buffer text —
+unsaved edits included, unlike `vfs_read`, which sees what was last saved.
+The demo page exposes them as `window.helixState` — try
+`helixState.state()` in the devtools console while switching modes. Both
+return `undefined` when helix is not running; see `web/src/inspect.rs` for
+the coordinate semantics (0-based rows, grapheme-cluster cols, char-index
+anchors/heads).
+
 ## Live demo
 
 The demo deploys to <https://jecoms.github.io/helix-wasm/> via the
