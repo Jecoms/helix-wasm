@@ -3048,6 +3048,9 @@ fn append_mode(cx: &mut Context) {
 
 fn file_picker(cx: &mut Context) {
     let root = find_workspace().0;
+    // Not on wasm32: its virtual root always exists, but `Path::exists`
+    // (real fs) cannot see it.
+    #[cfg(not(target_arch = "wasm32"))]
     if !root.exists() {
         cx.editor.set_error("Workspace directory does not exist");
         return;
@@ -3075,6 +3078,9 @@ fn file_picker_in_current_buffer_directory(cx: &mut Context) {
 
 fn file_picker_in_current_directory(cx: &mut Context) {
     let cwd = helix_stdx::env::current_working_dir();
+    // Not on wasm32: its virtual working directory always exists, but
+    // `Path::exists` (real fs) cannot see it.
+    #[cfg(not(target_arch = "wasm32"))]
     if !cwd.exists() {
         cx.editor
             .set_error("Current working directory does not exist");
