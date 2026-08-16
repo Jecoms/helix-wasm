@@ -1,0 +1,101 @@
+name: Publish web bundle
+
+# Publishes the `web/pkg` wasm-pack output — the unit the demo consumes as
+# `file:../pkg` — as a versioned GitHub release so external embedders can pin
+# it. The Pages demo is no substitute: Vite content-hashes its asset names
+# and every push to main replaces them, so there is nothing stable to link
+# against there.
+#
+# Triggered by pushing a `web-v<semver>` tag (a namespace of its own, apart
+# from the signed `helix-<version>` snapshot-attestation tags). To cut a
+# release: make sure `web/Cargo.toml`'s `version` matches, tag the commit
+# `web-v<version>`, push the tag. `workflow_dispatch` exists to re-run a
+# failed run and must be dispatched *on the tag ref*
+# (`gh workflow run web_release.yml --ref web-v<version>`) — a dispatch on a
+# branch ref fails the tag guard below. A re-run after the release was
+# already created fails at `gh release create`; releases are not overwritten.
+
+on:
+  push:
+    tags: ["web-v*"]
+  workflow_dispatch:
+
+# Serialize runs per ref: a workflow_dispatch fired while the tag-push run
+# is still in flight would rebuild the same bundle and lose the race at
+# `gh release create` — harmless (releases are never overwritten) but a
+# wasted build and a confusing red X. Don't cancel in-progress runs; let
+# the first run finish.
+concurrency:
+  group: "web-release-${{ github.ref }}"
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # gh release create
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      # Fail fast, before the build: the run must be on a `web-v*` tag ref,
+      # and the tag must equal `web-v` + the helix-web crate version —
+      # `web/Cargo.toml` is the source of truth for what version this tree is.
+      - name: Check the tag against web/Cargo.toml
+        id: version
+        run: |
+          case "$GITHUB_REF" in
+            refs/tags/web-v*) ;;
+            *)
+              echo "::error::must run on a web-v* tag ref, got $GITHUB_REF"
+              exit 1
+              ;;
+          esac
+          crate_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' web/Cargo.toml | head -n1)"
+          if [ "$GITHUB_REF_NAME" != "web-v$crate_version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match web/Cargo.toml version $crate_version (expected web-v$crate_version)"
+            exit 1
+          fi
+          echo "version=$crate_version" >> "$GITHUB_OUTPUT"
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      # Same build as the demo deploy (web_demo.yml): full grammar catalog,
+      # locked deps. What ships is exactly what the demo runs.
+      - name: Build the wasm package (full grammar catalog)
+        run: wasm-pack build web --target web -- --locked
+
+      # NOTICE.md rides along because the wasm statically links the grammar
+      # parsers' C sources — their license notices belong with the artifact.
+      # The .gitignore wasm-pack emits (it ignores the whole pkg dir) would
+      # only confuse an embedder vendoring the extracted tree, so drop it.
+      - name: Assemble the tarball
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          cp web/NOTICE.md web/pkg/
+          rm -f web/pkg/.gitignore
+          mkdir stage
+          cp -r web/pkg "stage/helix-web-$version"
+          tar -czf "helix-web-$version.tar.gz" -C stage "helix-web-$version"
+          tar -tzf "helix-web-$version.tar.gz"
+
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          gh release create "$GITHUB_REF_NAME" \
+            --verify-tag \
+            --title "helix-web $version" \
+            --notes "The embeddable wasm bundle: the \`web/pkg\` wasm-pack output (\`--target web\`, full grammar catalog), with \`NOTICE.md\` covering the statically linked grammars. See the README's \"Embedding the editor\" section for the pinning and host-wiring recipe." \
+            "helix-web-$version.tar.gz"

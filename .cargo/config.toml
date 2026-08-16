@@ -1,0 +1,23 @@
+# wasm32-unknown-unknown has no hosted C toolchain, but tree-sitter's C
+# runtime still has to compile for it. Point cc-rs at the repo's clang shim,
+# which injects the stub sysroot headers and the flags they require.
+# `relative = true` makes cargo absolutize the path against the repo root.
+[env]
+CC_wasm32_unknown_unknown = { value = "sysroot/wasm-cc", relative = true, force = true }
+
+# helix-term's build script fetches + dlopen-builds tree-sitter grammars,
+# which is native-Helix machinery: the wasm build links its grammar set
+# statically (web/build.rs). Skip it.
+HELIX_DISABLE_AUTO_GRAMMAR_BUILD = "1"
+
+# tokio's feature guard rejects `fs`/`io-std`/`rt-multi-thread` on wasm unless
+# tokio_unstable is set. Upstream helix already builds with tokio_unstable in
+# its own .cargo/config.toml, so this matches the environment helix is
+# developed against. The gated features compile on wasm32, but no tokio
+# runtime is entered in the browser, so code that actually drives them
+# panics at runtime.
+# NB: a RUSTFLAGS/CARGO_ENCODED_RUSTFLAGS environment variable overrides (not
+# merges with) config-file rustflags — if one is ever set, it must carry
+# `--cfg tokio_unstable` itself or tokio's feature guard errors come back.
+[target.wasm32-unknown-unknown]
+rustflags = ["--cfg", "tokio_unstable"]

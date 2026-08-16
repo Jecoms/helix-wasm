@@ -1,0 +1,38 @@
+# Vendored copy of upstream helix-dap 25.07.1 (from the `helix/25.07.1-r3`
+# snapshot) with the debug-adapter subprocess/TCP machinery removed so the
+# crate builds for wasm32-unknown-unknown. The full client.rs delta vs
+# upstream:
+#   - tokio's `process` and `net` features are dropped (both pull in mio,
+#     which does not build for wasm32); the `fern` dev-dependency is dropped
+#     with them
+#   - `stdio` keeps upstream's `which(cmd)?` line (which always fails on
+#     wasm32, yielding `Error::ExecutableNotFound`) and drops the spawn that
+#     followed; `tcp` / `tcp_process` return errors instead of connecting;
+#     `process` itself is upstream's verbatim dispatch body
+#   - the `Client._process: Option<Child>` field is removed, `streams()`
+#     loses its `process: Option<Child>` parameter, and the private
+#     `get_port()` helper (tokio::net) is deleted
+# The protocol types, transport pump (generic over async streams), and
+# registry are the pristine upstream code.
+[package]
+name = "helix-dap"
+description = "wasm32 stub of the Helix DAP client (no subprocess support)"
+version = "25.7.1"
+edition = "2021"
+license = "MPL-2.0"
+publish = false
+
+[dependencies]
+helix-stdx = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1-r3" }
+helix-core = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1-r3" }
+
+anyhow = "1.0"
+log = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["rt", "rt-multi-thread", "io-util", "io-std", "time", "macros", "fs", "parking_lot", "sync"] }
+thiserror = "2.0"
+slotmap = "1.0.7"
+futures-executor = "0.3"
+futures-util = { version = "0.3", features = ["std", "async-await"], default-features = false }
+tokio-stream = "0.1.17"

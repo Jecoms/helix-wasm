@@ -1,0 +1,134 @@
+name: wasm32 check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  helix-core:
+    name: check helix-core (wasm32-unknown-unknown)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check helix-core for wasm32
+        run: cargo check -p helix-core --target wasm32-unknown-unknown --locked
+
+  helix-view:
+    name: check helix-view (wasm32-unknown-unknown)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check helix-view for wasm32
+        run: cargo check -p helix-view --target wasm32-unknown-unknown --locked
+
+  helix-term:
+    name: check helix-term (wasm32-unknown-unknown)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check helix-term for wasm32
+        run: cargo check -p helix-term --target wasm32-unknown-unknown --locked
+
+  web-bundle:
+    name: build web bundle (wasm-pack + vite)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - name: Build the wasm package
+        run: wasm-pack build web --target web -- --locked
+
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build the host page
+        run: |
+          cd web/www
+          npm ci
+          npm run build
+
+      # Advisory report, not a gate: bundle size is a documented concern
+      # (roughly 100-500 KB of raw wasm per grammar), so surface the trend
+      # on every build; a hard threshold would need a justified budget.
+      - name: Report bundle size
+        run: |
+          {
+            echo '### Web bundle size'
+            echo
+            echo '| File | Raw | Gzip |'
+            echo '| --- | ---: | ---: |'
+            for file in web/www/dist/index.html web/www/dist/assets/*; do
+              raw=$(wc -c < "$file" | tr -d '[:space:]')
+              gzip=$(gzip -c "$file" | wc -c | tr -d '[:space:]')
+              printf '| %s | %s (%s) | %s (%s) |\n' \
+                "$(basename "$file")" \
+                "$raw" "$(numfmt --to=iec "$raw")" \
+                "$gzip" "$(numfmt --to=iec "$gzip")"
+            done
+            echo
+            echo "Total dist (raw): $(du -sk web/www/dist | cut -f1) KiB"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Install Playwright Chromium
+        run: |
+          cd web/www
+          npx playwright install --with-deps chromium
+
+      # Browser smoke tests (web/www/tests) against the dist/ bundle built
+      # above — the same artifact the Pages deploy ships.
+      - name: Run browser smoke tests
+        run: |
+          cd web/www
+          npm test
+
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: web/www/playwright-report/
+          retention-days: 7

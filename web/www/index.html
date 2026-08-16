@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="utf-8">
+  <title>Helix web - alpha demo</title>
+  <style>
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      /* Mirrors the BACKGROUND constant in main.js so the leftover
+         partial-cell pixels around the xterm grid blend into the
+         editor instead of framing it. */
+      background: #000000;
+    }
+
+    #terminal {
+      width: 100%;
+      height: 100vh;
+      /* dvh tracks the actual visible viewport on mobile browsers */
+      height: 100dvh;
+      /* Floor below which the page scrolls instead of squishing the
+         editor into an unusable grid (roughly 55 cols x 19 rows at the
+         demo's 18px font). Trade-off: the 600px width floor exceeds
+         portrait-phone viewports (~360-430px), so phones pan
+         horizontally by default; the values are easy to retune if
+         touch widths need first-class support later. */
+      min-width: 600px;
+      min-height: 400px;
+    }
+
+    /* xterm.css ships the viewport with overflow-y: scroll, which keeps a
+       scrollbar track visible on systems with classic (non-overlay)
+       scrollbars. The terminal runs with scrollback: 0, so the viewport
+       can never overflow — hide its scrollbar entirely. Page-level
+       scrolling below the min-width/height floor above is unaffected. */
+    #terminal .xterm-viewport {
+      overflow-y: hidden;
+    }
+  </style>
+</head>
+
+<body>
+  <noscript>This page contains webassembly and javascript content, please enable javascript in your browser.</noscript>
+  <div id="terminal"></div>
+  <script type="module" src="/main.js"></script>
+</body>
+
+</html>

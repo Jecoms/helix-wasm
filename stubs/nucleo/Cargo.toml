@@ -1,0 +1,37 @@
+# Vendored copy of nucleo 0.5.0 (MPL-2.0, see LICENSE) with the matcher
+# threadpool made optional so the crate runs on wasm32-unknown-unknown.
+# The matcher itself, the pattern language, the lock-free item vec, and the
+# whole public API are the pristine upstream code. The delta:
+#   - `worker::Pool` wraps the rayon threadpool: on native it is the same
+#     dedicated pool as upstream; on wasm32 (where rayon can build no custom
+#     pool — thread spawning is unsupported) it is empty and `spawn` runs the
+#     match job inline on the calling thread, so matching happens
+#     synchronously inside `tick()`
+#   - the parallel iterators and `par_quicksort` inside a match run then
+#     execute through rayon's documented single-threaded global fallback
+#   - on wasm32 `Matchers::get` indexes slot 0 when not on a rayon worker
+#     thread (the inline run has no worker index); native keeps upstream's
+#     unwrap
+#   - on wasm32 `Worker::new` forces `worker_threads = 1`, discarding any
+#     explicit thread count passed to `Nucleo::new` (upstream honors it;
+#     inline matching has exactly one thread to use)
+# The stub is pure Rust and compiles identically on native, where the native
+# `cargo check` type-checks helix against it. Deltas are gated on
+# `target_arch = "wasm32"` (not this repo's usual `target_family = "wasm"`):
+# vendored stubs keep the upstream-ecosystem cfg style, matching stubs/url.
+[package]
+name = "nucleo"
+version = "0.5.0"
+edition = "2021"
+license = "MPL-2.0"
+publish = false
+
+# The vendored source keeps upstream's style; as a path dependency it would
+# otherwise surface upstream's (harmless) unused-parens lint in every build.
+[lints.rust]
+unused_parens = "allow"
+
+[dependencies]
+nucleo-matcher = "0.3.1"
+parking_lot = { version = "0.12.1", features = ["send_guard", "arc_lock"] }
+rayon = "1.7.0"

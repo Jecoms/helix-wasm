@@ -1,0 +1,60 @@
+[package]
+name = "helix-wasm"
+version = "0.1.0"
+edition = "2021"
+license = "MPL-2.0"
+publish = false
+
+[dependencies]
+helix-core = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1-r3" }
+helix-view = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1-r3" }
+# No default features: `git` would enable helix-vcs's gix integration, which
+# is dead weight in a browser (there is no repository to diff against).
+# helix-term drags in crossterm (via helix-tui and helix-view's `term`
+# feature); the crossterm it gets is the browser shim swapped in below.
+helix-term = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1-r3", default-features = false }
+helix-loader = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1-r3" }
+# For `helix_stdx::vfs`, the in-memory virtual file system document IO goes
+# through on wasm32 — re-exported so embedders can inject and extract files.
+helix-stdx = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix/25.07.1-r3" }
+
+# Transitive dependencies swapped for the stubs in stubs/ — all but one
+# because they have no wasm32-unknown-unknown support; the exception is
+# called out inline below. Each stub's Cargo.toml header documents its delta
+# from upstream and why the substitution is safe.
+[patch.crates-io]
+# Vendored copy with the OS terminal layer replaced by a browser bridge —
+# input events and the terminal size come from `crossterm::bridge`, which the
+# wasm frontend feeds. See stubs/crossterm/Cargo.toml for the exact delta.
+crossterm = { path = "stubs/crossterm" }
+home = { path = "stubs/home" }
+# Vendored copy whose matcher threadpool is optional: pickers' match runs
+# execute inline on wasm32, where rayon can build no custom pool. See
+# stubs/nucleo/Cargo.toml for the exact delta.
+nucleo = { path = "stubs/nucleo" }
+which = { path = "stubs/which" }
+libloading = { path = "stubs/libloading" }
+url = { path = "stubs/url" }
+# The exception: not a wasm32 gap — an ABI fix. This crate builds for wasm32
+# unpatched. The vendored copy declares `ts_query_cursor_set_byte_range` with
+# the C function's `bool` return; without it wasm32 traps with
+# signature_mismatch the moment a query cursor runs. It also carries the only
+# third-party C in stubs/ (a vendored tree-sitter, see web/NOTICE.md). See
+# stubs/tree-house-bindings/Cargo.toml for the exact delta.
+tree-house-bindings = { path = "stubs/tree-house-bindings" }
+
+# helix-view's LSP/DAP clients exist to talk to server subprocesses, which
+# wasm32 does not have. Swap them for vendored copies whose spawn paths
+# return errors (see the stubs' Cargo.toml headers for the exact delta).
+[patch."https://github.com/Jecoms/helix-wasm.git"]
+helix-lsp = { path = "stubs/helix-lsp" }
+helix-dap = { path = "stubs/helix-dap" }
+
+[workspace]
+members = ["web"]
+exclude = ["stubs"]
+
+# wasm-pack builds the web crate with --release; favor size, the demo ships
+# over the network.
+[profile.release]
+opt-level = "s"
