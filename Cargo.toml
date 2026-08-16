@@ -34,13 +34,11 @@ nucleo = { path = "stubs/nucleo" }
 which = { path = "stubs/which" }
 libloading = { path = "stubs/libloading" }
 url = { path = "stubs/url" }
-# Not a stub: a patched fork — the pristine 0.2.4 release commit plus a
-# one-line wasm ABI fix. The `ts_query_cursor_set_byte_range` extern
-# declaration was missing the C function's `bool` return, which traps with
-# signature_mismatch on wasm32 the moment a query cursor runs.
-# Retire when upstream helix-editor/tree-house#40 lands in a release helix
-# depends on.
-tree-house-bindings = { git = "https://github.com/Jecoms/tree-house", branch = "bindings-v0.2.4-patched" }
+# Vendored copy whose `ts_query_cursor_set_byte_range` extern declaration
+# carries the C function's `bool` return; without it wasm32 traps with
+# signature_mismatch the moment a query cursor runs. See
+# stubs/tree-house-bindings/Cargo.toml for the exact delta.
+tree-house-bindings = { path = "stubs/tree-house-bindings" }
 
 # helix-view's LSP/DAP clients exist to talk to server subprocesses, which
 # wasm32 does not have. Swap them for vendored copies whose spawn paths
