@@ -11,9 +11,11 @@ name: Deploy web demo
 # below fails at the environment gate unless the run's branch is on the
 # allowed list.
 
-# Dispatch-only for now: every deploy is an explicit action. A push trigger
-# is deliberately deferred to the v2 -> main swap (issue #33, step 6).
+# Merges to main auto-deploy (added at the v2 -> main swap, issue #33
+# step 6); workflow_dispatch stays for manual/off-cycle deploys.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
 
 # Serialize Pages deploys: deploy-pages has no built-in queuing, so without
