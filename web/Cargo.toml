@@ -1,7 +1,7 @@
 # The browser frontend: a wasm-bindgen cdylib that boots helix-term against
 # the crossterm browser shim and exposes the small JS surface the host page
 # drives (see www/). Only meaningful for wasm targets — on native the crate
-# compiles down to just the pure input-decoding modules (and their unit
+# compiles down to just the pure `mouse` decoding module (and its unit
 # tests, so `cargo test -p helix-web` runs natively) and plain `cargo check`
 # of the workspace stays cheap and green.
 [package]
@@ -16,9 +16,10 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 # Resolves to the browser shim in stubs/ via the workspace [patch] table;
-# the frontend needs its `bridge` module directly, and the input-decoding
-# modules need the event types on every target (the shim is pure Rust and
-# builds natively, so the decoders' unit tests run under native cargo test).
+# the frontend needs its `bridge` module directly, and the `mouse` decoding
+# module needs the event types on every target (the shim is pure Rust and
+# builds natively, so the mouse decoder's unit tests run under native
+# cargo test).
 crossterm = "0.28"
 
 [target.'cfg(target_family = "wasm")'.dependencies]

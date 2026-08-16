@@ -1,7 +1,8 @@
 //! SGR mouse report → crossterm mouse event conversion.
 //!
-//! helix enables mouse capture at boot, so the terminal emulator reports
-//! mouse activity as SGR (1006) sequences `ESC [ < code ; col ; row M|m`.
+//! helix enables mouse capture at boot (when the `editor.mouse` option is
+//! on — the default), and the terminal emulator then reports mouse
+//! activity as SGR (1006) sequences `ESC [ < code ; col ; row M|m`.
 //! The host page parses out the three numeric fields plus the final byte
 //! and this module decodes them onto the crossterm event types helix-term
 //! consumes, mirroring upstream crossterm's `parse_csi_sgr_mouse`.
