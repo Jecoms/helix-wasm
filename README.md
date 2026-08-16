@@ -72,7 +72,8 @@ unsaved edits included, unlike `vfs_read`, which sees what was last saved.
 The demo page exposes them as `window.helixState` — try
 `helixState.state()` in the devtools console while switching modes. Both
 return `undefined` when helix is not running; see `web/src/inspect.rs` for
-the coordinate semantics (0-based rows/cols, char-index anchors/heads).
+the coordinate semantics (0-based rows, grapheme-cluster cols, char-index
+anchors/heads).
 
 ## Live demo
 

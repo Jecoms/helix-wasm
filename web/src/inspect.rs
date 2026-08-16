@@ -4,10 +4,12 @@
 //!
 //! Everything reads the focused view's document. Coordinate semantics:
 //! `cursor.row`/`cursor.col` are 0-based document coordinates (row = line
-//! index, col = character offset within the line), and selection
-//! `anchor`/`head` are rope **char** indices — not bytes, not UTF-16 code
-//! units. `head` is the moving end; `cursor` is derived from the primary
-//! range (1-width semantics), so it can sit one left of `head`.
+//! index, col = **grapheme-cluster** count from the start of the line — a
+//! combining sequence or ZWJ emoji counts once, so it is *not* a char
+//! offset), and selection `anchor`/`head` are rope **char** indices — not
+//! bytes, not UTF-16 code units, not grapheme clusters. `head` is the
+//! moving end; `cursor` is derived from the primary range (1-width
+//! semantics), so it can sit one left of `head`.
 //!
 //! Both exports return `undefined` while helix is not running (before
 //! `start`, or after the editor exits) and throw when called from inside the
