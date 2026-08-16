@@ -9,7 +9,10 @@
     body {
       margin: 0;
       height: 100%;
-      background: #3b224c;
+      /* Mirrors the BACKGROUND constant in main.js so the leftover
+         partial-cell pixels around the xterm grid blend into the
+         editor instead of framing it. */
+      background: #000000;
     }
 
     #terminal {
@@ -25,6 +28,15 @@
          touch widths need first-class support later. */
       min-width: 600px;
       min-height: 400px;
+    }
+
+    /* xterm.css ships the viewport with overflow-y: scroll, which keeps a
+       scrollbar track visible on systems with classic (non-overlay)
+       scrollbars. The terminal runs with scrollback: 0, so the viewport
+       can never overflow — hide its scrollbar entirely. Page-level
+       scrolling below the min-width/height floor above is unaffected. */
+    #terminal .xterm-viewport {
+      overflow-y: hidden;
     }
   </style>
 </head>
