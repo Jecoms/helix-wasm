@@ -24,7 +24,9 @@ helix-lsp = { path = "../helix-lsp" }
 helix-dap = { path = "../helix-dap" }
 helix-vcs = { path = "../helix-vcs" }
 
-web-time.workspace = true
+# Drop-in std::time::{Instant, SystemTime} that does not trap on
+# wasm32-unknown-unknown; on native targets it re-exports std::time.
+web-time = "1"
 bitflags.workspace = true
 anyhow = "1"
 crossterm = { version = "0.28", optional = true }

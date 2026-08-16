@@ -21,7 +21,9 @@ helix-loader = { path = "../helix-loader" }
 helix-parsec = { path = "../helix-parsec" }
 
 ropey.workspace = true
-web-time.workspace = true
+# Drop-in std::time::{Instant, SystemTime} that does not trap on
+# wasm32-unknown-unknown; on native targets it re-exports std::time.
+web-time = "1"
 smallvec = "1.15"
 smartstring = "1.0.1"
 unicode-segmentation.workspace = true

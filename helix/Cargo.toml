@@ -50,9 +50,6 @@ parking_lot = "0.12"
 futures-executor = "0.3"
 futures-util = { version = "0.3", features = ["std", "async-await"], default-features = false }
 tokio-stream = "0.1.17"
-# Drop-in std::time::{Instant, SystemTime} that doesn't trap on
-# wasm32-unknown-unknown; on native targets it re-exports std::time.
-web-time = "1"
 
 [workspace.package]
 version = "25.7.1"
