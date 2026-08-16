@@ -29,6 +29,12 @@ const BACKGROUND = "#000000";
 const terminal = new Terminal({
   // helix owns the whole grid; there is no history to scroll back to.
   scrollback: 0,
+  // On macOS, Option is a compose key unless the terminal claims it as Meta,
+  // and xterm.js drops the keydown outright while it doesn't — which left
+  // every `A-` binding dead there (issue #68). This is the same trade
+  // iTerm's "Option as Meta" makes: the chords work, and Option-composed
+  // character entry (é, ß, ...) does not. Ignored off macOS.
+  macOptionIsMeta: true,
   fontFamily: "'Fira Code', Menlo, Consolas, monospace",
   fontSize: 18,
   theme: { background: BACKGROUND },
@@ -120,11 +126,25 @@ callEditor(() =>
 // from a keystroke, so track "the next onData is this keystroke's own
 // sequence" explicitly instead.
 let dataIsFromKey = false;
-terminal.onKey(({ domEvent }) => {
+// For an Alt chord, macOS composes before dispatch — Option-s arrives as
+// `key: "ß"`, and the accent starters (Option-e/i/n/u) as `key: "Dead"` —
+// so `domEvent.key` names the wrong binding, or none. xterm.js has already
+// resolved the chord's character itself, off the event's keyCode and a US
+// layout, and hands it over as the sequence `ESC` + character; take it from
+// there when the DOM's own name is unusable. The guard stays narrow on
+// purpose: named keys must keep using `domEvent.key`, because xterm encodes
+// `A-Left` as `ESC b` and a looser rule would forward that as `A-b`.
+const ALT_CHAR = /^\x1b(.)$/;
+const composed = (key) => key === "Dead" || /^[^\x00-\x7f]$/.test(key);
+terminal.onKey(({ key, domEvent }) => {
   dataIsFromKey = true;
+  let name = domEvent.key;
+  if (domEvent.altKey && composed(name)) {
+    name = key.match(ALT_CHAR)?.[1] ?? name;
+  }
   callEditor(() =>
     key_event(
-      domEvent.key,
+      name,
       domEvent.ctrlKey,
       domEvent.altKey,
       domEvent.shiftKey,

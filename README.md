@@ -251,11 +251,12 @@ web page:
   entry here taken from that policy rather than from a run, because
   automation drivers hand these straight to the page and a headless run says
   nothing about what a real tab does.
-- **`Alt` chords are dead on macOS.** xterm.js treats Option as a compose
-  key there, so the binding never reaches the editor and the composed
-  character arrives as pasted text instead. Windows and Linux are
-  unaffected. Tracked in
-  [#68](https://github.com/Jecoms/helix-wasm/issues/68).
+- **On macOS, Option is Meta and stops composing.** `A-` chords reach the
+  editor — the page claims Option the way iTerm's "Option as Meta" setting
+  does — and the trade is that Option-composed character entry (`é`, `ß`,
+  `…`) no longer works in insert mode; paste those in instead. The chord's
+  character comes from xterm.js's own US-layout table, so on every platform
+  `A-` chords follow US key positions rather than the active layout.
 - **No kitty keyboard protocol.** The bridge reports no keyboard
   enhancement, so this is the classic terminal key space: no key-release or
   repeat events, and no `Tab`/`C-i` or `Enter`/`C-m` disambiguation.
