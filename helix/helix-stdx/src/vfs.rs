@@ -21,6 +21,23 @@ fn normalize(path: impl AsRef<Path>) -> PathBuf {
     crate::path::canonicalize(path)
 }
 
+/// The normalized store key for `path`, or `InvalidInput` if `path` names no
+/// file: `""`, `"."`, and `"/"` all normalize to a bare directory-like path
+/// (the cwd or the root), and such keys would be undeletable "files" that
+/// crash directory-shaped consumers (e.g. the file picker's path column
+/// expects every key to have a file name). Best-effort — a key that only
+/// *later* becomes the cwd (via `:cd`) cannot be caught here.
+fn validated(path: impl AsRef<Path>) -> io::Result<PathBuf> {
+    let key = normalize(path);
+    if key.file_name().is_none() || key == normalize(crate::env::current_working_dir()) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "path names no virtual file",
+        ));
+    }
+    Ok(key)
+}
+
 /// Whether a file exists at `path`.
 pub fn exists(path: impl AsRef<Path>) -> bool {
     FILES.read().unwrap().contains_key(&normalize(path))
@@ -41,12 +58,12 @@ pub fn reader(path: impl AsRef<Path>) -> io::Result<Cursor<Vec<u8>>> {
     read(path).map(Cursor::new)
 }
 
-/// Creates or replaces the file at `path`.
-pub fn write(path: impl AsRef<Path>, contents: impl Into<Vec<u8>>) {
-    FILES
-        .write()
-        .unwrap()
-        .insert(normalize(path), contents.into());
+/// Creates or replaces the file at `path`. Fails with `InvalidInput` if
+/// `path` names no file (e.g. `""`, `"."`, or `"/"`).
+pub fn write(path: impl AsRef<Path>, contents: impl Into<Vec<u8>>) -> io::Result<()> {
+    let key = validated(path)?;
+    FILES.write().unwrap().insert(key, contents.into());
+    Ok(())
 }
 
 /// Removes the file at `path`, or `NotFound`.
@@ -88,10 +105,10 @@ impl Write for VfsWriter {
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        FILES
-            .write()
-            .unwrap()
-            .insert(self.path.clone(), self.staged.clone());
+        // Validation happens here rather than in `writer` so an invalid path
+        // (e.g. `:w /`) surfaces as an ordinary IO error on the save path.
+        let key = validated(&self.path)?;
+        FILES.write().unwrap().insert(key, self.staged.clone());
         Ok(())
     }
 }
@@ -105,14 +122,14 @@ mod tests {
 
     #[test]
     fn write_read_roundtrip() {
-        write("/vfs-test-roundtrip/a.txt", "hello".as_bytes());
+        write("/vfs-test-roundtrip/a.txt", "hello".as_bytes()).unwrap();
         assert!(exists("/vfs-test-roundtrip/a.txt"));
         assert_eq!(read("/vfs-test-roundtrip/a.txt").unwrap(), b"hello");
     }
 
     #[test]
     fn paths_are_normalized() {
-        write("/vfs-test-normalize/./x/../a.txt", "n".as_bytes());
+        write("/vfs-test-normalize/./x/../a.txt", "n".as_bytes()).unwrap();
         assert!(exists("/vfs-test-normalize/a.txt"));
     }
 
@@ -126,8 +143,22 @@ mod tests {
     }
 
     #[test]
+    fn directory_like_keys_are_rejected() {
+        // "/" has no file name; "" and "." normalize to the cwd. Any of
+        // these as a store key would crash directory-shaped consumers
+        // (e.g. the file picker's path column).
+        for path in ["", ".", "/"] {
+            let err = write(path, "x".as_bytes()).unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::InvalidInput, "write({path:?})");
+            let err = writer(path).flush().unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::InvalidInput, "flush({path:?})");
+        }
+        assert!(!exists("/"));
+    }
+
+    #[test]
     fn writer_commits_on_flush_only() {
-        write("/vfs-test-writer/a.txt", "old".as_bytes());
+        write("/vfs-test-writer/a.txt", "old".as_bytes()).unwrap();
 
         // Abandoned before flush: the old contents survive.
         let mut w = writer("/vfs-test-writer/a.txt");
@@ -145,15 +176,15 @@ mod tests {
 
     #[test]
     fn empty_flush_truncates() {
-        write("/vfs-test-truncate/a.txt", "old".as_bytes());
+        write("/vfs-test-truncate/a.txt", "old".as_bytes()).unwrap();
         writer("/vfs-test-truncate/a.txt").flush().unwrap();
         assert_eq!(read("/vfs-test-truncate/a.txt").unwrap(), b"");
     }
 
     #[test]
     fn list_is_sorted_and_removals_apply() {
-        write("/vfs-test-list/b.txt", "b".as_bytes());
-        write("/vfs-test-list/a.txt", "a".as_bytes());
+        write("/vfs-test-list/b.txt", "b".as_bytes()).unwrap();
+        write("/vfs-test-list/a.txt", "a".as_bytes()).unwrap();
         let mine: Vec<_> = list()
             .into_iter()
             .filter(|p| p.starts_with("/vfs-test-list"))
