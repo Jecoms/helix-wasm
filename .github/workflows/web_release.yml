@@ -20,12 +20,20 @@ on:
     tags: ["web-v*"]
   workflow_dispatch:
 
-permissions:
-  contents: write # gh release create
+# Serialize runs per ref: a workflow_dispatch fired while the tag-push run
+# is still in flight would rebuild the same bundle and lose the race at
+# `gh release create` — harmless (releases are never overwritten) but a
+# wasted build and a confusing red X. Don't cancel in-progress runs; let
+# the first run finish.
+concurrency:
+  group: "web-release-${{ github.ref }}"
+  cancel-in-progress: false
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write # gh release create
     steps:
       - name: Checkout sources
         uses: actions/checkout@v4
