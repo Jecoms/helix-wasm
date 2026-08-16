@@ -7,8 +7,9 @@
 //! with [`crate::path::canonicalize`], so relative paths resolve against
 //! [`crate::env::current_working_dir`].
 //!
-//! The module is compiled on every target so it can be tested on the host,
-//! but only wasm32 code paths consult it.
+//! The module is gated to wasm32 and `test`: only wasm32 code paths consult
+//! it, and the `test` arm exists solely so the unit tests below run on the
+//! host. Native builds do not carry it.
 
 use std::collections::BTreeMap;
 use std::io::{self, Cursor, Write};
