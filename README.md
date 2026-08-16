@@ -47,6 +47,19 @@ to a comma-separated subset (e.g. `HELIX_WEB_GRAMMARS=rust,toml wasm-pack
 build web --target web`) to slim the bundle; to add a grammar to the
 catalog, see `GRAMMARS` in `web/build.rs` and `web/queries/README.md`.
 
+## Live demo
+
+The demo deploys to <https://jecoms.github.io/helix-wasm/> via the
+`Deploy web demo` workflow (`.github/workflows/web_demo.yml`), which builds
+the full-catalog bundle and publishes it with `actions/deploy-pages`.
+
+> **Pending the first deploy from `v2`** — until that happens the URL still
+> serves the legacy port's demo. Deploys are gated by the `github-pages`
+> environment's deployment branch policy: a run only deploys if its branch
+> is on the allowed list, so allowing `v2` (repo Settings → Environments →
+> github-pages, or one `gh api` call) is the switch that turns the workflow
+> on.
+
 ## Branch map
 
 - `v2` (this branch) — the zero-fork port; becomes `main` once the browser

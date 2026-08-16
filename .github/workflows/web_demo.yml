@@ -1,0 +1,101 @@
+name: Deploy web demo
+
+# This file deliberately keeps the same path as the legacy deploy workflow
+# on `main` (.github/workflows/web_demo.yml): `workflow_dispatch` resolves
+# workflows from the default branch, and sharing the registered path is
+# what lets `gh workflow run web_demo.yml --ref v2` run this branch's
+# version before the v2 -> main swap.
+#
+# Whether a run may actually deploy is decided by the `github-pages`
+# environment's deployment branch policy, not by this file: the deploy job
+# below fails at the environment gate unless the run's branch is on the
+# allowed list.
+
+# Dispatch-only for now: every deploy is an explicit action. A push trigger
+# is deliberately deferred to the v2 -> main swap (issue #33, step 6).
+on:
+  workflow_dispatch:
+
+# Serialize Pages deploys: deploy-pages has no built-in queuing, so without
+# this an older in-flight run could finish after — and overwrite — a newer
+# one. Don't cancel in-progress runs; let deploys complete in order.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - name: Build the wasm package (full grammar catalog)
+        run: wasm-pack build web --target web -- --locked
+
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build the host page
+        run: |
+          cd web/www
+          npm ci
+          npm run build
+
+      # The bundle uses relative asset URLs (vite `base: "./"`), so the
+      # same dist works at a domain root and under the /helix-wasm/ project
+      # path. The demo deploys to the top of the project site
+      # (https://<owner>.github.io/helix-wasm/); /demo/ gets a redirect so
+      # links to the legacy port's URL layout
+      # (https://<owner>.github.io/helix-wasm/demo/) don't 404.
+      - name: Stage the site
+        run: |
+          mkdir -p _site/demo
+          cp -r web/www/dist/. _site/
+          cat > _site/demo/index.html <<'EOF'
+          <!doctype html>
+          <html lang="en">
+          <head>
+            <meta charset="utf-8">
+            <meta http-equiv="refresh" content="0; url=../">
+            <title>helix-wasm</title>
+          </head>
+          <body><a href="../">Continue to the helix-wasm demo</a></body>
+          </html>
+          EOF
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    # No configure-pages step: Pages is already enabled for the repo with
+    # build_type "workflow", and enabling/configuring it is a repo setting
+    # this workflow should not flip.
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

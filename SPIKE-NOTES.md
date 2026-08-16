@@ -150,9 +150,37 @@ except where noted. Still open for the rest of Phase 3:
     (`clock_gettime`), which `sysroot/shims.c` freezes at zero — elapsed
     time is always zero, timeouts never fire, parses run to completion. No
     Rust `Instant` involved.
-- **GH Pages deploy** — the CI `web-bundle` job builds the bundle; the
-  deploy workflow (port of legacy `web_demo.yml`) is deliberately not
-  enabled yet.
+- ~~**GH Pages deploy**~~ — done: `.github/workflows/web_demo.yml` builds
+  the full-catalog bundle (same steps as the CI `web-bundle` job) and
+  publishes via `upload-pages-artifact`/`deploy-pages`, serialized under
+  `concurrency: pages`. Design notes:
+  - The file keeps the legacy workflow's exact path: `workflow_dispatch`
+    resolves workflows from the default branch, so sharing `main`'s
+    registered filename is what lets
+    `gh workflow run web_demo.yml --ref v2` run this branch's version
+    before the v2 → main swap (proven by the legacy deploys dispatched
+    from the non-default `15-deploy-web-demo-pages` branch).
+  - Pages is already enabled for the repo (`build_type: workflow`); the
+    actual gate is the `github-pages` environment's **deployment branch
+    policy** (allowed as of 2026-08-15: `main`, `wasm32`,
+    `15-deploy-web-demo-pages`). A run from `v2` fails at the environment
+    until `v2` is added — one `gh api` call, deliberately left to the
+    user. No `configure-pages` step in the workflow: enablement is a repo
+    setting the workflow shouldn't flip.
+  - vite's `base: "./"` (relative asset URLs) makes the same dist work at
+    the site root and under the `/helix-wasm/` project path — verified by
+    running the Chromium smoke suite against the staged `_site` behind a
+    local `/helix-wasm/`-prefixed server (full pass, all grammars).
+  - v2 deploys to the site root (the legacy demo lived at `/demo/` with a
+    root redirect); the staged site keeps a `/demo/` → root redirect so
+    old links don't 404. The first v2 deploy **replaces** the legacy demo.
+  - `web/NOTICE.md` ships with the deployed assets as a static file: a
+    vite plugin emits it into dist as `NOTICE.txt`, so it lives at
+    <https://jecoms.github.io/helix-wasm/NOTICE.txt> once deployed
+    (text/plain displays inline; Pages would serve `.md` as
+    text/markdown, which some browsers download). Deliberately no page UI
+    for attribution — MIT's notice condition is satisfied by the notice
+    accompanying the distributed assets.
 - **Persistence / virtual storage** — nothing persists; `:w` on a path hits
   unsupported fs APIs and reports an error. `faccess::readonly()` maps fs
   errors to `true`, so any buffer opened *from a path* would be read-only;
