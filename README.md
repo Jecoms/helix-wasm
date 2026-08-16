@@ -78,6 +78,22 @@ return `undefined` when helix is not running; see `web/src/inspect.rs` for
 the coordinate semantics (0-based rows, grapheme-cluster cols, char-index
 anchors/heads).
 
+### Browser smoke tests
+
+A Playwright suite (`web/www/tests/`) boots the built bundle in headless
+Chromium and asserts on editor behavior through `helixState` / `helixVfs`
+and the terminal buffer — the same checks CI runs in the `wasm32 check`
+workflow. Run it against a fresh build:
+
+```sh
+wasm-pack build web --target web
+cd web/www
+npm install
+npm run build                      # tests run against dist/, not the dev server
+npx playwright install chromium    # first run only
+npm test
+```
+
 ## Live demo
 
 The demo deploys to <https://jecoms.github.io/helix-wasm/> via the
