@@ -325,9 +325,12 @@ when helix quits (`:q` and friends really do exit, and nothing can restart
 it in place — the page has to reload), and route the calls into wasm
 through a `try`/`catch` as the demo page does: a panicked instance traps on
 every later call, and a host that keeps forwarding into it silently
-swallows the user's input. Beyond the terminal loop, the module exports the
-file-injection hooks (`vfs_write` / `vfs_read` / `vfs_list`, see "Virtual
-file system" above) and the read-only inspection surface (`editor_state()`
+swallows the user's input. Input calls made after a clean exit are inert
+(the module drops them rather than queueing for an event loop that is gone),
+but a page still forwarding is a page still pretending to have an editor —
+stop on the exit and tell the reader. Beyond the terminal loop, the module
+exports the file-injection hooks (`vfs_write` / `vfs_read` / `vfs_list`,
+see "Virtual file system" above) and the read-only inspection surface (`editor_state()`
 / `editor_text()`, see "Editor state inspection") — the intended surface
 for tutorial-style embedders that drive and assert on the editor rather
 than scrape the rendered terminal. The JS surface is unstable by design

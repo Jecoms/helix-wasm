@@ -26,6 +26,12 @@ thread_local! {
     /// The host page's exit callback, registered with [`on_exit`].
     static EXIT: RefCell<Option<Function>> = const { RefCell::new(None) };
     static STARTED: Cell<bool> = const { Cell::new(false) };
+    /// Whether there is an editor left to receive input: `false` until
+    /// [`start`] hands the app to [`drive`], and again the moment helix
+    /// exits. The input exports queue events for the event loop to drain,
+    /// so once the loop is gone every further event is one nothing will
+    /// ever take back out of [`bridge`]'s queue — see [`forward`].
+    static RUNNING: Cell<bool> = const { Cell::new(false) };
     /// The running editor: `None` before [`start`] and again once helix
     /// exits. Owning the `Application` here — instead of moving it into an
     /// `app.run()` future — is what makes inspection possible: [`drive`]
@@ -146,6 +152,7 @@ pub fn start(output: Function, columns: u16, rows: u16) -> Result<(), JsValue> {
     bridge::inject_event(Event::Resize(columns, rows));
 
     APP.with(|cell| *cell.borrow_mut() = Some(app));
+    RUNNING.with(|running| running.set(true));
     spawn_local(drive());
 
     Ok(())
@@ -194,6 +201,11 @@ async fn drive() {
         })
     })
     .await;
+
+    // The loop that drains the bridge queue is done; stop the input exports
+    // from filling it (see [`forward`]) before anything gets a chance to
+    // run between here and the exit announcement.
+    RUNNING.with(|running| running.set(false));
 
     // Take the app out before awaiting close(): the cell stays unborrowed
     // across those awaits, and inspection reports not-running from here on.
@@ -264,6 +276,12 @@ fn announce_exit(exit_code: i32) {
 /// The editor cannot be restarted afterwards; a host page that wants a live
 /// editor back has to reload. Register before [`start`] — a `:q` on the
 /// first keystroke would otherwise beat the registration.
+///
+/// The input exports ([`key_event`], [`paste`], [`mouse_event`],
+/// [`focus_event`], [`resize`]) stay callable once this fires but stop doing
+/// anything, so a host page that keeps forwarding is inert rather than
+/// harmful. Treating this callback as "stop forwarding" is still the right
+/// thing to do: the page has a dead editor on screen and needs to say so.
 #[wasm_bindgen]
 pub fn on_exit(handler: Function) {
     EXIT.with(|slot| *slot.borrow_mut() = Some(handler));
@@ -315,29 +333,50 @@ fn restore_terminal(mouse: bool) -> std::io::Result<()> {
     terminal::disable_raw_mode()
 }
 
+/// Queues one input event for the event loop, or drops it if helix is gone.
+///
+/// The exports below hand events to [`bridge`]'s queue, which only the event
+/// loop drains — so after the exit every further event is one nothing will
+/// ever take back out, and a host page that keeps forwarding (a `:q` leaves
+/// the module perfectly callable now) would grow that queue without bound.
+/// Dropping them here covers every embedder, rather than making a correct
+/// liveness gate each host page's problem. Events sent before [`start`] are
+/// dropped for the same reason: nothing has been booted to consume them.
+fn forward(event: Event) {
+    if RUNNING.with(Cell::get) {
+        bridge::inject_event(event);
+    }
+}
+
 /// Feeds one keyboard event, as the fields of a DOM `KeyboardEvent`.
+///
+/// A no-op once helix has exited (see [`on_exit`]).
 #[wasm_bindgen]
 pub fn key_event(key: &str, ctrl: bool, alt: bool, shift: bool, meta: bool) {
     if let Some(event) = keys::convert(key, ctrl, alt, shift, meta) {
-        bridge::inject_event(Event::Key(event));
+        forward(Event::Key(event));
     }
 }
 
 /// Feeds one mouse event, as the fields of an SGR mouse report from the
 /// terminal emulator: the button/modifier code, the 1-based column and row,
 /// and whether the final byte was `M` (press) rather than `m` (release).
+///
+/// A no-op once helix has exited (see [`on_exit`]).
 #[wasm_bindgen]
 pub fn mouse_event(code: u16, column: u16, row: u16, pressed: bool) {
     if let Some(event) = mouse::convert(code, column, row, pressed) {
-        bridge::inject_event(Event::Mouse(event));
+        forward(Event::Mouse(event));
     }
 }
 
 /// Feeds a terminal focus change (from the emulator's focus reports —
 /// helix enables focus reporting at boot).
+///
+/// A no-op once helix has exited (see [`on_exit`]).
 #[wasm_bindgen]
 pub fn focus_event(gained: bool) {
-    bridge::inject_event(if gained {
+    forward(if gained {
         Event::FocusGained
     } else {
         Event::FocusLost
@@ -345,14 +384,20 @@ pub fn focus_event(gained: bool) {
 }
 
 /// Feeds pasted text (from the terminal emulator's paste handling).
+///
+/// A no-op once helix has exited (see [`on_exit`]).
 #[wasm_bindgen]
 pub fn paste(text: &str) {
-    bridge::inject_event(Event::Paste(text.to_owned()));
+    forward(Event::Paste(text.to_owned()));
 }
 
 /// Reports new terminal dimensions and triggers a re-layout.
+///
+/// A no-op once helix has exited (see [`on_exit`]).
 #[wasm_bindgen]
 pub fn resize(columns: u16, rows: u16) {
-    bridge::set_size(columns, rows);
-    bridge::inject_event(Event::Resize(columns, rows));
+    if RUNNING.with(Cell::get) {
+        bridge::set_size(columns, rows);
+    }
+    forward(Event::Resize(columns, rows));
 }
