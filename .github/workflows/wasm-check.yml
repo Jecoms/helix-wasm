@@ -47,8 +47,6 @@ jobs:
 
       - name: Check helix-core for wasm32
         run: cargo check -p helix-core --target wasm32-unknown-unknown --locked
-        env:
-          CARGO_LOG: cargo::core::compiler::fingerprint=info
 
   helix-view:
     name: check helix-view (wasm32-unknown-unknown)
