@@ -1,8 +1,9 @@
-// Mouse forwarding (issue #50): clicks, drags, and wheel scrolls go through
-// Playwright's real pointer events, so they exercise the true
-// xterm → SGR report → `mouse_event()` path. Assertions read editor state
-// (`window.helixState`), except the wheel test, which must watch the
-// rendered viewport move.
+// Mouse and focus forwarding (issue #50): clicks, drags, and wheel scrolls
+// go through Playwright's real pointer events, so they exercise the true
+// xterm → SGR report → `mouse_event()` path; focus reports are injected
+// synthetically (see that test's comment). Assertions read editor state
+// (`window.helixState`), except the wheel and focus tests, which must
+// watch the rendered terminal cells.
 import { test, expect } from "@playwright/test";
 
 const getState = (page) =>
@@ -100,6 +101,59 @@ test("drag sweeps out a selection", async ({ page }) => {
       return { spans: head !== anchor, endRow: state.cursor.row };
     })
     .toEqual({ spans: true, endRow: 6 });
+});
+
+// The rendered style of one terminal grid row, one entry per cell
+// (inverse flag plus fg/bg color). helix draws its block cursor manually
+// as a cell style — and only while the terminal is focused — so the
+// cursor's row renders differently focused vs. unfocused.
+const rowStyles = (page, gridRow) =>
+  page.evaluate((row) => {
+    const line = window.__helixTerminal.buffer.active.getLine(row);
+    const cells = [];
+    for (let i = 0; i < line.length; i += 1) {
+      const cell = line.getCell(i);
+      cells.push(
+        [
+          cell.isInverse(),
+          cell.getFgColorMode(),
+          cell.getFgColor(),
+          cell.getBgColorMode(),
+          cell.getBgColor(),
+        ].join(":"),
+      );
+    }
+    return cells;
+  }, gridRow);
+
+// Focus forwarding (also issue #50): real OS focus/blur is unreliable
+// under headless automation, so push synthetic \x1b[O / \x1b[I reports
+// through xterm.js's input() — the same onData path the emulator's own
+// focus reports take (the fromKey guard only skips keystroke-produced
+// data). This exercises the report regex and the `focus_event()` export;
+// the assertion watches helix drop and redraw its block cursor highlight.
+test("synthetic focus reports toggle the block cursor highlight", async ({
+  page,
+}) => {
+  await bootEditor(page);
+
+  // Scratch buffer, cursor at (0, 0) — the cursor highlight is on grid
+  // row 0.
+  const focused = await rowStyles(page, 0);
+
+  await page.evaluate(() => window.__helixTerminal.input("\x1b[O", false));
+  await expect
+    .poll(() => rowStyles(page, 0), {
+      message: "focus-out report did not reach the editor",
+    })
+    .not.toEqual(focused);
+
+  await page.evaluate(() => window.__helixTerminal.input("\x1b[I", false));
+  await expect
+    .poll(() => rowStyles(page, 0), {
+      message: "focus-in report did not reach the editor",
+    })
+    .toEqual(focused);
 });
 
 test("wheel scrolls the viewport and back", async ({ page }) => {
