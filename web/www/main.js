@@ -5,6 +5,7 @@ import { FitAddon } from "@xterm/addon-fit";
 // unstable JS surface of the `helix-web` crate (web/src/session.rs).
 import init, {
   start,
+  on_exit,
   key_event,
   mouse_event,
   focus_event,
@@ -38,8 +39,69 @@ terminal.open(document.getElementById("terminal"));
 fitAddon.fit();
 terminal.focus();
 
+// A dead editor must never look like a frozen page. Whether helix exited
+// cleanly or the wasm instance died, the last frame stays on screen and
+// every later keystroke vanishes into nothing — identical symptoms, and
+// nothing on the page to distinguish either from a hang. So input
+// forwarding runs through a liveness gate: once helix is gone, the page
+// stops feeding it and (for the unclean deaths, which have no notice of
+// their own) says so in the terminal.
+const CRASH_NOTICE =
+  "Helix has stopped responding. Refresh the page to start a new session.";
+let editorAlive = true;
+
+// Leave the alternate screen and un-hide the cursor before writing: an
+// unclean death leaves the terminal mid-render, so the notice has to land
+// on the restored main screen rather than on top of the frozen frame.
+function stopEditor(notice) {
+  editorAlive = false;
+  if (notice) {
+    terminal.write(`\x1b[?1049l\x1b[?25h\r\n${notice}\r\n`);
+  }
+}
+
+function reportCrash(error) {
+  if (!editorAlive) {
+    return;
+  }
+  console.error("helix stopped responding", error);
+  stopEditor(CRASH_NOTICE);
+}
+
+// Every call on the input path goes through here. After a panic the wasm
+// instance is poisoned and traps on entry, so a throw is the signal that
+// helix is gone — there is no other notification. (The console hooks below
+// are left ungated: a devtools caller wants the real error.)
+function callEditor(call) {
+  if (!editorAlive) {
+    return;
+  }
+  try {
+    call();
+  } catch (error) {
+    reportCrash(error);
+  }
+}
+
+// A panic inside the editor's own event loop surfaces as an uncaught error
+// (a wasm `unreachable` trap) instead of through one of the calls above, so
+// the page doesn't have to wait for the next keystroke to notice.
+window.addEventListener("error", (event) => reportCrash(event.error));
+
 await init();
-start((bytes) => terminal.write(bytes), terminal.cols, terminal.rows);
+// `:q` really does quit, and nothing can restart the editor in this page —
+// so record the exit and announce it, both for anything scripting the page
+// and for a host that wants to swap in its own "refresh to start again" UI.
+// No notice from this side: the wasm module has already painted its own,
+// on the restored main screen, by the time this runs.
+on_exit((code) => {
+  stopEditor();
+  window.helixExit = { code };
+  window.dispatchEvent(new CustomEvent("helix-exit", { detail: { code } }));
+});
+callEditor(() =>
+  start((bytes) => terminal.write(bytes), terminal.cols, terminal.rows),
+);
 
 // For a keystroke xterm.js fires onKey and then, synchronously, onData with
 // the sequence that key produced. Pastes (and IME-composed text) arrive
@@ -49,12 +111,14 @@ start((bytes) => terminal.write(bytes), terminal.cols, terminal.rows);
 let dataIsFromKey = false;
 terminal.onKey(({ domEvent }) => {
   dataIsFromKey = true;
-  key_event(
-    domEvent.key,
-    domEvent.ctrlKey,
-    domEvent.altKey,
-    domEvent.shiftKey,
-    domEvent.metaKey,
+  callEditor(() =>
+    key_event(
+      domEvent.key,
+      domEvent.ctrlKey,
+      domEvent.altKey,
+      domEvent.shiftKey,
+      domEvent.metaKey,
+    ),
   );
 });
 // Browser-native paste (ctrl/cmd-v reaches xterm.js as a paste, not a key).
@@ -84,22 +148,24 @@ terminal.onData((data) => {
     return;
   }
   if (data.startsWith(BRACKETED_START) && data.endsWith(BRACKETED_END)) {
-    paste(data.slice(BRACKETED_START.length, -BRACKETED_END.length));
+    callEditor(() =>
+      paste(data.slice(BRACKETED_START.length, -BRACKETED_END.length)),
+    );
   } else if (data.startsWith("\x1b")) {
     for (const [, code, col, row, press, inOut] of data.matchAll(
       INPUT_REPORT,
     )) {
-      if (inOut) {
-        focus_event(inOut === "I");
-      } else {
-        mouse_event(Number(code), Number(col), Number(row), press === "M");
-      }
+      callEditor(() =>
+        inOut
+          ? focus_event(inOut === "I")
+          : mouse_event(Number(code), Number(col), Number(row), press === "M"),
+      );
     }
   } else {
-    paste(data);
+    callEditor(() => paste(data));
   }
 });
-terminal.onResize(({ cols, rows }) => resize(cols, rows));
+terminal.onResize(({ cols, rows }) => callEditor(() => resize(cols, rows)));
 window.addEventListener("resize", () => fitAddon.fit());
 
 // Smoke-test hook: lets a browser-automation harness read the terminal

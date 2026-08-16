@@ -23,6 +23,8 @@ thread_local! {
     /// bridge's sink is a plain `fn` (it can't capture JS values); wasm32 is
     /// single-threaded, so this is effectively a global.
     static OUTPUT: RefCell<Option<Function>> = const { RefCell::new(None) };
+    /// The host page's exit callback, registered with [`on_exit`].
+    static EXIT: RefCell<Option<Function>> = const { RefCell::new(None) };
     static STARTED: Cell<bool> = const { Cell::new(false) };
     /// The running editor: `None` before [`start`] and again once helix
     /// exits. Owning the `Application` here — instead of moving it into an
@@ -121,6 +123,10 @@ pub fn start(output: Function, columns: u16, rows: u16) -> Result<(), JsValue> {
     )
     .map_err(|err| JsValue::from_str(&format!("failed to seed the tutor file: {err}")))?;
 
+    // Sample files, so the file picker and `:o` open on something worth
+    // selecting (see samples.rs).
+    crate::samples::seed();
+
     // Default args: no files, so helix opens a scratch buffer.
     let app = Application::new(Args::default(), config, lang_loader)
         .map_err(|err| JsValue::from_str(&format!("failed to initialize helix: {err}")))?;
@@ -196,8 +202,19 @@ async fn drive() {
     };
 
     let mut exit_code = app.editor.exit_code;
-    for err in app.close().await {
-        log::error!("error on close: {err}");
+    // `Application::close` is unusable here: its third step,
+    // `Editor::close_language_servers`, wraps the shutdown in a
+    // `tokio::time::timeout`, and building that timer calls
+    // `std::time::Instant::now()` — which traps on wasm32-unknown-unknown
+    // ("time not implemented on this platform"), poisoning the module
+    // mid-teardown, so `:q` took the page down instead of exiting. The two
+    // steps worth keeping are covered: pending writes flush below, and
+    // `Jobs::finish` only awaits jobs that asked to be waited on, which
+    // upstream creates solely for format-on-write — unreachable without a
+    // formatter or a language server (and `jobs` is private, so it could
+    // not be drained on its own regardless).
+    if let Err(err) = app.editor.flush_writes().await {
+        log::error!("error flushing writes on exit: {err}");
         exit_code = 1;
     }
     let mouse = app.editor.config().mouse;
@@ -206,6 +223,44 @@ async fn drive() {
         log::error!("failed to restore the terminal: {err}");
     }
     log::info!("helix exited with code {exit_code}");
+    announce_exit(exit_code);
+}
+
+/// Tells the reader — and the embedder — that helix is gone.
+///
+/// `:q` is a dead end in a browser tab: there is no shell to return to, and
+/// the editor cannot be restarted in place (`start` is once per page load).
+/// Left alone, the tutorial's chapter 1.2 exercise drops the reader on a
+/// blank terminal that silently swallows every keystroke — indistinguishable
+/// from a frozen page. So the exit gets said out loud, on the restored main
+/// screen, and handed to the host page through the [`on_exit`] callback.
+/// `:q` itself is untouched: it really does quit.
+fn announce_exit(exit_code: i32) {
+    let mut out = bridge::Output::new();
+    // Plain English first: a demo visitor should be able to act on this line
+    // without knowing what an exit code is.
+    let notice = format!(
+        "\r\nHelix has exited. Refresh the page to start a new session. (exit code {exit_code})\r\n"
+    );
+    if let Err(err) = out.write_all(notice.as_bytes()).and_then(|()| out.flush()) {
+        log::error!("failed to write the exit notice: {err}");
+    }
+
+    EXIT.with(|slot| {
+        if let Some(handler) = slot.borrow().as_ref() {
+            let _ = handler.call1(&JsValue::NULL, &JsValue::from_f64(exit_code.into()));
+        }
+    });
+}
+
+/// Registers a callback for helix exiting, invoked once with the exit code.
+///
+/// The editor cannot be restarted afterwards; a host page that wants a live
+/// editor back has to reload. Register before [`start`] — a `:q` on the
+/// first keystroke would otherwise beat the registration.
+#[wasm_bindgen]
+pub fn on_exit(handler: Function) {
+    EXIT.with(|slot| *slot.borrow_mut() = Some(handler));
 }
 
 /// What `Application::run` does before entering its event loop (`claim_term`

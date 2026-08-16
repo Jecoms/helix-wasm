@@ -147,6 +147,38 @@ test("page background matches the terminal's, with no phantom scrollbar (issue #
     .toEqual({ w: 600, h: 400 });
 });
 
+test("a dead wasm instance is announced instead of looking like a hang", async ({
+  page,
+}) => {
+  await bootEditor(page);
+
+  // A panic poisons the instance: the last frame stays on screen and every
+  // later keystroke disappears into a module that traps on entry — visually
+  // a frozen page. The host page's liveness gate turns that into a notice
+  // and stops forwarding input. (The clean `:q` counterpart, which has its
+  // own notice from the wasm side, is in tutor.spec.js.)
+  //
+  // The trigger here is a synthetic uncaught error rather than a real
+  // panic, because nothing on the exported surface panics on demand — but
+  // it is the same signal: a wasm trap reaches the page as an uncaught
+  // `unreachable` error, which is exactly what the gate listens for.
+  await page.evaluate(() => {
+    window.dispatchEvent(
+      new ErrorEvent("error", { error: new Error("RuntimeError: unreachable") }),
+    );
+  });
+
+  await expect
+    .poll(() => terminalText(page))
+    .toContain("Helix has stopped responding. Refresh the page");
+
+  // Input forwarding really stopped: the editor never sees the keystroke,
+  // so it cannot leave normal mode.
+  await page.keyboard.press("i");
+  await page.waitForTimeout(200);
+  expect((await getState(page)).mode).toBe("normal");
+});
+
 test(":tutor opens the tutorial in a pathless buffer", async ({ page }) => {
   await bootEditor(page);
 
