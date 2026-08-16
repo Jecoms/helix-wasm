@@ -19,7 +19,8 @@ helix-loader = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "hel
 helix-stdx = { git = "https://github.com/Jecoms/helix-wasm.git", branch = "helix-patched" }
 
 # Transitive dependencies with no wasm32-unknown-unknown support, swapped for
-# the stubs in stubs/. See SPIKE-NOTES.md for why each is safe to stub.
+# the stubs in stubs/. Each stub's Cargo.toml header documents its delta
+# from upstream and why the substitution is safe.
 [patch.crates-io]
 # Vendored copy with the OS terminal layer replaced by a browser bridge —
 # input events and the terminal size come from `crossterm::bridge`, which the
@@ -36,7 +37,7 @@ url = { path = "stubs/url" }
 # Not a stub: a patched fork — the pristine 0.2.4 release commit plus a
 # one-line wasm ABI fix. The `ts_query_cursor_set_byte_range` extern
 # declaration was missing the C function's `bool` return, which traps with
-# signature_mismatch on wasm32 (see SPIKE-NOTES.md, known runtime traps).
+# signature_mismatch on wasm32 the moment a query cursor runs.
 # Retire when upstream helix-editor/tree-house#40 lands in a release helix
 # depends on.
 tree-house-bindings = { git = "https://github.com/Jecoms/tree-house", branch = "bindings-v0.2.4-patched" }

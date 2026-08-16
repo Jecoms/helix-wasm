@@ -6,8 +6,8 @@
 //! stubs from `stubs/`: `[patch.crates-io]` replaces the transitive
 //! crates-io dependencies with no wasm32 support, and
 //! `[patch."<this repo's git URL>"]` replaces the vendored helix-lsp /
-//! helix-dap crates that helix-view depends on directly. See SPIKE-NOTES.md
-//! for the full recipe and phase plan.
+//! helix-dap crates that helix-view depends on directly. The build recipe
+//! lives in README.md; the porting history in issue #33.
 
 pub use helix_core;
 pub use helix_loader;
