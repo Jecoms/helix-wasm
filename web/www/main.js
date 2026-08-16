@@ -74,6 +74,8 @@ window.addEventListener("resize", () => fitAddon.fit());
 window.__helixTerminal = terminal;
 
 // The virtual file system the editor's documents live in — usable from the
-// devtools console (inject a file, then `:o` it; `:w` saves land here). Also
-// what the smoke harness asserts on.
+// devtools console (inject a file, then `:o` it; `:w` saves land here).
+// Like `__helixTerminal` above, also a natural assertion surface for a
+// browser-automation harness. Note `write` throws on paths that name no
+// file (`""`, `"."`, `"/"`, ...).
 window.helixVfs = { write: vfs_write, read: vfs_read, list: vfs_list };
