@@ -9,7 +9,6 @@
     body {
       margin: 0;
       height: 100%;
-      overflow: hidden;
       background: #3b224c;
     }
 
@@ -18,6 +17,14 @@
       height: 100vh;
       /* dvh tracks the actual visible viewport on mobile browsers */
       height: 100dvh;
+      /* Floor below which the page scrolls instead of squishing the
+         editor into an unusable grid (roughly 55 cols x 19 rows at the
+         demo's 18px font). Trade-off: the 600px width floor exceeds
+         portrait-phone viewports (~360-430px), so phones pan
+         horizontally by default; the values are easy to retune if
+         touch widths need first-class support later. */
+      min-width: 600px;
+      min-height: 400px;
     }
   </style>
 </head>
