@@ -183,3 +183,31 @@ test(":w names the buffer in the vfs; live text diverges until re-saved", async 
     .poll(async () => vfsRead(page, "scratch.txt"))
     .toBe(await getText(page));
 });
+
+test(":theme lists a vendored theme and applying it recolors the screen", async ({
+  page,
+}) => {
+  await bootEditor(page);
+
+  // The prompt's completion menu lists the runtime themes directory, which
+  // startup seeds with the vendored set (web/themes/).
+  await page.keyboard.type(":theme ");
+  await expect.poll(() => terminalText(page)).toContain("gruvbox");
+
+  await page.keyboard.type("gruvbox");
+  await page.keyboard.press("Enter");
+
+  // gruvbox paints `ui.background` with bg0 (#282828) while the built-in
+  // default theme leaves the terminal's default background, so the top-left
+  // cell flipping to that RGB value proves the theme really applied.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const cell = window.__helixTerminal.buffer.active
+          .getLine(0)
+          .getCell(0);
+        return cell.isBgRGB() ? cell.getBgColor() : -1;
+      }),
+    )
+    .toBe(0x282828);
+});

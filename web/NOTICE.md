@@ -14,6 +14,10 @@ The vendored tutor text under `runtime/` is likewise a copy of helix's own
 `runtime/tutor` (MPL-2.0, like helix itself), documented in
 `runtime/README.md`.
 
+The vendored theme files under `themes/` are copies of helix's own
+`runtime/themes/` (MPL-2.0, like helix itself; see the repository's
+top-level `LICENSE`), documented in `themes/README.md`.
+
 When bumping a grammar pin, re-check its `LICENSE` and update the matching
 entry here.
 
