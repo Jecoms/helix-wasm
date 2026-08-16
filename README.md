@@ -45,7 +45,7 @@ curated set of bundled color schemes (vendored in `web/themes/` — try
 `:theme gruvbox`).
 It is helix, not a subset of it — but the browser has no subprocesses, no
 filesystem and no threads, so some things behave differently and some do not
-work at all. "Limitations and behavioral differences" below is the full list.
+work at all. "Limitations and behavioral differences" below collects them.
 
 The grammar build fetches pinned parser sources at
 build time, so it needs network access and `git`. Set `HELIX_WEB_GRAMMARS`
@@ -56,16 +56,16 @@ catalog, see `GRAMMARS` in `web/build.rs` and `web/queries/README.md`.
 ### Virtual file system
 
 Documents live in an in-memory virtual file system (`helix_stdx::vfs`, part
-of the wasm patch set): `:w /notes.txt` saves there, `:o` and the space-f
+of the wasm patch set): `:w /notes.txt` saves there, `:o` and the `<space>f`
 file picker (with preview) read from it, and `:reload` picks up outside
 changes. Nothing survives a page reload, and a few document commands behave
-differently against it — see "Files live in an in-memory VFS" below. The
-wasm module exports
-`vfs_write` / `vfs_read` / `vfs_list` so an embedding page can inject and
-extract files; the demo page exposes them as `window.helixVfs` — try
-`helixVfs.write("hello.rs", "fn main() {}")` in the devtools console, then
-`:o hello.rs` in the editor. Persistent backends (localStorage/OPFS) can be
-layered on those hooks by the host page.
+differently against it — see "Files live in an in-memory VFS" below.
+The wasm module exports `vfs_write` / `vfs_read` / `vfs_list` so an
+embedding page can inject and extract files; the demo page exposes them
+as `window.helixVfs` — try `helixVfs.write("hello.rs", "fn main() {}")`
+in the devtools console, then `:o hello.rs` in the editor. Persistent
+backends (localStorage/OPFS) can be layered on those hooks by the host
+page.
 
 ### Editor state inspection
 
@@ -102,28 +102,38 @@ npm test
 
 The aim is to be helix, not a lookalike, so this section catalogs the places
 where the browser makes that impossible. Everything below was reproduced by
-hand in a build of this tree — it is what the port does today, not what its
-source suggests it might do. The entries track the pinned helix snapshot plus
-the `web/` crate, so re-check them on a snapshot repin (see "Branch and tag
-map").
+hand in a build of this tree, except where an entry says otherwise — it is
+what the port does today, not what its source suggests it might do. The
+entries track the pinned helix snapshot plus the `web/` crate, so re-check
+them on a snapshot repin (see "Branch and tag map").
 
 ### Commands that crash the session
 
-`Jobs::add` spawns onto a tokio runtime unconditionally, and there is no
-runtime in the browser, so a command that queues a background job panics
-rather than bailing out politely. A panic wedges the instance: the screen
-freezes on whatever it was drawing and keystrokes stop landing, so the only
-recovery is a page reload. Confirmed triggers:
+`Jobs::add` spawns onto a tokio runtime, and there is no runtime in the
+browser, so a command that queues a background job panics rather than bailing
+out politely. A panic wedges the instance: the screen freezes on whatever it
+was drawing and keystrokes stop landing, so the only recovery is a page
+reload. This is a bug rather than something the browser forces — tracked in
+[#71](https://github.com/Jecoms/helix-wasm/issues/71). Confirmed triggers:
 
+- **`gd`, `gD`, `gy`, `gi`, `gr`** — goto definition, declaration, type
+  definition, implementation and reference. Bare `g`-prefix keys, which makes
+  these the easiest crash in the list to hit without meaning to. Helix's
+  other language-server entry points check for a configured server before
+  they queue anything and bail cleanly (see "No subprocesses"); the five
+  goto commands do not.
 - `:sh`, `:!`, `:run-shell-command`
 - `:redraw`
 - `:tree-sitter-scopes`
+- `:tree-sitter-subtree` and `:tree-sitter-highlight-name`, but only once the
+  buffer has a syntax tree — after `:set-language rust`, say. On a plain
+  scratch buffer both return before queuing anything and bail cleanly.
 - `:lsp-workspace-command`
 - `gf` with the cursor on a URL — opening one would hand off to an external
   program. `gf` on a file path works normally.
-- **Enter on an invalid regex at a `/` or `?` search prompt** — much the
-  easiest to hit by accident (`/[` then Enter). Valid searches are fine, and
-  so is backing out of a bad one with Escape.
+- **Enter on an invalid regex at a `/` or `?` search prompt** (`/[` then
+  Enter). Valid searches are fine, and so is backing out of a bad one with
+  Escape.
 
 Treat that list as incomplete: it is whatever path reaches `Jobs::add`.
 
@@ -134,12 +144,17 @@ helix already has for "not configured":
 
 | What | What you get |
 | --- | --- |
-| Language servers — completion, diagnostics, goto, hover, rename, code actions | "No configured language server supports …"; `:lsp-restart` → "LSP not defined for the current document" |
+| Language servers — diagnostics, hover, rename, code actions | "No configured language server supports …"; `:lsp-restart` → "LSP not defined for the current document" |
 | Debugging — `:debug-start`, `:debug-remote`, the rest of the DAP layer | "No debug adapter available for language" |
 | External formatters, including format-on-save (`:format`) | "A formatter isn't available, and no language server provides formatting capabilities" |
 | Shell piping — the `!` and `\|` keys, `:pipe`, `:pipe-to`, `:insert-output`, `:append-output` | "Shell commands are not supported on this platform" |
 | Git — the diff gutter, `:reset-diff-change`, the `<space>g` changed-file picker | "Diff is not available in the current buffer" / "Current working directory does not exist" |
 | `<space>e` file explorer | "Workspace directory does not exist" |
+
+Two language-server features are not in that table because they fail some
+other way: the goto commands crash instead of reporting a missing server (see
+above), and completion goes quiet rather than saying anything at all (see "No
+background work").
 
 `<space>/` (global search) opens its picker, but the query handler it needs
 is never spawned, so typing never returns a match. There is no handoff to the
@@ -162,6 +177,11 @@ above). What that changes:
   "file modified externally" guard can never fire — a `:w` silently
   overwrites whatever a `helixVfs.write` put there in the meantime. `:w!`
   does exactly what `:w` does, and nothing is ever read-only.
+- **`:move` renames the buffer but moves nothing.** The rename is guarded by
+  an existence check the VFS can never satisfy, so `:move /b.txt` retargets
+  the buffer and stops there: the old key keeps its contents, and the new one
+  does not exist until the next `:w`. You are left with both, the original
+  holding a stale copy, and nothing says so.
 - **There are no directories.** `:o /some/dir` opens an ordinary empty buffer
   named `/some/dir`. `:cd` works and does change how relative paths resolve,
   but `:pwd` always reports the directory as `(deleted)` — the existence
@@ -217,11 +237,18 @@ web page:
   it arrives as a bracketed paste. To copy out, select with the mouse and use
   the browser's copy.
 - **Your browser claims some chords first.** `C-w` — helix's entire window
-  prefix — closes the tab in most browsers, as do `C-n` and `C-t`; reach
-  splits through `:vsplit`, `:hsplit` and `:wclose` instead.
-  `Ctrl-Shift-<key>` never reaches the editor, and on macOS `Alt`/`Option`
-  chords are composed into characters by the browser and arrive as pasted
-  text rather than as Alt bindings.
+  prefix — closes the tab in most browsers, as do `C-n` and `C-t`, and
+  `Ctrl-Shift-<key>` is generally spoken for too. Reach splits through
+  `:vsplit`, `:hsplit` and `:wclose` instead. Which chords get taken is the
+  browser's policy rather than this port's, so check yours — this is the one
+  entry here taken from that policy rather than from a run, because
+  automation drivers hand these straight to the page and a headless run says
+  nothing about what a real tab does.
+- **`Alt` chords are dead on macOS.** xterm.js treats Option as a compose
+  key there, so the binding never reaches the editor and the composed
+  character arrives as pasted text instead. Windows and Linux are
+  unaffected. Tracked in
+  [#68](https://github.com/Jecoms/helix-wasm/issues/68).
 - **No kitty keyboard protocol.** The bridge reports no keyboard
   enhancement, so this is the classic terminal key space: no key-release or
   repeat events, and no `Tab`/`C-i` or `Enter`/`C-m` disambiguation.
@@ -239,9 +266,9 @@ scroll), and so are focus changes.
 
 ### Bundled content only
 
-Syntax highlighting covers the eight grammars linked into the bundle (c, go,
-java, javascript, python, regex, rust, toml), and `:theme` covers the ten
-themes vendored in `web/themes/`. Anything else opens as plain text —
+Syntax highlighting covers only the grammars linked into the bundle (listed
+under "Running the browser demo" above), and `:theme` only the themes
+vendored in `web/themes/`. Anything else opens as plain text —
 `:set-language haskell` is accepted without complaint and simply highlights
 nothing — and any other theme name is not found.
 
