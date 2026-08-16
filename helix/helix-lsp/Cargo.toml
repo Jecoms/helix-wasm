@@ -14,6 +14,14 @@
 # Everything else (util conversions, jsonrpc, Registry, progress tracking)
 # is the pristine upstream code, so editor logic behaves identically —
 # there is simply never a running language server.
+#
+# One `[package]`-table choice the outgoing `stubs/helix-lsp` carried is
+# deliberately not reproduced here: `publish = false` is not set. Upstream's
+# manifest shape is kept as-is, which leaves this crate nominally publishable
+# under the real crates.io name — as it does for every other patched helix
+# crate in this tree. No publish workflow exists in this repo and the name
+# belongs to upstream, so this is a property of the in-tree layout rather
+# than a regression here.
 [package]
 name = "helix-lsp"
 description = "LSP client implementation for Helix project"

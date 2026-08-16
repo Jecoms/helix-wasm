@@ -12,6 +12,19 @@
 #     `get_port()` helper (tokio::net) is deleted
 # The protocol types, transport pump (generic over async streams), and
 # registry are the pristine upstream code.
+#
+# Two `[package]`-table choices the outgoing `stubs/helix-dap` carried are
+# deliberately not reproduced here, because in-tree the crate is helix's own
+# rather than a substitute for it:
+#   - `publish = false` is not set. Upstream's manifest shape is kept as-is,
+#     which leaves this crate nominally publishable under the real crates.io
+#     name — as it does for every other patched helix crate in this tree. No
+#     publish workflow exists in this repo and the name belongs to upstream,
+#     so this is a property of the in-tree layout, not a regression here.
+#   - the `[dev-dependencies] fern` block is back at upstream's value. The
+#     stub dropped it alongside the tokio features; keeping it costs nothing
+#     (`fern` is already in the lockfile and the resolved package set is
+#     unchanged) and a smaller delta from upstream is the point of the fold.
 [package]
 name = "helix-dap"
 description = "DAP client implementation for Helix project"
