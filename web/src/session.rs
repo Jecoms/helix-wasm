@@ -7,7 +7,7 @@ use std::io::Write;
 use std::pin::pin;
 use std::task::Poll;
 
-use crate::keys;
+use crate::{keys, mouse};
 use crossterm::bridge;
 use crossterm::event::{Event, EventStream};
 use crossterm::execute;
@@ -232,6 +232,27 @@ pub fn key_event(key: &str, ctrl: bool, alt: bool, shift: bool, meta: bool) {
     if let Some(event) = keys::convert(key, ctrl, alt, shift, meta) {
         bridge::inject_event(Event::Key(event));
     }
+}
+
+/// Feeds one mouse event, as the fields of an SGR mouse report from the
+/// terminal emulator: the button/modifier code, the 1-based column and row,
+/// and whether the final byte was `M` (press) rather than `m` (release).
+#[wasm_bindgen]
+pub fn mouse_event(code: u16, column: u16, row: u16, pressed: bool) {
+    if let Some(event) = mouse::convert(code, column, row, pressed) {
+        bridge::inject_event(Event::Mouse(event));
+    }
+}
+
+/// Feeds a terminal focus change (from the emulator's focus reports —
+/// helix enables focus reporting at boot).
+#[wasm_bindgen]
+pub fn focus_event(gained: bool) {
+    bridge::inject_event(if gained {
+        Event::FocusGained
+    } else {
+        Event::FocusLost
+    });
 }
 
 /// Feeds pasted text (from the terminal emulator's paste handling).
