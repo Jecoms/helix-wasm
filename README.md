@@ -105,6 +105,47 @@ Every push to `main` deploys automatically; a manual
 `github-pages` environment's deployment branch policy — only `main` is on
 the allowed list.
 
+## Embedding the editor
+
+Each `web-v<semver>` tag publishes the `web/pkg` wasm-pack output — the same
+unit the demo consumes as `file:../pkg` — as a GitHub release with a
+`helix-web-<version>.tar.gz` attached (the `Publish web bundle` workflow,
+`.github/workflows/web_release.yml`). Embedders should pin one of those
+instead of linking into the deployed demo, whose asset names are
+content-hashed and replaced on every push to `main`:
+
+```sh
+curl -LO https://github.com/Jecoms/helix-wasm/releases/download/web-v0.1.0/helix-web-0.1.0.tar.gz
+tar xzf helix-web-0.1.0.tar.gz    # extracts helix-web-0.1.0/
+```
+
+The extracted directory is a standard wasm-pack `--target web` package (ES
+module + `.wasm` + `.d.ts`, plus `NOTICE.md` with the license notices for
+the statically linked grammar parsers). Consume it the way the demo's
+`web/www/package.json` does:
+
+```json
+"dependencies": { "helix-web": "file:../helix-web-0.1.0" }
+```
+
+`web/www/main.js` is the reference host wiring to replicate: call `init()`
+(fetches and instantiates the wasm module), then `start(writeBytes, cols,
+rows)` with a callback that feeds editor output bytes to an xterm.js
+`Terminal`, and forward input with `key_event(...)`, `paste(...)`, and
+`resize(cols, rows)`. Beyond the terminal loop, the module exports the
+file-injection hooks (`vfs_write` / `vfs_read` / `vfs_list`, see "Virtual
+file system" above) and the read-only inspection surface (`editor_state()`
+/ `editor_text()`, see "Editor state inspection") — the intended surface
+for tutorial-style embedders that drive and assert on the editor rather
+than scrape the rendered terminal. The JS surface is unstable
+(`web/src/session.rs`); pin a tagged tarball and check its `.d.ts` when
+upgrading.
+
+To cut a release: bump `version` in `web/Cargo.toml`, merge, then tag that
+commit `web-v<version>` and push the tag. The workflow verifies the tag
+against the crate version, rebuilds the bundle with `--locked`, and
+attaches the tarball to a release on the tag.
+
 ## Branch map
 
 - `main` (this branch) — the zero-fork port, produced by the
@@ -140,4 +181,11 @@ the allowed list.
   are frozen by creation-only rulesets (`snapshot-branches-frozen` /
   `snapshot-tags-frozen`, no bypass actors): new snapshot refs can be
   pushed, existing ones can never be moved or deleted.
+- `web-v<semver>` (e.g. `web-v0.1.0`) — release tags for the embeddable web
+  bundle. Pushing one runs the `Publish web bundle` workflow
+  (`.github/workflows/web_release.yml`), which checks the tag against
+  `web/Cargo.toml`'s `version`, rebuilds the full-catalog `web/pkg`
+  wasm-pack output, and attaches it to a GitHub release as
+  `helix-web-<version>.tar.gz` — the artifact "Embedding the editor" above
+  pins.
 - `legacy` — the previous in-tree port, archived at the swap.
