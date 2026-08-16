@@ -57,8 +57,9 @@ jobs:
           npm run build
 
       # The bundle uses relative asset URLs (vite `base: "./"`), so the
-      # same dist works at the site root and under the /helix-wasm/ project
-      # path. The demo deploys to the site root; /demo/ gets a redirect so
+      # same dist works at a domain root and under the /helix-wasm/ project
+      # path. The demo deploys to the top of the project site
+      # (https://<owner>.github.io/helix-wasm/); /demo/ gets a redirect so
       # links to the legacy port's URL layout
       # (https://<owner>.github.io/helix-wasm/demo/) don't 404.
       - name: Stage the site
