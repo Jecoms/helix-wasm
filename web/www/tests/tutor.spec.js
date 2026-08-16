@@ -40,12 +40,13 @@ async function bootEditor(page) {
   await page.locator("#terminal").click();
 }
 
-// Types a chord sequence one key at a time, letting the editor settle
-// between keys so a pending-key prefix (space, m, ...) resolves.
+// Types a chord sequence one key at a time. No settle between keys: each
+// `key_event` pushes onto the bridge queue synchronously, so the editor
+// sees them in call order and a pending-key prefix (space, m, ...) resolves
+// against the next key whatever the timing.
 async function press(page, ...keys) {
   for (const key of keys) {
     await page.keyboard.press(key);
-    await page.waitForTimeout(50);
   }
 }
 
