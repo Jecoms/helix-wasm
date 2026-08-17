@@ -9,9 +9,9 @@ import { defineConfig } from "vite";
 // truth; emit copies into dist so they ship with the distributed assets, at
 // stable paths next to the page (<site root>/NOTICE.txt, LICENSE.txt).
 // Emitted as `.txt` so they are served as text/plain and display inline in
-// every browser (GitHub Pages would serve `.md` as text/markdown, and an
-// extensionless `LICENSE` as a download, which some browsers save instead of
-// showing).
+// every browser: GitHub Pages would serve `.md` as text/markdown, which some
+// browsers download instead of showing, and an extensionless `LICENSE` has no
+// extension to be typed by at all.
 const legalFiles = [
   ["NOTICE.txt", fileURLToPath(new URL("../NOTICE.md", import.meta.url))],
   ["LICENSE.txt", fileURLToPath(new URL("../../LICENSE", import.meta.url))],
