@@ -150,11 +150,11 @@ helix already has for "not configured":
 | What | What you get |
 | --- | --- |
 | Language servers — diagnostics, hover, rename, code actions | "No configured language server supports …"; `:lsp-restart` → "LSP not defined for the current document" |
-| The goto commands — `gd`, `gD`, `gy`, `gi` and `gr` | "No definition found." / "No references found." — helix's own empty-result message, since these four queue their request before checking for a server. Native helix with no server configured says the same |
+| The goto commands — `gd`, `gD`, `gy`, `gi` and `gr` | "No definition found." / "No references found." — helix's own empty-result message, since these five queue their request before checking for a server. Native helix with no server configured says the same |
 | Debugging — `:debug-start`, `:debug-remote`, the rest of the DAP layer | "No debug adapter available for language" |
 | External formatters, including format-on-save (`:format`) | "A formatter isn't available, and no language server provides formatting capabilities" |
 | Shell commands — `:sh`, `:!`, `:run-shell-command`, the `!` and `\|` keys, `:pipe`, `:pipe-to`, `:insert-output`, `:append-output` | "Shell commands are not supported on this platform" |
-| Opening a URL — `gf` with the cursor on one | "Opening URLs in an external program is not supported on this platform". `gf` on a file path works normally |
+| Opening a URL — `gf` with the cursor on one | "Opening URLs in an external program is not supported on this platform" — there is no handoff to the browser either, so nothing here can open a URL. `gf` on a file path works normally |
 | Git — the diff gutter, `:reset-diff-change`, the `<space>g` changed-file picker | "Diff is not available in the current buffer" / "Current working directory does not exist" |
 | `<space>e` file explorer | "Workspace directory does not exist" |
 

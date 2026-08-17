@@ -50,6 +50,12 @@ fn spawn_detached(f: impl Future<Output = ()> + Send + 'static) {
 ///
 /// The job machinery around this is runtime-free already: the callback and
 /// status channels are `tokio::sync` mpsc, which never touch a reactor.
+///
+/// The other way out of "no runtime here" — `AsyncHook::spawn`'s
+/// `tokio::runtime::Handle::try_current().is_ok()` guard, which is why the
+/// completion and signature handlers go quiet on wasm32 instead of panicking
+/// — is deliberately not what this does. Skipping the spawn would silently
+/// drop the job, and these jobs are the whole of what their commands do.
 #[cfg(target_arch = "wasm32")]
 fn spawn_detached(f: impl Future<Output = ()> + 'static) {
     wasm_bindgen_futures::spawn_local(f);

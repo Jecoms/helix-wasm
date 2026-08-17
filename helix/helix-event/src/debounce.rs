@@ -1,7 +1,9 @@
 //! Utilities for declaring an async (usually debounced) hook
 
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 
+#[cfg(not(target_arch = "wasm32"))]
 use futures_executor::block_on;
 use tokio::sync::mpsc::{self, error::TrySendError, Sender};
 use tokio::time::Instant;
@@ -64,7 +66,22 @@ pub fn send_blocking<T>(tx: &Sender<T>, data: T) {
     // block_on has some overhead and in practice the channel should basically
     // never be full anyway so first try sending without blocking
     if let Err(TrySendError::Full(data)) = tx.try_send(data) {
-        // set a timeout so that we just drop a message instead of freezing the editor in the worst case
-        let _ = block_on(tx.send_timeout(data, Duration::from_millis(10)));
+        send_full(tx, data);
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn send_full<T>(tx: &Sender<T>, data: T) {
+    // set a timeout so that we just drop a message instead of freezing the editor in the worst case
+    let _ = block_on(tx.send_timeout(data, Duration::from_millis(10)));
+}
+
+/// wasm32 has neither half of that fallback: `send_timeout` builds a
+/// `tokio::time` sleep, and building one calls `Instant::now()`, which traps
+/// on wasm32-unknown-unknown — and there is no thread for `block_on` to park
+/// even if it didn't. Dropping is where the timeout was headed anyway, so go
+/// straight there rather than trapping the whole module on the way.
+#[cfg(target_arch = "wasm32")]
+fn send_full<T>(_tx: &Sender<T>, data: T) {
+    drop(data);
 }
