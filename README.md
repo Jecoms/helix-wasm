@@ -27,6 +27,13 @@ cannot emit wasm, so install LLVM (`brew install llvm`) or point
 `HELIX_WASM_CLANG` at a suitable clang. It also fetches pinned parser sources
 at build time, so it needs network access and `git`.
 
+The `web/pkg` a local build produces will not be byte-identical to the
+published one. `wasm-pack` shrinks its output with `wasm-opt`, preferring one
+already on `$PATH` and otherwise downloading binaryen itself, and `wasm-opt`'s
+output depends on its version. CI, the Pages deploy and the release tarball all
+pin **binaryen 132** (`.github/actions/wasm-opt`); put that version's `wasm-opt`
+on `$PATH` to reproduce their bytes locally.
+
 ## What the bundle ships with
 
 The demo boots helix on a scratch buffer, with syntax highlighting for a small

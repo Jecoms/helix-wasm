@@ -17,8 +17,9 @@ description: >
 # composite action and not three copies of the same step: one place holds the
 # version.
 #
-# To bump: change both `version` and `sha256` below (the checksum is published
-# as `<asset>.sha256` next to the release asset).
+# To bump: change both `BINARYEN_VERSION` and `BINARYEN_SHA256` below (the
+# checksum is published as `<asset>.sha256` next to the release asset), and the
+# version named in the README's "Run it locally" section.
 
 runs:
   using: composite
@@ -26,22 +27,22 @@ runs:
     - name: Install wasm-opt (binaryen)
       shell: bash
       env:
-        version: "132"
-        sha256: "195ddc94f9bc89f45abdabb0b9eea86023d727ba90eac8b35b80f2544fc30572"
+        BINARYEN_VERSION: "132"
+        BINARYEN_SHA256: "195ddc94f9bc89f45abdabb0b9eea86023d727ba90eac8b35b80f2544fc30572"
       run: |
         set -euo pipefail
 
         arch=$(uname -m)
-        if [ "$arch" != "x86_64" ]; then
-          echo "::error::wasm-opt is pinned for x86_64 Linux runners, got $arch"
+        if [ "$RUNNER_OS" != "Linux" ] || [ "$arch" != "x86_64" ]; then
+          echo "::error::wasm-opt is pinned for x86_64 Linux runners, got $RUNNER_OS/$arch"
           exit 1
         fi
 
-        tag="version_$version"
+        tag="version_$BINARYEN_VERSION"
         asset="binaryen-$tag-x86_64-linux.tar.gz"
         curl -fsSL -o "$RUNNER_TEMP/$asset" \
           "https://github.com/WebAssembly/binaryen/releases/download/$tag/$asset"
-        echo "$sha256  $RUNNER_TEMP/$asset" | sha256sum --check --strict
+        echo "$BINARYEN_SHA256  $RUNNER_TEMP/$asset" | sha256sum --check --strict
 
         # Only wasm-opt and libbinaryen; the rest of the tarball is other
         # tools and their debug info, and unpacking it is most of the cost.
