@@ -9,6 +9,18 @@ typedef struct {
   uint32_t child_index;
   uint32_t structural_child_index;
   uint32_t descendant_index;
+  // Memoized answer to "which of this subtree's children are visible / named",
+  // filled on demand by `ts_tree_cursor_current_status` and described there.
+  // Every construction site uses a designated initializer, so these are
+  // zero-filled: `false` means "not computed yet", which is why the flag is
+  // spelled that way round — a construction site that forgets them can only
+  // cost a recomputation, never hand back a stale answer.
+  bool sibling_summary_valid;
+  // One past the index of the last child that contributes a visible node, and
+  // one past the index of the last that contributes a visible *named* one.
+  // Zero means there is no such child.
+  uint32_t visible_children_end;
+  uint32_t named_children_end;
 } TreeCursorEntry;
 
 typedef struct {

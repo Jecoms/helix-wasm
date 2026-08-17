@@ -60,3 +60,48 @@ test("an oversized file gives up on highlighting instead of parsing to completio
     .poll(() => getState(page).then((state) => state.mode))
     .toBe("insert");
 });
+
+// Issue #92: the other half of that story. This file is 100 kB, parses in
+// milliseconds and never comes near the timeout — the freeze was after the
+// parse, in the injection and local queries tree-house runs over the finished
+// tree. Unbalanced delimiters put every token in one flat ERROR node, and
+// tree-sitter's tree cursor answered "does this node have a later sibling"
+// by scanning the rest of that node's children, once per child. Quadratic:
+// this file took 26s to open, 50k took 7s, 200k took 102s. The vendored
+// tree-sitter summarizes the child list once instead (delta 2 in
+// stubs/tree-house-bindings/Cargo.toml).
+const UNBALANCED_RUST = "(".repeat(100_000);
+
+// Generous against the ~150ms this costs now, and nowhere near the 26s it
+// cost before: the point is the shape of the curve, not the constant.
+const UNBALANCED_BUDGET_MS = 3_000;
+
+test("a file of unbalanced delimiters opens without freezing the page (issue #92)", async ({
+  page,
+}) => {
+  await bootEditor(page);
+  await page.evaluate(
+    (contents) => window.helixVfs.write("/unbalanced.rs", contents),
+    UNBALANCED_RUST,
+  );
+
+  const started = Date.now();
+  await page.keyboard.type(":o /unbalanced.rs");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => getState(page).then((state) => state.path), {
+      message: "the unbalanced file never finished opening",
+      timeout: 180_000,
+      intervals: [100],
+    })
+    .toBe("/unbalanced.rs");
+  expect(Date.now() - started).toBeLessThan(UNBALANCED_BUDGET_MS);
+
+  // Unlike the oversized file above this one is small enough to parse well
+  // inside the budget, so it keeps its syntax tree — the fix is about the
+  // work that runs after the parse, not about giving up earlier.
+  await page.keyboard.press("i");
+  await expect
+    .poll(() => getState(page).then((state) => state.mode))
+    .toBe("insert");
+});
