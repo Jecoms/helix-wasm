@@ -2223,8 +2223,51 @@ impl Editor {
                 .remove_client(client.id());
         }
 
-        tokio::time::timeout(
-            Duration::from_millis(timeout.unwrap_or(3000)),
+        // Split out so the wasm32 arm below is an addition rather than a
+        // re-indent of upstream's body (see the port's README on patch shape).
+        //
+        // Not a `timeout` added to `wasm_timer` above, which is otherwise
+        // where a `tokio::time` lookalike for this file belongs:
+        // `tokio::time::error::Elapsed` has no public constructor, so nothing
+        // outside tokio can build the error a timeout reports elapsing with.
+        // A `wasm_timer::timeout` could only ever return `Ok`, and under that
+        // name the next caller would import it expecting a bound it does not
+        // have. The same limitation is safe here only because of what this
+        // particular call site is bounding — see below.
+        #[cfg(not(target_arch = "wasm32"))]
+        async fn bounded<F: std::future::Future>(
+            timeout: Option<u64>,
+            shutdown: F,
+        ) -> Result<(), tokio::time::error::Elapsed> {
+            tokio::time::timeout(Duration::from_millis(timeout.unwrap_or(3000)), shutdown)
+                .await
+                .map(|_| ())
+        }
+
+        /// wasm32 has no timer to bound this with — `tokio::time::timeout`
+        /// builds a `tokio::time` sleep, and building one calls
+        /// `Instant::now()`, which traps on wasm32-unknown-unknown — and no
+        /// shutdown to bound either. `Client::start` fails unconditionally
+        /// there (no subprocesses, so `which` never resolves a server
+        /// binary), so `iter_clients()` is always empty, the `join_all` this
+        /// is handed is ready on its first poll, and awaiting it directly is
+        /// what the timeout would have returned anyway.
+        ///
+        /// The deadline is the part that cannot be honored, not the wait: a
+        /// client that could hang would need a real timer here, so if
+        /// language servers ever reach wasm32 this has to grow one rather
+        /// than keep waiting forever.
+        #[cfg(target_arch = "wasm32")]
+        async fn bounded<F: std::future::Future>(
+            _timeout: Option<u64>,
+            shutdown: F,
+        ) -> Result<(), tokio::time::error::Elapsed> {
+            shutdown.await;
+            Ok(())
+        }
+
+        bounded(
+            timeout,
             future::join_all(
                 self.language_servers
                     .iter_clients()
@@ -2232,7 +2275,6 @@ impl Editor {
             ),
         )
         .await
-        .map(|_| ())
     }
 
     pub async fn wait_event(&mut self) -> EditorEvent {
