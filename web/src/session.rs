@@ -80,9 +80,12 @@ fn forward_output(bytes: &[u8]) {
 /// so it takes precedence over an earlier write to the same path.
 ///
 /// A config that arrives after this call is not live until `:config-reload`
-/// re-reads both files. A malformed one is reported in the statusline and on
-/// the console, and the editor boots with the defaults — what native helix
-/// does with a bad config, minus the prompt there is no stdin for.
+/// re-reads both files. A malformed one boots the editor on the defaults and
+/// is reported — what native helix does with a bad config, minus the prompt
+/// there is no stdin for. The report goes to the console and to the
+/// statusline, but the statusline half is only as durable as any other status
+/// message: the first event helix handles clears it, so a page that wants to
+/// hold the reader on it has to render it itself.
 ///
 /// Must be called exactly once per page load, before any other export, and
 /// with the real terminal size — the bridge otherwise reports a placeholder

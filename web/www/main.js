@@ -122,8 +122,18 @@ on_exit((code) => {
 // `window.helixConfig` before this module runs — an inline script above the
 // bundle, or Playwright's `addInitScript`. Left unset, helix boots on its
 // defaults, which is what the demo itself does.
-const bootConfig =
-  typeof window.helixConfig === "string" ? window.helixConfig : undefined;
+// A config is likely fetched, so the near-miss worth catching is a Promise
+// (or an already-parsed object) left where the text belongs: helix would boot
+// on its defaults with nothing anywhere to say why. `null` and `undefined`
+// are how a page says "no config", so they pass quietly.
+const configured = window.helixConfig ?? undefined;
+if (configured !== undefined && typeof configured !== "string") {
+  console.warn(
+    "window.helixConfig must be the text of a config.toml; ignoring",
+    configured,
+  );
+}
+const bootConfig = typeof configured === "string" ? configured : undefined;
 callEditor(() =>
   start(
     (bytes) => terminal.write(bytes),

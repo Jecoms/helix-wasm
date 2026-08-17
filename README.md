@@ -57,7 +57,8 @@ as `window.helixVfs` — try `helixVfs.write("hello.rs", "fn main() {}")`
 in the devtools console, then `:o hello.rs` in the editor. Persistent
 backends (localStorage/OPFS) can be layered on those hooks by the host
 page. Boot seeds a couple of sample files (`web/src/samples.rs`) so the
-picker opens on something selectable.
+picker opens on something selectable, and a `config.toml` the host page
+supplied lands in the store the same way — see "Configuration" below.
 
 ## Editor state inspection
 
@@ -132,8 +133,9 @@ above). What that changes:
   there is no way to create one first, so that is where a first `:w` lands.
   `:pwd` reports the working directory; nothing can delete a directory the
   store never held.
-- **The file picker lists the whole VFS**, seeded runtime files (the themes
-  and the tutor text) included, and every `file-picker.*` option — `hidden`,
+- **The file picker lists the whole VFS**, seeded files (the themes, the tutor
+  text, the samples, and a `config.toml` the page booted with) included, and
+  every `file-picker.*` option — `hidden`,
   `git-ignore`, `max-depth` — is inert.
 - **Path completion reads the VFS.** `:o`, `:cd` and the other
   path-completing commands offer the keys under the directory you have typed,
@@ -159,13 +161,18 @@ remaps, `[editor]` settings and `theme` all work. A host page passes the text
 as `start()`'s fourth argument, which seeds the global path before the editor
 boots (the demo page reads it from `window.helixConfig`); an embedder that
 would rather write either path itself can `helixVfs.write` it first. A
-malformed config is reported in the statusline and on the console and the
-editor boots on the defaults — what native helix does, minus the "press
-ENTER" prompt there is no stdin for.
+malformed config is reported and the editor boots on the defaults — what
+native helix does, minus the "press ENTER" prompt there is no stdin for. The
+report goes to the browser console and to the statusline, where it lasts
+until the first event helix handles, a click included, clears it like any
+other status message; the console line is the durable half.
 
 - `:config-reload` re-reads both files, so a config that arrives after boot
   applies without a page reload — including one edited in the editor itself
-  with `:config-open` and `:w`.
+  with `:config-open` and `:w`. On a page that booted without any config it
+  fails with "Failed to load config: no such virtual file", which is native
+  helix's own behavior with no `config.toml` on disk, in the vocabulary of
+  the store.
 - RGB themes need a true-color claim that wasm32 has no `COLORTERM` or
   terminfo to make. The port answers for the terminal emulator rather than
   overriding the loaded config, so the claim survives `:config-reload`.

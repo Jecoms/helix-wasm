@@ -14,7 +14,9 @@ export const vfsRead = (page, path) =>
 
 // Every key in the virtual file system, minus the ones boot seeds (the
 // runtime themes and the tutor text under `/.config/helix/runtime`), so a
-// spec can assert on the whole store without restating the seed set.
+// spec can assert on the whole store without restating the seed set. Booting
+// with a config (`bootWithConfig`) seeds one more, `/.config/helix/config.toml`,
+// which is outside that prefix and does show up here.
 export const vfsList = (page) =>
   page
     .evaluate(() => window.helixVfs.list())

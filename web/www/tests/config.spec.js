@@ -144,6 +144,35 @@ test("a workspace .helix/config.toml is read and merged over the global one", as
   expect(await modeAfter(page, "y")).toBe("insert");
 });
 
+test("the workspace config follows the working directory, marker or not", async ({
+  page,
+}) => {
+  await bootWithConfig(page, REMAP);
+
+  // `find_workspace` looks for a `.git`/`.jj`/`.helix` marker on the real
+  // filesystem, and nothing on wasm32 answers — so the workspace is always
+  // the working directory, and `:cd` moves which `.helix/config.toml` counts.
+  // The decoy at the boot directory is what separates "followed the cwd" from
+  // "found a marker at `/`": it stays behind, and its remap must not apply.
+  await page.evaluate(
+    ([path, text]) => window.helixVfs.write(path, text),
+    [WORKSPACE_CONFIG, '[keys.normal]\n";" = "insert_mode"\n'],
+  );
+  await page.keyboard.type(":cd /project");
+  await page.keyboard.press("Enter");
+  await page.evaluate(
+    ([path, text]) => window.helixVfs.write(path, text),
+    ["/project/.helix/config.toml", '[keys.normal]\nu = "insert_mode"\n'],
+  );
+  await reloadConfig(page);
+
+  expect(await modeAfter(page, "u")).toBe("insert");
+  await page.keyboard.press("Escape");
+  expect(await modeAfter(page, ";")).toBe("normal");
+  // The global config is not directory-scoped and still applies.
+  expect(await modeAfter(page, "y")).toBe("insert");
+});
+
 test(":config-open edits the live config, and :w + :config-reload apply it", async ({
   page,
 }) => {
