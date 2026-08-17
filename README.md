@@ -55,6 +55,16 @@ byte-identical to upstream on purpose (it is the file upstream churns most),
 so declare a new dependency in the individual crate manifests rather than in
 its `[workspace.dependencies]`.
 
+`helix/Cargo.lock` is byte-identical to upstream for the same reason, and it
+takes no upkeep to keep it that way: `helix/` is excluded from the root
+workspace, so every build here resolves against the root `Cargo.lock` and
+nothing reads helix's. It is upstream's lockfile riding along with upstream's
+tree — deliberately stale against the crate manifests, and left alone rather
+than regenerated, because upstream rewrites it on every dependency bump and
+any hunk we hold there is a conflict on the next replay. Regenerating it is
+not a fix; if a `cargo` run rooted at `helix/` ever needs a current lockfile,
+it re-resolves one (and fails under `--locked`).
+
 What the patch set changes, at any point:
 
 ```sh
