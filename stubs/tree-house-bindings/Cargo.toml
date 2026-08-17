@@ -1,14 +1,16 @@
 # Vendored copy of tree-house-bindings 0.2.4 (MPL-2.0, see LICENSE) with one
-# extern declaration corrected so tree-sitter queries do not trap on wasm32.
+# extern declaration corrected so tree-sitter queries do not trap on wasm32,
+# and one quadratic in the vendored tree-sitter's tree cursor removed.
 # The crate itself is MPL-2.0, but the nested vendor/ tree it ships carries
 # two further licenses: the tree-sitter C library is MIT (vendor/LICENSE) and
 # the ICU header subset that C includes is under the Unicode license
 # (vendor/src/unicode/LICENSE). Both are compiled into the distributed wasm,
 # so web/NOTICE.md reproduces their notices.
 #
-# Provenance — everything outside src/query_cursor.rs is the pristine
-# crates.io package (this Cargo.toml is the cargo-normalized one from the
-# .crate archive, including the generated banner below):
+# Provenance — everything outside src/query_cursor.rs and
+# vendor/src/tree_cursor.{c,h} is the pristine crates.io package (this
+# Cargo.toml is the cargo-normalized one from the .crate archive, including
+# the generated banner below):
 #   archive  tree-house-bindings-0.2.4.crate
 #   sha256   e53f322db2c82a796392a01ae2687e304c4b3aafcc6520ff134b4ef35dafebeb
 #            — the crates.io registry checksum for 0.2.4
@@ -20,12 +22,13 @@
 #   shasum -a 256 "tree-house-bindings-$v.crate"   # compare against the above
 #   tar -xzf "tree-house-bindings-$v.crate"
 #   diff -rq "tree-house-bindings-$v" stubs/tree-house-bindings
-# That diff must report exactly two differing files — this Cargo.toml and
-# src/query_cursor.rs — and no extra or missing ones. On a bump: replace the
-# tree with the extracted archive, re-apply the delta below, then update the
-# version, sha256, tree-sitter revision, and line citations here.
+# That diff must report exactly four differing files — this Cargo.toml,
+# src/query_cursor.rs, and vendor/src/tree_cursor.{c,h} — and no extra or
+# missing ones. On a bump: replace the tree with the extracted archive,
+# re-apply both deltas below, then update the version, sha256, tree-sitter
+# revision, and line citations here.
 #
-# The delta:
+# Delta 1 — the ABI fix:
 #   - `ts_query_cursor_set_byte_range` is declared with the `-> bool` that the
 #     C function actually returns (`vendor/include/tree_sitter/api.h:1129`,
 #     `vendor/src/query.c:3210`, both line numbers in the tree-sitter v0.25.9
@@ -39,20 +42,56 @@
 # tree-house, which was deleted (see issue #79); vendoring keeps the build
 # resolvable from this repo alone.
 #
+# Delta 2 — the tree cursor quadratic (issue #92):
+#   - `ts_tree_cursor_current_status` (`vendor/src/tree_cursor.c:499`) answers
+#     "does the node the cursor is on have a later sibling, and a later
+#     *named* sibling" by scanning that node's remaining siblings. A query
+#     cursor calls it once per node it enters (`vendor/src/query.c:3758`, its
+#     only caller), so querying a node with N children costs O(N²). Parse
+#     errors are where N gets large: a run of unbalanced delimiters puts every
+#     token in one flat `ERROR` node, and upstream does not compress those the
+#     way it compresses repetitions in a valid tree. Both answers depend on
+#     the whole child list rather than on where the scan starts, so the delta
+#     summarizes that list once onto the parent's cursor-stack entry
+#     (`vendor/src/tree_cursor.h`'s `TreeCursorEntry`) and answers each child
+#     by comparing indices. Same flags, linear walk.
+#
+# Not a wasm32 gap: upstream tree-sitter `master` still scans (it changed the
+# loop's guard, which does not change the complexity), so native helix has
+# this too. It is carried here because the browser has no way to interrupt a
+# frozen main thread. Report it upstream and drop this when it lands there.
+#
+# This is the first change this repo makes under vendor/, so note what the
+# refresh recipe above does not cover: that recipe re-checks the crates.io
+# package, but the tree-sitter C under vendor/ comes from vendor.sh, which
+# opens with `rm -rf vendor` and re-clones the pinned tag. Running it drops
+# delta 2 on the floor — silently, since the result still builds and still
+# passes, just slowly again. Re-apply it afterwards, and re-run the
+# differential check below.
+#
+# Verified by differential testing rather than by inspection: parse a corpus
+# across the linked grammars, run every query set over each tree, and dump
+# every match's pattern, captures and node ranges. That output must be
+# byte-identical to a build of the pristine vendor/ tree — including for
+# inputs that interleave extras and aliases, which is what the scan's
+# structural-child-index bookkeeping is sensitive to.
+#
 # build.rs is upstream's, untouched — including the fact that its
 # `cargo:rerun-if-changed` loop covers only the top level of vendor/src and
 # misses vendor/include/ plus the unicode/, portable/, and wasm/
 # subdirectories. That was moot under a `git =` dep (cargo fingerprints those
 # by pinned revision), but a `path =` dep is fingerprinted by these
 # declarations, so a hand edit under those paths would not force a rebuild.
-# Left alone deliberately: patching it would cost the pristine-except-one-
-# file property the recipe above checks, and vendor/ is regenerated wholesale
-# by vendor.sh rather than edited in place. `cargo clean -p
-# tree-house-bindings` forces the rebuild if you ever do edit it by hand.
+# Left alone deliberately: patching it would add a fifth file to the four the
+# recipe above checks for, and it would buy nothing here — delta 2 touches
+# vendor/src/tree_cursor.{c,h}, both at the top level of vendor/src, which the
+# loop does cover. `cargo clean -p tree-house-bindings` forces the rebuild if
+# a later delta ever does land under one of the missed paths.
 #
-# Retire when upstream ships the fix in a release helix depends on. As of
-# 2026-08-16 it is still absent from the newest published version (0.3.2) and
-# helix-editor/tree-house#40 was closed unmerged, so this is not imminent.
+# Retire delta 1 when upstream ships the fix in a release helix depends on. As
+# of 2026-08-16 it is still absent from the newest published version (0.3.2)
+# and helix-editor/tree-house#40 was closed unmerged, so this is not imminent.
+# Delta 2 retires against tree-sitter itself, not tree-house.
 #
 # THIS FILE IS AUTOMATICALLY GENERATED BY CARGO
 #
