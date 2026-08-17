@@ -102,6 +102,32 @@ fn force_quit(cx: &mut compositor::Context, _args: Args, event: PromptEvent) -> 
     Ok(())
 }
 
+/// Whether [`open`] should read `path` as a directory and offer a file picker
+/// on it rather than open it as a file.
+#[cfg(not(target_arch = "wasm32"))]
+fn is_directory(path: &Path) -> std::io::Result<bool> {
+    std::fs::canonicalize(path).map(|p| p.is_dir())
+}
+
+/// Whether [`open`] should read `path` as a directory — on wasm32, whether
+/// any virtual file system key extends it.
+///
+/// That is the only evidence a flat key space offers, and it is the reading
+/// path completion and the prompt already give a shared prefix: a name other
+/// keys continue past is a directory, including one that is a key itself
+/// (`/proj` beside `/proj/alpha.txt` — issue #96), because descending is the
+/// only one of the two things a picker can do with it. A key nothing extends
+/// is a file, and a path no key touches is neither, so `:o` falls through and
+/// opens the new buffer it opens natively when `canonicalize` fails.
+///
+/// The `io::Result` is what the native arm above returns, and wearing it
+/// keeps the call site the `if let Ok(true)` line upstream wrote; reading a
+/// `BTreeMap` cannot fail.
+#[cfg(target_arch = "wasm32")]
+fn is_directory(path: &Path) -> std::io::Result<bool> {
+    Ok(!helix_stdx::vfs::read_dir(path).is_empty())
+}
+
 fn open(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> anyhow::Result<()> {
     if event != PromptEvent::Validate {
         return Ok(());
@@ -112,7 +138,7 @@ fn open(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> anyhow:
         let path = helix_stdx::path::expand_tilde(path);
         // If the path is a directory, open a file picker on that directory and update the status
         // message
-        if let Ok(true) = std::fs::canonicalize(&path).map(|p| p.is_dir()) {
+        if let Ok(true) = is_directory(&path) {
             let callback = async move {
                 let call: job::Callback = job::Callback::EditorCompositor(Box::new(
                     move |editor: &mut Editor, compositor: &mut Compositor| {

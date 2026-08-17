@@ -1209,19 +1209,32 @@ impl Document {
             };
 
             // wasm32 has no file system (and no tokio IO): write synchronously
-            // to the in-memory virtual file system instead. The mtime check
-            // above cannot be ported: vfs entries carry no timestamps, so an
-            // external modification (the embedder writing through the vfs JS
-            // hooks between open and save) is undetectable and the last write
-            // wins. The backup dance is unnecessary rather than skipped —
-            // the vfs writer stages in memory and commits on flush, so a
-            // failed save leaves the stored contents untouched.
+            // to the in-memory virtual file system instead. Its entries carry
+            // modification times, so the external-modification guard above
+            // ports as-is — the write it protects against is the embedder's,
+            // through the vfs JS hooks, between open and save. The rest of the
+            // native arm has nothing to do here: no parent directory to
+            // create in a flat key namespace, no symlink to resolve, nothing
+            // read-only, and the backup dance is unnecessary rather than
+            // skipped — the vfs writer stages in memory and commits on flush,
+            // so a failed save leaves the stored contents untouched.
             #[cfg(target_arch = "wasm32")]
             let save_time = {
-                let _ = (force, atomic_save, last_saved_time);
+                let _ = atomic_save;
+
+                // Protect against overwriting changes made externally
+                if !force {
+                    if let Ok(mtime) = helix_stdx::vfs::modified(&path).map(from_std_system_time) {
+                        if last_saved_time < mtime {
+                            bail!("file modified by an external process, use :w! to overwrite");
+                        }
+                    }
+                }
+
                 let mut writer = helix_stdx::vfs::writer(&path);
                 to_writer_sync(&mut writer, encoding_with_bom_info, &text)?;
-                SystemTime::now()
+
+                helix_stdx::vfs::modified(&path).map_or(SystemTime::now(), from_std_system_time)
             };
 
             let event = DocumentSavedEvent {
@@ -1295,7 +1308,8 @@ impl Document {
     }
 
     pub fn pickup_last_saved_time(&mut self) {
-        self.last_saved_time = match self.path() {
+        #[cfg(not(target_arch = "wasm32"))]
+        let last_saved_time = match self.path() {
             Some(path) => match path.metadata() {
                 Ok(metadata) => match metadata.modified() {
                     Ok(mtime) => from_std_system_time(mtime),
@@ -1311,6 +1325,23 @@ impl Document {
             },
             None => SystemTime::now(),
         };
+
+        // wasm32 has no file system to stat; mtimes come from the virtual one,
+        // where a path nothing has written yet has none — the same shape as
+        // the native arm, which falls back to the current time whenever the
+        // stat cannot answer. Seeding from the store rather than the clock is
+        // what keeps `save`'s guard from misfiring: a buffer opened on an
+        // existing key carries that key's exact stamp, so an immediate `:w`
+        // compares a time against itself.
+        #[cfg(target_arch = "wasm32")]
+        let last_saved_time = match self.path() {
+            Some(path) => {
+                helix_stdx::vfs::modified(path).map_or(SystemTime::now(), from_std_system_time)
+            }
+            None => SystemTime::now(),
+        };
+
+        self.last_saved_time = last_saved_time;
     }
 
     // Detect if the file is readonly and change the readonly field if necessary (unix only)

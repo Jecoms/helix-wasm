@@ -14,7 +14,9 @@ export const vfsRead = (page, path) =>
 
 // Every key in the virtual file system, minus the ones boot seeds (the
 // runtime themes and the tutor text under `/.config/helix/runtime`), so a
-// spec can assert on the whole store without restating the seed set.
+// spec can assert on the whole store without restating the seed set. It is
+// the same prefix the file picker declines to offer (issue #74); picker.spec.js
+// is where that prefix is pinned against the store rather than assumed.
 export const vfsList = (page) =>
   page
     .evaluate(() => window.helixVfs.list())

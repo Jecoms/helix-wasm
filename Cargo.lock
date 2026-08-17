@@ -578,6 +578,7 @@ dependencies = [
  "ropey",
  "rustix",
  "unicode-segmentation",
+ "web-time",
  "which",
  "windows-sys 0.60.2",
 ]
