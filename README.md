@@ -286,11 +286,11 @@ loop either does not happen or happens inline:
   queries over the finished tree with no deadline at all, so the freeze is
   bounded by how big the tree is rather than by the timeout — see
   [#120](https://github.com/Jecoms/helix-wasm/issues/120). Those queries are
-  linear in practice (~90 ms for an 800 kB file), which they were not before
+  linear in the size of the tree, which they were not before
   [#92](https://github.com/Jecoms/helix-wasm/issues/92): a quadratic in
   tree-sitter's tree cursor made a 100 kB file of unbalanced delimiters take
-  26 s to open, where it now takes ~150 ms. The vendored copy carries that
-  fix — see delta 2 in `stubs/tree-house-bindings/Cargo.toml`.
+  26 s to open in Chromium, where it now takes ~150 ms. The vendored copy
+  carries that fix — see delta 2 in `stubs/tree-house-bindings/Cargo.toml`.
 
 ### Terminal and browser differences
 

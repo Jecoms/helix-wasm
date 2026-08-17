@@ -61,6 +61,14 @@
 # this too. It is carried here because the browser has no way to interrupt a
 # frozen main thread. Report it upstream and drop this when it lands there.
 #
+# This is the first change this repo makes under vendor/, so note what the
+# refresh recipe above does not cover: that recipe re-checks the crates.io
+# package, but the tree-sitter C under vendor/ comes from vendor.sh, which
+# opens with `rm -rf vendor` and re-clones the pinned tag. Running it drops
+# delta 2 on the floor — silently, since the result still builds and still
+# passes, just slowly again. Re-apply it afterwards, and re-run the
+# differential check below.
+#
 # Verified by differential testing rather than by inspection: parse a corpus
 # across the linked grammars, run every query set over each tree, and dump
 # every match's pattern, captures and node ranges. That output must be
@@ -74,12 +82,11 @@
 # subdirectories. That was moot under a `git =` dep (cargo fingerprints those
 # by pinned revision), but a `path =` dep is fingerprinted by these
 # declarations, so a hand edit under those paths would not force a rebuild.
-# Left alone deliberately: patching it would cost the pristine-except-one-
-# file property the recipe above checks, and vendor/ is regenerated wholesale
-# by vendor.sh rather than edited in place. `cargo clean -p
-# tree-house-bindings` forces the rebuild if you ever do edit it by hand.
-# Delta 2 is unaffected: both files it touches sit at the top level of
-# vendor/src, which the loop does cover.
+# Left alone deliberately: patching it would add a fifth file to the four the
+# recipe above checks for, and it would buy nothing here — delta 2 touches
+# vendor/src/tree_cursor.{c,h}, both at the top level of vendor/src, which the
+# loop does cover. `cargo clean -p tree-house-bindings` forces the rebuild if
+# a later delta ever does land under one of the missed paths.
 #
 # Retire delta 1 when upstream ships the fix in a release helix depends on. As
 # of 2026-08-16 it is still absent from the newest published version (0.3.2)

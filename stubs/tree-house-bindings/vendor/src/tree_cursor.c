@@ -561,6 +561,13 @@ void ts_tree_cursor_current_status(
     // many children is quadratic in the size of that child list. Error nodes
     // are the ones that get large: a run of unbalanced delimiters puts every
     // token in one flat ERROR node, and 100k of them took ~12s to query.
+    //
+    // Writing the summary through `parent_entry` is well defined even though
+    // `_self` is a `const TSTreeCursor *`: `array_get` yields
+    // `&self->stack.contents[i]`, and `contents` being a const *pointer* says
+    // nothing about the entries it points at, which are ordinary mutable
+    // storage. The const in the signature means "does not move the cursor",
+    // and this does not.
     if (!*has_later_siblings) {
       if (!parent_entry->sibling_summary_valid) {
         uint32_t sibling_count = parent_entry->subtree->ptr->child_count;
@@ -587,6 +594,10 @@ void ts_tree_cursor_current_status(
         }
         parent_entry->sibling_summary_valid = true;
       }
+      // `entry` is a child of `parent_entry`, so `child_index < child_count`
+      // and the `+ 1` cannot wrap; `..._end` is zero when there is no such
+      // child, which is why it is stored one past the last index rather than
+      // as the index itself.
       if (parent_entry->visible_children_end > entry->child_index + 1) {
         *has_later_siblings = true;
       }

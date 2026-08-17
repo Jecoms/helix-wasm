@@ -1,16 +1,26 @@
-// Tree-sitter's parse timeout in the browser (issue #77): the C side reads
-// `clock_gettime`, which on wasm32 is a shim over the page's
-// `performance.now()` (sysroot/shims.c → the web crate's `clock` module).
-// While that shim was frozen at zero, elapsed time never grew, helix's
-// 500 ms budget never expired, and a file too big to parse in time parsed to
-// completion on the main thread instead of degrading to no highlighting.
+// How long opening a file can freeze the page. Syntax highlighting runs on
+// the main thread, so a buffer that is expensive to highlight is a buffer the
+// tab stops responding for — the two cases here are the two ways that went
+// wrong, and neither is about the other's mechanism.
 //
-// The payload is a plainly-too-large file rather than a pathological one:
-// tree-sitter samples the deadline once per 100 parse operations, so what a
-// working timeout bounds is a parse that makes many small steps. On the
-// frozen clock this file took 2.9s to open here; with a real clock it takes
-// ~0.6s, the budget plus the read. If a future machine ever parses 5 MB
-// inside 500 ms this test fails on the warning below — grow the file then.
+// Case 1 (issue #77) is the parse, which helix gives a 500 ms budget. The C
+// side reads `clock_gettime`, which on wasm32 is a shim over the page's
+// `performance.now()` (sysroot/shims.c → the web crate's `clock` module).
+// While that shim was frozen at zero, elapsed time never grew, the budget
+// never expired, and a file too big to parse in time parsed to completion
+// instead of degrading to no highlighting.
+//
+// Case 2 (issue #92) is everything the budget does not cover: after a parse
+// succeeds, tree-house runs the injection and local queries over the finished
+// tree with no deadline at all. Its payload is pathological rather than large.
+//
+// The #77 payload is deliberately the opposite — plainly too large, nothing
+// odd about its shape: tree-sitter samples the deadline once per 100 parse
+// operations, so what a working timeout bounds is a parse that makes many
+// small steps. On the frozen clock this file took 2.9s to open here; with a
+// real clock it takes ~0.6s, the budget plus the read. If a future machine
+// ever parses 5 MB inside 500 ms this test fails on the warning below — grow
+// the file then.
 import { test, expect } from "@playwright/test";
 import { bootEditor, getState } from "./helpers.js";
 
