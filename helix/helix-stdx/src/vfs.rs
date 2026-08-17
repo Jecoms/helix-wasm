@@ -77,6 +77,25 @@ pub fn write(path: impl AsRef<Path>, contents: impl Into<Vec<u8>>) -> io::Result
     Ok(())
 }
 
+/// Moves the file at `from` to `to`, replacing any file already there.
+///
+/// Mirrors [`std::fs::rename`], which is what the native code paths this
+/// stands in for call: the source key is dropped, an existing target key is
+/// overwritten, and a rename onto the same key is a no-op that keeps the
+/// contents. Fails with `NotFound` if `from` names no file and with
+/// `InvalidInput` if `to` names no file — the target is validated *before*
+/// the source is removed, so a rejected rename cannot lose the contents.
+pub fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> io::Result<()> {
+    let to = validated(to)?;
+    let from = normalize(from);
+    let mut files = FILES.write().unwrap();
+    let contents = files
+        .remove(&from)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no such virtual file"))?;
+    files.insert(to, contents);
+    Ok(())
+}
+
 /// Removes the file at `path`, or `NotFound`.
 pub fn remove(path: impl AsRef<Path>) -> io::Result<()> {
     FILES
@@ -197,6 +216,49 @@ mod tests {
         write("/vfs-test-truncate/a.txt", "old".as_bytes()).unwrap();
         writer("/vfs-test-truncate/a.txt").flush().unwrap();
         assert_eq!(read("/vfs-test-truncate/a.txt").unwrap(), b"");
+    }
+
+    #[test]
+    fn rename_moves_contents_and_drops_the_source() {
+        write("/vfs-test-rename/a.txt", "contents".as_bytes()).unwrap();
+        rename("/vfs-test-rename/a.txt", "/vfs-test-rename/b.txt").unwrap();
+        assert!(!exists("/vfs-test-rename/a.txt"));
+        assert_eq!(read("/vfs-test-rename/b.txt").unwrap(), b"contents");
+    }
+
+    #[test]
+    fn rename_replaces_an_existing_target() {
+        // What `fs::rename` does on unix, so `:move` behaves the same here.
+        write("/vfs-test-rename-over/a.txt", "new".as_bytes()).unwrap();
+        write("/vfs-test-rename-over/b.txt", "old".as_bytes()).unwrap();
+        rename("/vfs-test-rename-over/a.txt", "/vfs-test-rename-over/b.txt").unwrap();
+        assert!(!exists("/vfs-test-rename-over/a.txt"));
+        assert_eq!(read("/vfs-test-rename-over/b.txt").unwrap(), b"new");
+    }
+
+    #[test]
+    fn rename_onto_itself_keeps_the_file() {
+        write("/vfs-test-rename-self/a.txt", "kept".as_bytes()).unwrap();
+        rename("/vfs-test-rename-self/a.txt", "/vfs-test-rename-self/./a.txt").unwrap();
+        assert_eq!(read("/vfs-test-rename-self/a.txt").unwrap(), b"kept");
+    }
+
+    #[test]
+    fn rename_rejects_a_bad_target_without_touching_the_source() {
+        write("/vfs-test-rename-bad/a.txt", "kept".as_bytes()).unwrap();
+        for path in ["", ".", "/"] {
+            let err = rename("/vfs-test-rename-bad/a.txt", path).unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::InvalidInput, "rename(_, {path:?})");
+        }
+        assert_eq!(read("/vfs-test-rename-bad/a.txt").unwrap(), b"kept");
+    }
+
+    #[test]
+    fn rename_of_a_missing_source_reports_not_found() {
+        let err = rename("/vfs-test-rename-missing/a.txt", "/vfs-test-rename-missing/b.txt")
+            .unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::NotFound);
+        assert!(!exists("/vfs-test-rename-missing/b.txt"));
     }
 
     #[test]

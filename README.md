@@ -201,15 +201,13 @@ above). What that changes:
   "file modified externally" guard can never fire — a `:w` silently
   overwrites whatever a `helixVfs.write` put there in the meantime. `:w!`
   does exactly what `:w` does, and nothing is ever read-only.
-- **`:move` renames the buffer but moves nothing.** The rename is guarded by
-  an existence check the VFS can never satisfy, so `:move /b.txt` retargets
-  the buffer and stops there: the old key keeps its contents, and the new one
-  does not exist until the next `:w`. You are left with both, the original
-  holding a stale copy, and nothing says so.
 - **There are no directories.** `:o /some/dir` opens an ordinary empty buffer
-  named `/some/dir`. `:cd` works and does change how relative paths resolve,
-  but `:pwd` always reports the directory as `(deleted)` — the existence
-  check behind that label has no directory to find.
+  named `/some/dir`, and `:move /some/dir` renames the file *to* that key
+  instead of moving it into the directory — native helix appends the original
+  file name when the target is a directory, and there is none here to
+  recognize. `:cd` works and does change how relative paths resolve, but
+  `:pwd` always reports the directory as `(deleted)` — the existence check
+  behind that label has no directory to find.
 - **The file picker lists the whole VFS**, seeded runtime files (the themes
   and the tutor text) included, and every `file-picker.*` option — `hidden`,
   `git-ignore`, `max-depth` — is inert.

@@ -12,6 +12,16 @@ export const getText = (page) => page.evaluate(() => window.helixState.text());
 export const vfsRead = (page, path) =>
   page.evaluate((p) => window.helixVfs.read(p), path);
 
+// Every key in the virtual file system, minus the ones boot seeds (the
+// runtime themes and the tutor text under `/.config/helix/runtime`), so a
+// spec can assert on the whole store without restating the seed set.
+export const vfsList = (page) =>
+  page
+    .evaluate(() => window.helixVfs.list())
+    .then((paths) =>
+      paths.filter((path) => !path.startsWith("/.config/helix/runtime/")),
+    );
+
 // The rendered terminal, as text. Reach for this only where the pixels are
 // the point — boot proving a statusline drew at all, the theme tests
 // proving a theme painted the screen, the tutor split tests counting views

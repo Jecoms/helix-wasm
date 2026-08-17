@@ -1536,8 +1536,22 @@ impl Editor {
             }
         }
 
+        #[cfg(not(target_arch = "wasm32"))]
         if old_path.exists() {
             fs::rename(old_path, &new_path)?;
+        }
+        // wasm32 has no file system: a document path is a `helix_stdx::vfs`
+        // key, so `Path::exists` there is never true and the native arm above
+        // would move nothing — leaving the stored contents at the old key
+        // while the rest of this function retargeted the buffer at a key that
+        // does not exist yet. `vfs::rename` mirrors `fs::rename` (drops the
+        // source, replaces an existing target), which keeps the states that
+        // follow from the guard lined up with native too: a buffer whose path
+        // has never been saved has no key, so only the buffer moves, and a
+        // modified buffer moves its last-saved contents and stays modified.
+        #[cfg(target_arch = "wasm32")]
+        if helix_stdx::vfs::exists(old_path) {
+            helix_stdx::vfs::rename(old_path, &new_path)?;
         }
 
         if let Some(doc) = self.document_by_path(old_path) {
