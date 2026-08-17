@@ -131,11 +131,10 @@ above). What that changes:
   with `path is not a file`, which is what native says about a real directory
   — unless a key sits at `/some/dir` itself, beside the keys under it, and
   then it reads that key: a name here can be both a file and a prefix, which
-  a file system cannot arrange. `:cd` works, does change
-  how relative paths resolve, and accepts a directory no key lives under —
-  there is no way to create one first, so that is where a first `:w` lands.
-  `:pwd` reports the working directory; nothing can delete a directory the
-  store never held.
+  a file system cannot arrange. `:cd` works, does change how relative paths
+  resolve, and accepts a directory no key lives under — there is no way to
+  create one first, so that is where a first `:w` lands. `:pwd` reports the
+  working directory; nothing can delete a directory the store never held.
 - **The file picker lists the whole VFS**, seeded runtime files (the themes
   and the tutor text) included, and every `file-picker.*` option — `hidden`,
   `git-ignore`, `max-depth` — is inert.
