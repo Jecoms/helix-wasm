@@ -55,6 +55,22 @@ byte-identical to upstream on purpose (it is the file upstream churns most),
 so declare a new dependency in the individual crate manifests rather than in
 its `[workspace.dependencies]`.
 
+`helix/Cargo.lock` is byte-identical to upstream for the same reason, and it
+takes no upkeep to keep it that way: `helix/` is excluded from the root
+workspace, so every build here resolves against the root `Cargo.lock` and
+nothing reads helix's. It is upstream's lockfile riding along with upstream's
+tree — deliberately stale against the crate manifests, and left alone rather
+than regenerated, because upstream rewrites it on every dependency bump and
+any hunk we hold there is a conflict on the next replay. Regenerating it is
+not a fix; if a `cargo` run rooted at `helix/` ever needs a current lockfile,
+it re-resolves one (and fails under `--locked`).
+
+Two patches in the series still edit that file on their way past, so a replay
+can stop on it even though the net diff is empty. Resolve it by taking
+upstream's copy every time it comes up — `git checkout upstream/$V --
+helix/Cargo.lock`. That is always the right answer, because upstream's copy
+*is* the target state; there is nothing of ours in the file to preserve.
+
 What the patch set changes, at any point:
 
 ```sh
@@ -429,9 +445,13 @@ git rebase --onto "upstream/$V" upstream/25.07.1 "port/$V"
 Open `port/$V` → `upstream/$V`. The base is the merge base, so the diff is
 exactly this repo's commits and none of helix's source. The wrapper commits
 touch files upstream never touches and replay clean, which narrows the
-conflict set to the helix files this port patches. **Parity is the Playwright
-suite passing** (see "Browser smoke tests" above). Promote by moving `main`
-to the reviewed tip, keeping the outgoing line as a versioned branch.
+conflict set to the helix files this port patches. One of those resolves
+without thinking about it: whenever the replay stops on `helix/Cargo.lock`,
+take upstream's copy (`git checkout upstream/$V -- helix/Cargo.lock`) and
+continue — see "Patching helix" above for why that is always correct.
+**Parity is the Playwright suite passing** (see "Browser smoke tests" above).
+Promote by moving `main` to the reviewed tip, keeping the outgoing line as a
+versioned branch.
 
 ## Branch and tag map
 
