@@ -32,6 +32,29 @@ pub fn dispatch_blocking(job: impl FnOnce(&mut Editor, &mut Compositor) + Send +
     send_blocking(jobs, Callback::EditorCompositor(Box::new(job)))
 }
 
+/// Runs a job's future to completion in the background, detached: nothing
+/// joins it and nothing waits on it before the editor exits (that is what
+/// [`Jobs::wait_futures`] is for).
+#[cfg(not(target_arch = "wasm32"))]
+fn spawn_detached(f: impl Future<Output = ()> + Send + 'static) {
+    tokio::spawn(f);
+}
+
+/// wasm32 has no tokio runtime to spawn onto — `tokio::spawn` panics with
+/// "there is no reactor running", and a wasm32 panic is a trap that takes the
+/// whole module with it, so every command queuing a job used to wedge the
+/// editor (see the port's README). The browser's own executor is the JS
+/// microtask queue, which `spawn_local` schedules onto; the queue appends
+/// rather than re-entering, so spawning from inside a task it is already
+/// polling (the editor's event loop) is fine.
+///
+/// The job machinery around this is runtime-free already: the callback and
+/// status channels are `tokio::sync` mpsc, which never touch a reactor.
+#[cfg(target_arch = "wasm32")]
+fn spawn_detached(f: impl Future<Output = ()> + 'static) {
+    wasm_bindgen_futures::spawn_local(f);
+}
+
 pub enum Callback {
     EditorCompositor(EditorCompositorCallback),
     Editor(EditorCallback),
@@ -121,7 +144,7 @@ impl Jobs {
         if j.wait {
             self.wait_futures.push(j.future);
         } else {
-            tokio::spawn(async move {
+            spawn_detached(async move {
                 match j.future.await {
                     Ok(Some(cb)) => dispatch_callback(cb).await,
                     Ok(None) => (),

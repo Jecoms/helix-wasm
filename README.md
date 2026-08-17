@@ -142,38 +142,6 @@ what the port does today, not what its source suggests it might do. The
 entries track `helix/` plus the `web/` crate, so re-check them when the port
 is replayed onto a new release (see "Taking a new helix release").
 
-### Commands that crash the session
-
-`Jobs::add` spawns onto a tokio runtime, and there is no runtime in the
-browser, so a command that queues a background job panics rather than bailing
-out politely. A panic wedges the instance: the editor stops drawing and
-keystrokes stop landing. The page notices, prints `Helix has stopped
-responding. Refresh the page.` on the terminal and stops forwarding input, so
-a reload is still the only recovery — but a wedged editor never passes for a
-hung page. This is a bug rather than something the browser forces — tracked in
-[#71](https://github.com/Jecoms/helix-wasm/issues/71). Confirmed triggers:
-
-- **`gd`, `gD`, `gy`, `gi`, `gr`** — goto definition, declaration, type
-  definition, implementation and reference. Bare `g`-prefix keys, which makes
-  these the easiest crash in the list to hit without meaning to. Helix's
-  other language-server entry points check for a configured server before
-  they queue anything and bail cleanly (see "No subprocesses"); the five
-  goto commands do not.
-- `:sh`, `:!`, `:run-shell-command`
-- `:redraw`
-- `:tree-sitter-scopes`
-- `:tree-sitter-subtree` and `:tree-sitter-highlight-name`, but only once the
-  buffer has a syntax tree — after `:set-language rust`, say. On a plain
-  scratch buffer both return before queuing anything and bail cleanly.
-- `:lsp-workspace-command`
-- `gf` with the cursor on a URL — opening one would hand off to an external
-  program. `gf` on a file path works normally.
-- **Enter on an invalid regex at a `/` or `?` search prompt** (`/[` then
-  Enter). Valid searches are fine, and so is backing out of a bad one with
-  Escape.
-
-Treat that list as incomplete: it is whatever path reaches `Jobs::add`.
-
 ### No subprocesses
 
 Everything that shells out is gone. These fail cleanly, reusing the message
@@ -182,22 +150,22 @@ helix already has for "not configured":
 | What | What you get |
 | --- | --- |
 | Language servers — diagnostics, hover, rename, code actions | "No configured language server supports …"; `:lsp-restart` → "LSP not defined for the current document" |
+| The goto commands — `gd`, `gD`, `gy`, `gi` and `gr` | "No definition found." / "No references found." — helix's own empty-result message, since these four queue their request before checking for a server. Native helix with no server configured says the same |
 | Debugging — `:debug-start`, `:debug-remote`, the rest of the DAP layer | "No debug adapter available for language" |
 | External formatters, including format-on-save (`:format`) | "A formatter isn't available, and no language server provides formatting capabilities" |
-| Shell piping — the `!` and `\|` keys, `:pipe`, `:pipe-to`, `:insert-output`, `:append-output` | "Shell commands are not supported on this platform" |
+| Shell commands — `:sh`, `:!`, `:run-shell-command`, the `!` and `\|` keys, `:pipe`, `:pipe-to`, `:insert-output`, `:append-output` | "Shell commands are not supported on this platform" |
+| Opening a URL — `gf` with the cursor on one | "Opening URLs in an external program is not supported on this platform". `gf` on a file path works normally |
 | Git — the diff gutter, `:reset-diff-change`, the `<space>g` changed-file picker | "Diff is not available in the current buffer" / "Current working directory does not exist" |
 | `<space>e` file explorer | "Workspace directory does not exist" |
 
-Two language-server features are not in that table because they fail some
-other way: the goto commands crash instead of reporting a missing server (see
-above), and completion goes quiet rather than saying anything at all (see "No
+One language-server feature is not in that table because it fails some other
+way: completion goes quiet rather than saying anything at all (see "No
 background work").
 
 `<space>/` (global search) opens its picker, but the query handler it needs
-is never spawned, so typing never returns a match. There is no handoff to the
-browser either, so nothing can open a URL. Dynamic grammar loading is out as
-well (`libloading` is stubbed), so the grammar set is whatever was linked at
-build time.
+is never spawned, so typing never returns a match. Dynamic grammar loading is
+out as well (`libloading` is stubbed), so the grammar set is whatever was
+linked at build time.
 
 There is no command line either: the host page boots the module with default
 arguments, so `hx <file>`, `-c` and `--tutor` have no equivalent. `:tutor`
@@ -250,6 +218,13 @@ them is reachable:
 No threads and no tokio runtime, so what helix normally does off the main
 loop either does not happen or happens inline:
 
+- **Background jobs run on the browser's microtask queue**, not a tokio
+  runtime — `Jobs::add` hands them to `wasm_bindgen_futures::spawn_local`
+  instead of `tokio::spawn`. They are still detached and still resolve
+  through the same callback channel, so the commands that queue one behave
+  as they do natively; what is missing is anything a job might want from a
+  runtime, which is why the entries below and the "No subprocesses" table
+  read the way they do.
 - **No completion popup and no signature help.** `C-x` in insert mode does
   nothing; both are driven by handlers that need a runtime, and there is no
   language server to feed them in any case.

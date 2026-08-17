@@ -1,6 +1,7 @@
 //! A queue of async messages/errors that will be shown in the editor
 
 use std::borrow::Cow;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 
 use crate::{runtime_local, send_blocking};
@@ -43,12 +44,23 @@ runtime_local! {
     static MESSAGES: OnceCell<Sender<StatusMessage>> = OnceCell::new();
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub async fn report(msg: impl Into<StatusMessage>) {
     // if the error channel overflows just ignore it
     let _ = MESSAGES
         .wait()
         .send_timeout(msg.into(), Duration::from_millis(10))
         .await;
+}
+
+/// wasm32 has no timer: `send_timeout` builds a `tokio::time` sleep, and
+/// building one calls `Instant::now()`, which traps on
+/// wasm32-unknown-unknown. Dropping the message when the channel is full is
+/// what the timeout buys anyway, so do that directly — `try_send` is the same
+/// "if the error channel overflows just ignore it", minus the timer.
+#[cfg(target_arch = "wasm32")]
+pub async fn report(msg: impl Into<StatusMessage>) {
+    let _ = MESSAGES.wait().try_send(msg.into());
 }
 
 pub fn report_blocking(msg: impl Into<StatusMessage>) {
