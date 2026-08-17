@@ -404,3 +404,88 @@ test(":cd completes directories only", async ({ page }) => {
   expect(await terminalText(page)).not.toContain("top.txt");
   await page.keyboard.press("Escape");
 });
+
+test(":read inserts a vfs file at the selection (issue #96)", async ({
+  page,
+}) => {
+  await bootEditor(page);
+  await page.evaluate(() => window.helixVfs.write("/insert.txt", "INSERTED"));
+
+  await page.keyboard.press("i");
+  await page.keyboard.type("AB");
+  await page.keyboard.press("Escape");
+  // `gg` leaves the cursor on `A`, so the selection head sits between the two
+  // characters: the contents land there and the text either side of the
+  // insertion point has to survive. Insertion is helix's own — only where the
+  // bytes come from is what wasm32 changes.
+  await page.keyboard.type("gg");
+
+  // The bug: `path.exists() && path.is_file()` asked the real filesystem
+  // about a vfs key, so the guard rejected every path — including this one,
+  // which the store definitely holds — before the open was even reached.
+  await page.keyboard.type(":r /insert.txt");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => getText(page)).toContain("AINSERTEDB");
+  expect(await terminalText(page)).not.toContain("path is not a file");
+
+  // Reading is not a modification of the file it read: the store still holds
+  // exactly what it did, and only the buffer grew.
+  expect(await vfsRead(page, "/insert.txt")).toBe("INSERTED");
+});
+
+test(":read resolves a relative path against the working directory", async ({
+  page,
+}) => {
+  await bootEditor(page);
+  await seedTree(page);
+
+  await page.keyboard.type(":cd /proj");
+  await page.keyboard.press("Enter");
+
+  await page.keyboard.type(":r beta.txt");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => getText(page)).toContain("beta");
+});
+
+test(":read refuses a key the vfs does not hold", async ({ page }) => {
+  await bootEditor(page);
+
+  await page.keyboard.press("i");
+  await page.keyboard.type("untouched");
+  await page.keyboard.press("Escape");
+  const before = await getText(page);
+
+  await page.keyboard.type(":r /nope.txt");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => terminalText(page))
+    .toContain('path is not a file: "/nope.txt"');
+  expect(await getText(page)).toBe(before);
+});
+
+test(":read refuses a directory-shaped path, unless a key sits there too", async ({
+  page,
+}) => {
+  await bootEditor(page);
+  await seedTree(page);
+
+  const before = await getText(page);
+
+  // `/proj` holds no key of its own — it is only a prefix the keys under it
+  // extend — so there is nothing to read, which is also the answer native
+  // helix's `is_file()` gives for a real directory.
+  await page.keyboard.type(":r /proj");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => terminalText(page))
+    .toContain('path is not a file: "/proj"');
+  expect(await getText(page)).toBe(before);
+
+  // A key that is *also* a prefix is a file and does read — the store can
+  // produce that pair (`vfs::read_dir` documents it) and a file system
+  // cannot, so this is the one place the two differ.
+  await page.evaluate(() => window.helixVfs.write("/proj", "prefix and key"));
+  await page.keyboard.type(":r /proj");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => getText(page)).toContain("prefix and key");
+});

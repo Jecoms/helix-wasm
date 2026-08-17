@@ -1,4 +1,7 @@
 use std::fmt::Write;
+// `:read` opens its file through `helix_stdx::vfs` on wasm32, so nothing
+// there buffers a `std::fs::File`.
+#[cfg(not(target_arch = "wasm32"))]
 use std::io::BufReader;
 use std::ops::{self, Deref};
 
@@ -2633,14 +2636,27 @@ fn read(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> anyhow:
     let filename = args.first().unwrap();
     let path = helix_stdx::path::expand_tilde(PathBuf::from(filename.to_string()));
 
-    ensure!(
-        path.exists() && path.is_file(),
-        "path is not a file: {:?}",
-        path
-    );
+    #[cfg(not(target_arch = "wasm32"))]
+    let exists = path.exists() && path.is_file();
+    // On wasm32 the argument names a `helix_stdx::vfs` key, not a file system
+    // path, and `Path::exists` reaches for a file system that isn't there and
+    // only ever says no — so this guard rejected every path, seeded ones
+    // included. The store is a flat key namespace with no directory entries
+    // of its own, so a key existing *is* it being a readable file, and a
+    // directory-shaped path (a prefix other keys extend) holds no key and is
+    // still refused here. Same swap as `Document::reload`.
+    #[cfg(target_arch = "wasm32")]
+    let exists = helix_stdx::vfs::exists(&path);
 
+    ensure!(exists, "path is not a file: {:?}", path);
+
+    #[cfg(not(target_arch = "wasm32"))]
     let file = std::fs::File::open(path).map_err(|err| anyhow!("error opening file: {}", err))?;
+    #[cfg(not(target_arch = "wasm32"))]
     let mut reader = BufReader::new(file);
+    #[cfg(target_arch = "wasm32")]
+    let mut reader =
+        helix_stdx::vfs::reader(&path).map_err(|err| anyhow!("error opening file: {}", err))?;
     let (contents, _, _) = read_to_string(&mut reader, Some(doc.encoding()))
         .map_err(|err| anyhow!("error reading file: {}", err))?;
     let contents = Tendril::from(contents);

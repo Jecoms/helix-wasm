@@ -145,7 +145,9 @@ above). What that changes:
   offers it as a file — since descending is the only one of the two things a
   picker can do. Its contents are still readable by any command that takes a
   file, `<space>f` included: selecting the row opens the file the preview did
-  not show.
+  not show. `:r` meets the same rule from the other side: on a prefix no key
+  sits at it is refused with `path is not a file`, which is what native says
+  about a real directory, and on a name that is both it reads the key.
 - **The file picker lists the VFS, minus the files boot seeds.** The bundled
   themes and the tutor text live under `/.config/helix/runtime/` and are
   artifacts of the build rather than anything you put there, so `<space>f`
