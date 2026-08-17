@@ -98,7 +98,9 @@ extern unsigned long long helix_web_monotonic_nanos(void);
  * CLOCK_MONOTONIC is the only clock served: nothing here has a wall clock,
  * and answering a CLOCK_REALTIME caller with monotonic nanoseconds would be
  * a wrong answer rather than a missing one. Any other clk_id therefore gets
- * the old frozen-at-zero reading and a -1 return. */
+ * the old frozen-at-zero reading and a -1 return. Bare -1 is all a caller
+ * ever gets: this sysroot has no errno.h, so there is nowhere to report
+ * EINVAL. */
 int clock_gettime(clockid_t clk_id, struct timespec *tp) {
   if (!tp) {
     return -1;

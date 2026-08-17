@@ -40,6 +40,11 @@ test("an oversized file gives up on highlighting instead of parsing to completio
     .poll(() => getState(page).then((state) => state.path), {
       message: "the oversized file never finished opening",
       timeout: 30_000,
+      // A fixed interval, unlike the escalating default (100 / 250 / 500 /
+      // 1000 ms): the stopwatch below reads whatever poll boundary the open
+      // lands past, and on the default a 1.1s open is not seen until 1.85s.
+      // That quantization has nothing to do with what is under test.
+      intervals: [100],
     })
     .toBe("/oversized.rs");
   expect(Date.now() - started).toBeLessThan(OPEN_BUDGET_MS);

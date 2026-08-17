@@ -29,6 +29,21 @@ use web_time::Instant;
 /// magnitude below the 500 ms budget this exists to enforce, and tree-sitter
 /// only samples the clock once per 100 parser operations, so neither the
 /// resolution nor the cost of crossing into JS matters here.
+///
+/// Counting from the first call means the first reading is exactly zero,
+/// which is also what tree-sitter's `clock_null()` produces and
+/// `clock_is_null()` tests for. That collision is harmless: the predicate is
+/// only ever applied to the deadline, and the deadline is
+/// `clock_after(now, 500000)` — `{0, 500000000}`, not null (`clock.h`, and
+/// `parser.c:1552,2119` in `stubs/tree-house-bindings/vendor/src`).
+///
+/// Reading the clock is fallible in one way worth naming: `web-time` panics
+/// if the global has no `performance` object. This is an `extern "C"`
+/// function called from the middle of a parse, so such a panic aborts the
+/// instance rather than unwinding into C as a parse error. Browser and
+/// worker scopes both define `performance`, so it cannot happen where this
+/// crate runs; it would be the first thing to reconsider on a non-browser
+/// wasm host.
 #[no_mangle]
 pub extern "C" fn helix_web_monotonic_nanos() -> u64 {
     static ORIGIN: OnceLock<Instant> = OnceLock::new();
