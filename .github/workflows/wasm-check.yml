@@ -80,6 +80,21 @@ jobs:
         with:
           tool: wasm-pack
 
+      # EXPERIMENT (issue #113), not the intended end state: wasm-pack prefers
+      # a `wasm-opt` already on $PATH over the binaryen it downloads itself.
+      - name: Install wasm-opt (binaryen)
+        env:
+          BINARYEN_VERSION: "132"
+        run: |
+          tag="version_${BINARYEN_VERSION}"
+          url="https://github.com/WebAssembly/binaryen/releases/download/$tag/binaryen-$tag-x86_64-linux.tar.gz"
+          mkdir -p "$RUNNER_TEMP/binaryen"
+          curl -fsSL "$url" \
+            | tar -xz -C "$RUNNER_TEMP/binaryen" --strip-components=1 \
+                "binaryen-$tag/bin/wasm-opt" "binaryen-$tag/lib"
+          echo "$RUNNER_TEMP/binaryen/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/binaryen/bin/wasm-opt" --version
+
       - name: Build the wasm package
         run: wasm-pack build web --target web -- --locked
 
@@ -135,3 +150,66 @@ jobs:
           name: playwright-report
           path: web/www/playwright-report/
           retention-days: 7
+
+  # EXPERIMENT (issue #113), removed before this merges: the same job with
+  # `--no-opt`, to price what dropping wasm-opt on the PR path would buy and
+  # whether the suite notices a 17.6 MB unoptimized bundle.
+  web-bundle-no-opt:
+    name: EXPERIMENT build web bundle (--no-opt)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+
+      - name: Build the wasm package
+        run: wasm-pack build web --target web --no-opt -- --locked
+
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build the host page
+        run: |
+          cd web/www
+          npm ci
+          npm run build
+
+      - name: Report bundle size
+        run: |
+          {
+            echo '### Web bundle size (--no-opt)'
+            echo
+            echo '| File | Raw | Gzip |'
+            echo '| --- | ---: | ---: |'
+            for file in web/www/dist/index.html web/www/dist/assets/*; do
+              raw=$(wc -c < "$file" | tr -d '[:space:]')
+              gzip=$(gzip -c "$file" | wc -c | tr -d '[:space:]')
+              printf '| %s | %s (%s) | %s (%s) |\n' \
+                "$(basename "$file")" \
+                "$raw" "$(numfmt --to=iec "$raw")" \
+                "$gzip" "$(numfmt --to=iec "$gzip")"
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Install Playwright Chromium
+        run: |
+          cd web/www
+          npx playwright install --with-deps chromium
+
+      - name: Run browser smoke tests
+        run: |
+          cd web/www
+          npm test
