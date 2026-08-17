@@ -551,32 +551,58 @@ void ts_tree_cursor_current_status(
     }
 
     // Determine if the current node has later siblings.
+    //
+    // The question is only ever "is there a later sibling that is visible" and
+    // "is there a later one that is named", so the answer depends on the whole
+    // child list, not on where the walk starts: summarize the parent's children
+    // once and every child of that parent can be answered by comparing indices.
+    // Scanning forward per child instead — which is what this did — costs
+    // O(children) each time a child is entered, so a query over a node with
+    // many children is quadratic in the size of that child list. Error nodes
+    // are the ones that get large: a run of unbalanced delimiters puts every
+    // token in one flat ERROR node, and 100k of them took ~12s to query.
+    //
+    // Writing the summary through `parent_entry` is well defined even though
+    // `_self` is a `const TSTreeCursor *`: `array_get` yields
+    // `&self->stack.contents[i]`, and `contents` being a const *pointer* says
+    // nothing about the entries it points at, which are ordinary mutable
+    // storage. The const in the signature means "does not move the cursor",
+    // and this does not.
     if (!*has_later_siblings) {
-      unsigned sibling_count = parent_entry->subtree->ptr->child_count;
-      unsigned structural_child_index = entry->structural_child_index;
-      if (!ts_subtree_extra(*entry->subtree)) structural_child_index++;
-      for (unsigned j = entry->child_index + 1; j < sibling_count; j++) {
-        Subtree sibling = ts_subtree_children(*parent_entry->subtree)[j];
-        TSSymbolMetadata sibling_metadata = ts_language_symbol_metadata(
-          self->tree->language,
-          subtree_symbol(sibling, structural_child_index)
-        );
-        if (sibling_metadata.visible) {
-          *has_later_siblings = true;
-          if (*has_later_named_siblings) break;
-          if (sibling_metadata.named) {
-            *has_later_named_siblings = true;
-            break;
+      if (!parent_entry->sibling_summary_valid) {
+        uint32_t sibling_count = parent_entry->subtree->ptr->child_count;
+        const Subtree *siblings = ts_subtree_children(*parent_entry->subtree);
+        uint32_t structural_child_index = 0;
+        parent_entry->visible_children_end = 0;
+        parent_entry->named_children_end = 0;
+        for (uint32_t j = 0; j < sibling_count; j++) {
+          Subtree sibling = siblings[j];
+          TSSymbolMetadata sibling_metadata = ts_language_symbol_metadata(
+            self->tree->language,
+            subtree_symbol(sibling, structural_child_index)
+          );
+          if (sibling_metadata.visible) {
+            parent_entry->visible_children_end = j + 1;
+            if (sibling_metadata.named) parent_entry->named_children_end = j + 1;
+          } else if (ts_subtree_visible_child_count(sibling) > 0) {
+            parent_entry->visible_children_end = j + 1;
+            if (sibling.ptr->named_child_count > 0) {
+              parent_entry->named_children_end = j + 1;
+            }
           }
-        } else if (ts_subtree_visible_child_count(sibling) > 0) {
-          *has_later_siblings = true;
-          if (*has_later_named_siblings) break;
-          if (sibling.ptr->named_child_count > 0) {
-            *has_later_named_siblings = true;
-            break;
-          }
+          if (!ts_subtree_extra(sibling)) structural_child_index++;
         }
-        if (!ts_subtree_extra(sibling)) structural_child_index++;
+        parent_entry->sibling_summary_valid = true;
+      }
+      // `entry` is a child of `parent_entry`, so `child_index < child_count`
+      // and the `+ 1` cannot wrap; `..._end` is zero when there is no such
+      // child, which is why it is stored one past the last index rather than
+      // as the index itself.
+      if (parent_entry->visible_children_end > entry->child_index + 1) {
+        *has_later_siblings = true;
+      }
+      if (parent_entry->named_children_end > entry->child_index + 1) {
+        *has_later_named_siblings = true;
       }
     }
 

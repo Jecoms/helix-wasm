@@ -27,6 +27,13 @@ cannot emit wasm, so install LLVM (`brew install llvm`) or point
 `HELIX_WASM_CLANG` at a suitable clang. It also fetches pinned parser sources
 at build time, so it needs network access and `git`.
 
+The `web/pkg` a local build produces will not be byte-identical to the
+published one. `wasm-pack` shrinks its output with `wasm-opt`, preferring one
+already on `$PATH` and otherwise downloading binaryen itself, and `wasm-opt`'s
+output depends on its version. CI, the Pages deploy and the release tarball all
+pin **binaryen 132** (`.github/actions/wasm-opt`); put that version's `wasm-opt`
+on `$PATH` to reproduce their bytes locally.
+
 ## What the bundle ships with
 
 The demo boots helix on a scratch buffer, with syntax highlighting for a small
@@ -281,11 +288,16 @@ loop either does not happen or happens inline:
   does fire here: the `clock_gettime` shim (`sysroot/shims.c`) reads the
   page's `performance.now()` through the web crate's `clock` module, so
   elapsed time is real and an oversized file drops its highlighting instead
-  of parsing to completion. The bound is not airtight — tree-sitter samples
-  the deadline once per 100 parse operations, so input that makes a single
-  operation expensive (deeply unbalanced delimiters, where error recovery
-  goes quadratic) can still overrun it by a lot — see
-  [#92](https://github.com/Jecoms/helix-wasm/issues/92).
+  of parsing to completion. That budget covers the parse and nothing else:
+  once a parse succeeds, tree-house runs the language's injection and local
+  queries over the finished tree with no deadline at all, so the freeze is
+  bounded by how big the tree is rather than by the timeout — see
+  [#120](https://github.com/Jecoms/helix-wasm/issues/120). Those queries are
+  linear in the size of the tree, which they were not before
+  [#92](https://github.com/Jecoms/helix-wasm/issues/92): a quadratic in
+  tree-sitter's tree cursor made a 100 kB file of unbalanced delimiters take
+  26 s to open in Chromium, where it now takes ~150 ms. The vendored copy
+  carries that fix — see delta 2 in `stubs/tree-house-bindings/Cargo.toml`.
 
 ### Terminal and browser differences
 
@@ -370,9 +382,9 @@ tar xzf helix-web-0.1.0.tar.gz    # extracts helix-web-0.1.0/
 ```
 
 The extracted directory is a standard wasm-pack `--target web` package (ES
-module + `.wasm` + `.d.ts`, plus `NOTICE.md` with the license notices for
-the statically linked grammar parsers). Consume it the way the demo's
-`web/www/package.json` does:
+module + `.wasm` + `.d.ts`, plus the MPL-2.0 `LICENSE` the bundle is under and
+`NOTICE.md` with the license notices for the statically linked grammar
+parsers). Consume it the way the demo's `web/www/package.json` does:
 
 ```json
 "dependencies": { "helix-web": "file:../helix-web-0.1.0" }
@@ -437,7 +449,7 @@ checkout of `main` is the whole build input.
 | --- | --- |
 | `helix/` | The patched Helix source: upstream's `25.07.1` release tree plus this port's patches. Its own cargo workspace — upstream's, left pristine — excluded from the root one and consumed as path dependencies |
 | `Cargo.toml` | Wrapper workspace: the helix crates as path dependencies on `helix/`, plus `[patch.crates-io]` stub swaps |
-| `stubs/` | Stand-ins for third-party dependencies with no wasm32 support: transitive crates (`home`, `which`, `libloading`, and `url` with a wasm cfg), a vendored `crossterm` whose OS terminal layer is replaced by a browser bridge, and a vendored `nucleo` that runs picker matching inline instead of on a threadpool. A vendored `tree-house-bindings` rides here too — not a missing-support stand-in but a one-declaration ABI fix, without which every syntax-highlighted buffer traps on wasm32 — the only stub shipping third-party C (a vendored tree-sitter; see `web/NOTICE.md`) |
+| `stubs/` | Stand-ins for third-party dependencies with no wasm32 support: transitive crates (`home`, `which`, `libloading`, and `url` with a wasm cfg), a vendored `crossterm` whose OS terminal layer is replaced by a browser bridge, and a vendored `nucleo` that runs picker matching inline instead of on a threadpool. A vendored `tree-house-bindings` rides here too — not a missing-support stand-in but an ABI fix, without which every syntax-highlighted buffer traps on wasm32, plus a fix for a quadratic in the tree-sitter it vendors that froze the page on malformed input — the only stub shipping third-party C (a vendored tree-sitter; see `web/NOTICE.md`) |
 | `sysroot/` | Stub libc headers, the `wasm-cc` clang shim that lets tree-sitter's stock build script compile its C for wasm32, and the libc shim implementations (`shims.c`, `wctype.c`) the final wasm link needs |
 | `web/` | The browser frontend: a wasm-bindgen cdylib that boots helix-term against the crossterm bridge, plus the xterm.js host page in `web/www/` |
 | `.cargo/config.toml` | Wires `wasm-cc` up as the C compiler for the wasm32 target |
@@ -579,6 +591,11 @@ continue — see "Patching helix" above for why that is always correct.
 Promote by moving `main` to the reviewed tip, keeping the outgoing line as a
 versioned branch.
 
+One wrapper file shadows a helix one and so replays clean whatever upstream did
+to it: the root `LICENSE` is a verbatim copy of `helix/LICENSE`. Diff the two
+after the replay and re-copy if the release moved them apart — "Credits and
+license" says they are byte-identical.
+
 ### Branch and tag map
 
 - `main` (this branch) — the current version line: `upstream/25.07.1` plus
@@ -608,6 +625,20 @@ versioned branch.
 - [makemeunsee/helix](https://github.com/makemeunsee/helix), branch `wasm32` —
   the browser port this one grew out of.
 
-The port keeps upstream's MPL-2.0 (`helix/LICENSE`). The tree-sitter parsers
-and runtime the wasm bundle statically links carry their own notices, in
-`web/NOTICE.md`.
+The port keeps upstream's MPL-2.0, and the text is at the root in
+[`LICENSE`](LICENSE) — the unmodified license, byte-identical to the copy
+helix ships as `helix/LICENSE`. It covers helix's files here (modified
+MPL-2.0 source, which stays MPL-2.0) and this port's own code alike.
+
+It is not a claim over everything in the tree, though: MPL-2.0 is file-level
+copyleft, so each vendored dependency under `stubs/` keeps the license it
+arrived with, in its own license file beside the code — `crossterm` MIT, `url`
+MIT OR Apache-2.0, `nucleo` and `tree-house-bindings` MPL-2.0, the last of
+those also carrying MIT tree-sitter C and Unicode-licensed ICU headers.
+Copyright stays with the respective authors: helix's files with the helix
+contributors, this port's with its own. The grammars, the tree-sitter runtime
+and the helix runtime files the wasm bundle ships carry their own notices, in
+`web/NOTICE.md`. That file travels with what is distributed, and this one goes
+with it: into the release tarball as `LICENSE`, and onto the deployed demo as
+`LICENSE.txt` beside `NOTICE.txt`. The notice opens by naming this license and
+the repository the corresponding source form lives in.

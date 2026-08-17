@@ -73,18 +73,26 @@ jobs:
         with:
           tool: wasm-pack
 
+      - name: Install wasm-opt
+        uses: ./.github/actions/wasm-opt
+
       # Same build as the demo deploy (web_demo.yml): full grammar catalog,
-      # locked deps. What ships is exactly what the demo runs.
+      # locked deps, same pinned binaryen. What ships is exactly what the demo
+      # runs.
       - name: Build the wasm package (full grammar catalog)
         run: wasm-pack build web --target web -- --locked
 
-      # NOTICE.md rides along because the wasm statically links the grammar
-      # parsers' C sources — their license notices belong with the artifact.
+      # LICENSE rides along because the bundle is MPL-2.0 — helix's files and
+      # this port's alike — and the package.json wasm-pack generates declares
+      # that without shipping the text. NOTICE.md rides along because the wasm
+      # statically links the grammar parsers' C sources; their license notices
+      # belong with the artifact.
       # The .gitignore wasm-pack emits (it ignores the whole pkg dir) would
       # only confuse an embedder vendoring the extracted tree, so drop it.
       - name: Assemble the tarball
         run: |
           version="${{ steps.version.outputs.version }}"
+          cp LICENSE web/pkg/
           cp web/NOTICE.md web/pkg/
           rm -f web/pkg/.gitignore
           mkdir stage

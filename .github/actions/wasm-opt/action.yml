@@ -1,0 +1,55 @@
+name: Install wasm-opt
+description: >
+  Put a pinned binaryen release's wasm-opt on $PATH, ahead of running
+  wasm-pack.
+
+# wasm-pack looks for `wasm-opt` on $PATH before falling back to fetching
+# binaryen itself, and its fallback is expensive: the Linux release tarball is
+# 117 MB of unstripped binaries and unpacking the whole thing cost ~75 s of
+# every `build web bundle` run (issue #113). Pulling just wasm-opt and the
+# library it links takes ~2 s, and the version it pulls is current rather than
+# wasm-pack's built-in version_117, which optimizes this bundle ~30% slower.
+#
+# It also fixes the optimizer across the three workflows that build the
+# bundle. wasm-opt's output is version-dependent, so the PR check has to
+# optimize with the same binaryen the demo deploy and the release tarball do,
+# or it is not checking the artifact that ships. That is the reason this is a
+# composite action and not three copies of the same step: one place holds the
+# version.
+#
+# To bump: change both `BINARYEN_VERSION` and `BINARYEN_SHA256` below (the
+# checksum is published as `<asset>.sha256` next to the release asset), and the
+# version named in the README's "Run it locally" section.
+
+runs:
+  using: composite
+  steps:
+    - name: Install wasm-opt (binaryen)
+      shell: bash
+      env:
+        BINARYEN_VERSION: "132"
+        BINARYEN_SHA256: "195ddc94f9bc89f45abdabb0b9eea86023d727ba90eac8b35b80f2544fc30572"
+      run: |
+        set -euo pipefail
+
+        arch=$(uname -m)
+        if [ "$RUNNER_OS" != "Linux" ] || [ "$arch" != "x86_64" ]; then
+          echo "::error::wasm-opt is pinned for x86_64 Linux runners, got $RUNNER_OS/$arch"
+          exit 1
+        fi
+
+        tag="version_$BINARYEN_VERSION"
+        asset="binaryen-$tag-x86_64-linux.tar.gz"
+        curl -fsSL -o "$RUNNER_TEMP/$asset" \
+          "https://github.com/WebAssembly/binaryen/releases/download/$tag/$asset"
+        echo "$BINARYEN_SHA256  $RUNNER_TEMP/$asset" | sha256sum --check --strict
+
+        # Only wasm-opt and libbinaryen; the rest of the tarball is other
+        # tools and their debug info, and unpacking it is most of the cost.
+        mkdir -p "$RUNNER_TEMP/binaryen"
+        tar -xzf "$RUNNER_TEMP/$asset" -C "$RUNNER_TEMP/binaryen" \
+          --strip-components=1 "binaryen-$tag/bin/wasm-opt" "binaryen-$tag/lib"
+        rm -f "$RUNNER_TEMP/$asset"
+
+        echo "$RUNNER_TEMP/binaryen/bin" >> "$GITHUB_PATH"
+        "$RUNNER_TEMP/binaryen/bin/wasm-opt" --version
