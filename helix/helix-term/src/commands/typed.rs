@@ -549,6 +549,58 @@ fn force_write_buffer_close(
     buffer_close_by_ids_impl(cx, &document_ids, false)
 }
 
+/// Hands the current buffer to the host to save — a browser download, where
+/// this compiles. Nothing else here gets a file out of the page: every `:w`
+/// lands in an in-memory store that dies with the tab.
+///
+/// Exports the buffer, not what the store last saw, so `:download` needs no
+/// `:w` first — that being the case the whole command exists for, and the
+/// same distinction the wasm frontend's `editor_text()` draws against its
+/// `vfs_read()`. It leaves both the buffer and the store untouched: the
+/// optional argument names the download and nothing else, so this is never
+/// a way to accidentally rename or overwrite something. That is also why it
+/// skips the transforms `:w` runs — `insert-final-newline` and the two
+/// trims edit the document on their way to the store, and an export has no
+/// business doing that.
+#[cfg(target_arch = "wasm32")]
+fn download(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> anyhow::Result<()> {
+    if event != PromptEvent::Validate {
+        return Ok(());
+    }
+
+    let doc = doc!(cx.editor);
+    let path = match args.first() {
+        Some(arg) => Path::new(arg),
+        // A scratch buffer has no name to save under and there is none to
+        // invent: an unasked-for `scratch.txt` in someone's downloads is
+        // worse than being asked for a name.
+        None => doc
+            .path()
+            .map(PathBuf::as_path)
+            .ok_or_else(|| anyhow!("This buffer has no name: :download <name>"))?,
+    };
+    // A download has a name, not a path — it lands wherever the browser
+    // puts downloads, and any directories in `path` are a store key's
+    // business, not the saved file's.
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| anyhow!("'{}' names no file", path.display()))?
+        .to_string();
+    // UTF-8 of the rope, which is what the buffer is: the document's
+    // encoding (`:encoding`) belongs to writing the store back out, and
+    // there is no encoder in this path at all.
+    let contents = doc.text().to_string();
+
+    helix_stdx::download::send(&name, contents.as_bytes())
+        .map_err(|err| anyhow!("Could not download {name}: {err}"))?;
+    // Present tense on purpose: the host has taken the bytes, which is all
+    // this side can know — a browser may still be asking where to put them.
+    cx.editor.set_status(format!("Downloading {name}"));
+
+    Ok(())
+}
+
 fn new_file(cx: &mut compositor::Context, _args: Args, event: PromptEvent) -> anyhow::Result<()> {
     if event != PromptEvent::Validate {
         return Ok(());
@@ -2886,6 +2938,25 @@ pub const TYPABLE_COMMAND_LIST: &[TypableCommand] = &[
         signature: Signature {
             positionals: (0, Some(1)),
             flags: &[WRITE_NO_FORMAT_FLAG],
+            ..Signature::DEFAULT
+        },
+    },
+    // Browser-only, because a download is: natively `:write <path>` already
+    // puts a copy wherever you want one, and there is no host to hand a file
+    // to. Off wasm32 this is not a command at all ("no such command"), which
+    // also keeps it out of the generated command reference.
+    #[cfg(target_arch = "wasm32")]
+    TypableCommand {
+        name: "download",
+        aliases: &[],
+        doc: "Save the current file out of the browser. Accepts an optional name for it (:download notes.txt), required when the buffer has none.",
+        fun: download,
+        // Deliberately not `:write`'s filename completer: the argument names
+        // the download, and completing store keys would advertise a choice
+        // of *what* to download that this command does not offer.
+        completer: CommandCompleter::none(),
+        signature: Signature {
+            positionals: (0, Some(1)),
             ..Signature::DEFAULT
         },
     },
