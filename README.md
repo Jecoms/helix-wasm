@@ -640,8 +640,8 @@ links — mostly MIT or Apache-2.0, and far larger than this repository's own
 code — carries its own terms too. The Rust crates, the grammars, the
 tree-sitter runtime and the helix runtime files the wasm bundle ships all have
 their notices in `web/NOTICE.md`, whose crate table is generated from the
-dependency graph by `web/notice-crates.py` and re-checked by CI on every pull
-request. That file travels with what is distributed, and this one goes
+dependency graph by `web/notice-crates.py` and re-checked by the `wasm32 check`
+workflow. That file travels with what is distributed, and this one goes
 with it: into the release tarball as `LICENSE`, and onto the deployed demo as
 `LICENSE.txt` beside `NOTICE.txt`. The notice opens by naming this license and
 the repository the corresponding source form lives in.
