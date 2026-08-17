@@ -1,6 +1,6 @@
 // Regression guards for the browser concessions the `:tutor` audit
-// (issue #65) produced. The tutorial text is a pristine copy of helix's own
-// (see web/runtime/README.md — it must not be annotated), so every
+// (issue #65) produced. The tutorial text is helix's own file, embedded
+// verbatim from helix/runtime/tutor (see web/runtime/README.md), so every
 // concession lives outside it: an exit notice, the upstream `space w` alias
 // for the browser-reserved `C-w`, and sample files for the picker. These
 // tests cover only those contested steps, not all 60 tutor sections.
@@ -88,7 +88,7 @@ test("tutor 13.7: the file picker lists sample files and opens one in a split", 
   await bootEditor(page);
 
   // Boot seeds sample files (web/src/samples.rs) because the picker
-  // otherwise offers only the vendored runtime files, buried under a dotted
+  // otherwise offers only the seeded runtime files, buried under a dotted
   // config path — nothing 13.7 would have a reader select.
   await press(page, " ", "f");
   await expect.poll(() => terminalText(page)).toContain("example.rs");

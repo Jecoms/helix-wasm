@@ -117,15 +117,16 @@ pub fn start(output: Function, columns: u16, rows: u16) -> Result<(), JsValue> {
     let mouse = config.editor.mouse;
     let lang_loader = helix_wasm::helix_core::config::default_lang_loader();
 
-    // Seed the vendored tutorial text (see ../runtime/README.md) into the
-    // vfs so `:tutor` finds it. `runtime_file("tutor")` resolves to a path
+    // Seed helix's own tutorial text, read straight out of the in-tree port
+    // (see ../runtime/README.md for the steps the browser cannot honor), into
+    // the vfs so `:tutor` finds it. `runtime_file("tutor")` resolves to a path
     // under the wasm32 config dir (absolute; nothing on wasm32 exists on the
     // real fs, so the fallback always wins), so the seeded key and the path
     // `Editor::open` resolves when the command runs are the same regardless
     // of the current `:cd` directory.
     helix_wasm::helix_stdx::vfs::write(
         helix_wasm::helix_loader::runtime_file("tutor"),
-        include_str!("../runtime/tutor"),
+        include_str!("../../helix/runtime/tutor"),
     )
     .map_err(|err| JsValue::from_str(&format!("failed to seed the tutor file: {err}")))?;
 

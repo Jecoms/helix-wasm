@@ -1,11 +1,13 @@
-//! The vendored theme set: seeding glue between the theme TOMLs the build
+//! The bundled theme set: seeding glue between the theme TOMLs the build
 //! script embedded and the virtual file system helix's wasm32 theme loader
-//! reads. The files live in `themes/` (see the README there), which build.rs
-//! turns into the `THEMES` table included here.
+//! reads. The files are helix's own, read from the in-tree port's
+//! `helix/runtime/themes/`; build.rs turns the curated selection (its
+//! `THEME_CATALOG`, see `../themes/README.md`) into the `THEMES` table
+//! included here.
 
 include!(concat!(env!("OUT_DIR"), "/theme_seed.rs"));
 
-/// Writes every vendored theme into the vfs under the runtime themes
+/// Writes every bundled theme into the vfs under the runtime themes
 /// directory (`<runtime_dir>/themes/<name>.toml`), where the theme loader
 /// searches for `:theme` names.
 pub fn seed() {
@@ -15,6 +17,6 @@ pub fn seed() {
         .join("themes");
     for &(file, contents) in THEMES {
         helix_wasm::helix_stdx::vfs::write(themes_dir.join(file), contents.as_bytes())
-            .expect("vendored theme file names are valid vfs paths");
+            .expect("bundled theme file names are valid vfs paths");
     }
 }
