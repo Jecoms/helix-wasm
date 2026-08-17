@@ -221,6 +221,16 @@ async fn drive() {
     // (Upstream restores first and folds the errors in after; the order does
     // not matter, and this way `restore_terminal` is the last thing before
     // the notice `announce_exit` writes onto the restored screen.)
+    //
+    // INVARIANT: nothing on wasm32 ever asks to be waited on, so `close()`'s
+    // first step is a no-op. `Job::wait_before_exiting` is set only on the
+    // format-on-write callback, and `Document::format` returns `None` here by
+    // construction — its external-formatter branch is compiled out on wasm32
+    // and its language-server branch has no server to find. That matters
+    // because `Jobs::finish` awaits its `FuturesUnordered` unbounded: one
+    // wait-job that never resolves would hang the exit short of
+    // `announce_exit`, leaving the reader on a frozen editor with no notice —
+    // the exact failure this module is written to rule out.
     let mut exit_code = app.editor.exit_code;
     for err in app.close().await {
         log::error!("error closing helix: {err}");

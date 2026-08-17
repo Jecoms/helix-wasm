@@ -2225,6 +2225,15 @@ impl Editor {
 
         // Split out so the wasm32 arm below is an addition rather than a
         // re-indent of upstream's body (see the port's README on patch shape).
+        //
+        // Not a `timeout` added to `wasm_timer` above, which is otherwise
+        // where a `tokio::time` lookalike for this file belongs:
+        // `tokio::time::error::Elapsed` has no public constructor, so nothing
+        // outside tokio can build the error a timeout reports elapsing with.
+        // A `wasm_timer::timeout` could only ever return `Ok`, and under that
+        // name the next caller would import it expecting a bound it does not
+        // have. The same limitation is safe here only because of what this
+        // particular call site is bounding — see below.
         #[cfg(not(target_arch = "wasm32"))]
         async fn bounded<F: std::future::Future>(
             timeout: Option<u64>,

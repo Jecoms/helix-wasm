@@ -26,7 +26,7 @@ function watchForPanics(page) {
   return panics;
 }
 
-test(":wq runs the whole teardown: the write lands and the exit completes", async ({
+test(":wq carries its pending write through the teardown and exits cleanly", async ({
   page,
 }) => {
   const panics = watchForPanics(page);
@@ -38,10 +38,13 @@ test(":wq runs the whole teardown: the write lands and the exit completes", asyn
   await page.keyboard.type(":wq /close-spec.txt");
   await page.keyboard.press("Enter");
 
-  // Step two of `close()` is `flush_writes`, which drains the save queue —
-  // so a `:wq` that reaches its exit code has been through it. Assert the
-  // file, not just the exit: a teardown that skipped the flush could still
-  // announce itself.
+  // `:wq` puts a save and a quit into the same teardown, so both halves have
+  // to survive it: the exit code arrives *and* the file is really in the vfs
+  // once it does. Which of the two drained the save queue — the event loop on
+  // its way out, or `close()`'s `flush_writes` — is not observable from here
+  // and not what is being asserted; the claim is only that a `:q` carrying
+  // pending work finishes that work instead of trapping partway through, in
+  // the step where it used to trap.
   await expect.poll(() => page.evaluate(() => window.helixExit)).toEqual({
     code: 0,
   });
@@ -55,9 +58,15 @@ test("the module is still callable after the exit, not poisoned", async ({
   const panics = watchForPanics(page);
   await bootEditor(page);
 
-  // How long a keystroke really takes to land here, so the "nothing was
-  // drawn after the exit" check below can outwait one instead of guessing a
-  // window (smoke.spec.js makes the same measurement for the crash path).
+  // How long a keystroke really takes to land here. The last assertion in
+  // this test is a negative — nothing repainted after the exit — and the two
+  // polls it would otherwise rest on are no help there: they prove a key
+  // *did* land, which is only ever an argument about the editor that was
+  // still running. Once helix is gone there is no state left to poll toward,
+  // so the only way to tell "never drew" from "has not drawn yet" is to
+  // outwait a real round trip. A fixed window would just pass on any runner
+  // slower than itself; smoke.spec.js measures one for the crash path for
+  // the same reason.
   const startedAt = Date.now();
   await page.keyboard.press("i");
   await expect.poll(() => getState(page).then((s) => s.mode)).toBe("insert");
