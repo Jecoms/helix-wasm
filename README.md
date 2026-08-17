@@ -384,8 +384,8 @@ tar xzf helix-web-0.0.1.tar.gz    # extracts helix-web-0.0.1/
 The extracted directory is a standard wasm-pack `--target web` package (ES
 module + `.wasm` + `.d.ts`, plus the MPL-2.0 `LICENSE` the bundle is under,
 `NOTICE.md` with the license notices for the statically linked grammar
-parsers, and `CHANGELOG.md` as of that version). Consume it the way
-the demo's `web/www/package.json` does:
+parsers, and `CHANGELOG.md` as of that version). Consume it the way the
+demo's `web/www/package.json` does:
 
 ```json
 "dependencies": { "helix-web": "file:../helix-web-0.0.1" }

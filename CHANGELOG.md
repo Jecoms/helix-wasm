@@ -99,19 +99,18 @@ it is written from behavior reproduced by hand, not from what the source suggest
   the rest of its parent's child list, which is quadratic over the single flat `ERROR`
   node an unclosed delimiter produces. It now summarizes each child list once, so the
   walk is linear: in headless Chromium a `.rs` file of 100 000 unclosed `(` went from
-  26.4 s to open to 153 ms, and 200 000 from ~102 s to 229 ms. Query output is unchanged
-  — verified by diffing 1,138,256 match lines across 309 files and seven grammars against
-  a pristine build.
+  26.4 s to open to 153 ms. Highlighting is unchanged — the query output was diffed
+  match for match against a pristine build.
 - **Background jobs run on the browser's executor** rather than trapping on a tokio
   runtime that is not there, so the commands that queue one behave as they do natively.
 - **`:q` ends the session instead of trapping.** The exit teardown runs, the main screen
   is restored, and the registered `on_exit` handler fires; the page reloads to start
   over.
-- **`LICENSE` and `NOTICE.md` ride in the tarball.** The bundle is MPL-2.0 — helix's
-  files and this port's alike — and the `package.json` wasm-pack generates declared that
-  without shipping the text; the release now copies the license in beside the notice.
-  `NOTICE.md` covers the third-party components the wasm statically links, and the
-  deployed demo serves both at its root as `LICENSE.txt` and `NOTICE.txt`.
+- **`LICENSE`, `NOTICE.md` and this file ride in the tarball.** The bundle is MPL-2.0 —
+  helix's files and this port's alike — and the `package.json` wasm-pack generates
+  declared that without shipping the text, so the license text now travels with the
+  artifact. `NOTICE.md` beside it covers the third-party components the wasm statically
+  links.
 - **A Playwright smoke suite** (`web/www/tests/`) that boots the built bundle in headless
   Chromium and asserts on editor behavior through `helixState` / `helixVfs` and the
   terminal buffer — the parity check when this port is replayed onto a new helix release.
