@@ -186,3 +186,112 @@ test(":move to a path the vfs cannot store fails without moving anything", async
   expect(await getState(page).then((s) => s.path)).toBe("/keep.txt");
   expect(await vfsRead(page, "/keep.txt")).toContain("untouched");
 });
+
+// A directory in the store is a prefix its keys share, not an entry of its
+// own — so these seed keys and then ask the editor what it can see under
+// them.
+async function seedTree(page) {
+  await page.evaluate(() => {
+    window.helixVfs.write("/proj/alpha.txt", "alpha");
+    window.helixVfs.write("/proj/beta.txt", "beta");
+    window.helixVfs.write("/proj/deep/gamma.txt", "gamma");
+    window.helixVfs.write("/top.txt", "top");
+  });
+}
+
+// Type `line` at the prompt and wait for its completion menu to settle.
+// Completions recalculate per keystroke and the terminal redraws on its own
+// schedule, so the assertion has to poll the screen rather than read it once.
+async function promptWith(page, line) {
+  await page.keyboard.type(line);
+  return expect.poll(() => terminalText(page));
+}
+
+test(":pwd reports the working directory instead of calling it deleted (issue #73)", async ({
+  page,
+}) => {
+  await bootEditor(page);
+
+  await page.keyboard.type(":pwd");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => terminalText(page))
+    .toContain("Current working directory is /");
+  // The bug: `Path::exists` asks a file system that isn't there, so the
+  // check never passed and every `:pwd` was an error about a deleted
+  // directory. Nothing in the store can delete a working directory — it has
+  // no directories to delete.
+  expect(await terminalText(page)).not.toContain("deleted");
+
+  // Still true of a directory no key lives under: `:cd` accepts it (there is
+  // no mkdir here, so that is where a first `:w` would land), and `:pwd`
+  // reports it rather than declaring it gone.
+  await page.keyboard.type(":cd /proj");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type(":pwd");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => terminalText(page))
+    .toContain("Current working directory is /proj");
+  expect(await terminalText(page)).not.toContain("deleted");
+});
+
+test("path completion offers the vfs keys, with prefixes as directories (issue #73)", async ({
+  page,
+}) => {
+  await bootEditor(page);
+  await seedTree(page);
+
+  // `filename_impl` walked the real filesystem, so before the fix every one
+  // of these offered nothing at all.
+  await (await promptWith(page, ":o /proj/")).toContain("alpha.txt");
+  const underProj = await terminalText(page);
+  expect(underProj).toContain("beta.txt");
+  // `deep` holds no key of its own; it exists only because keys continue
+  // past it, and the trailing separator says the match can be extended.
+  expect(underProj).toContain("deep/");
+  // Depth 1, as the native walk is: what is inside `deep` is not offered yet.
+  expect(underProj).not.toContain("gamma.txt");
+
+  await page.keyboard.press("Escape");
+  await (await promptWith(page, ":o /to")).toContain("top.txt");
+
+  await page.keyboard.press("Escape");
+  await (await promptWith(page, ":o /pro")).toContain("proj/");
+  await page.keyboard.press("Escape");
+});
+
+test("path completion resolves relative input against the working directory", async ({
+  page,
+}) => {
+  await bootEditor(page);
+  await seedTree(page);
+
+  await page.keyboard.type(":cd /proj");
+  await page.keyboard.press("Enter");
+
+  // No leading slash: the candidates come from `/proj`, the directory `:cd`
+  // moved to, and not from the root the session booted at.
+  await (await promptWith(page, ":o al")).toContain("alpha.txt");
+  const relative = await terminalText(page);
+  expect(relative).not.toContain("top.txt");
+
+  // And accepting the completion opens the key it named.
+  await page.keyboard.press("Tab");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => getState(page).then((s) => s.path))
+    .toBe("/proj/alpha.txt");
+  expect(await getText(page)).toContain("alpha");
+});
+
+test(":cd completes directories only", async ({ page }) => {
+  await bootEditor(page);
+  await seedTree(page);
+
+  await (await promptWith(page, ":cd /pro")).toContain("proj");
+  // `/top.txt` is a key, not a prefix anything extends, so it is not a
+  // directory and `:cd` must not offer it.
+  expect(await terminalText(page)).not.toContain("top.txt");
+  await page.keyboard.press("Escape");
+});

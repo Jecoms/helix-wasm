@@ -116,10 +116,11 @@ build picks which of them to embed.
 ### Virtual file system
 
 Documents live in an in-memory virtual file system (`helix_stdx::vfs`, part
-of the wasm patch set): `:w /notes.txt` saves there, `:o` and the `<space>f`
-file picker (with preview) read from it, and `:reload` picks up outside
-changes. Nothing survives a page reload, and a few document commands behave
-differently against it — see "Files live in an in-memory VFS" below.
+of the wasm patch set): `:w /notes.txt` saves there, `:o` (with path
+completion) and the `<space>f` file picker (with preview) read from it, and
+`:reload` picks up outside changes. Nothing survives a page reload, and a few
+document commands behave differently against it — see "Files live in an
+in-memory VFS" below.
 The wasm module exports `vfs_write` / `vfs_read` / `vfs_list` so an
 embedding page can inject and extract files; the demo page exposes them
 as `window.helixVfs` — try `helixVfs.write("hello.rs", "fn main() {}")`
@@ -208,19 +209,27 @@ above). What that changes:
   "file modified externally" guard can never fire — a `:w` silently
   overwrites whatever a `helixVfs.write` put there in the meantime. `:w!`
   does exactly what `:w` does, and nothing is ever read-only.
-- **There are no directories.** `:o /some/dir` opens an ordinary empty buffer
-  named `/some/dir`, and `:move /some/dir` renames the file *to* that key
-  instead of moving it into the directory — native helix appends the original
-  file name when the target is a directory, and there is none here to
-  recognize. `:cd` works and does change how relative paths resolve, but
-  `:pwd` always reports the directory as `(deleted)` — the existence check
-  behind that label has no directory to find.
+- **There are no directories**, only keys with separators in them. `:o
+  /some/dir` opens an ordinary empty buffer named `/some/dir`, and `:move
+  /some/dir` renames the file *to* that key instead of moving it into the
+  directory — native helix appends the original file name when the target is
+  a directory, and there is none here to recognize. `:cd` works, does change
+  how relative paths resolve, and accepts a directory no key lives under —
+  there is no way to create one first, so that is where a first `:w` lands.
+  `:pwd` reports the working directory; nothing can delete a directory the
+  store never held.
 - **The file picker lists the whole VFS**, seeded runtime files (the themes
   and the tutor text) included, and every `file-picker.*` option — `hidden`,
   `git-ignore`, `max-depth` — is inert.
-- **Path arguments do not tab-complete.** `:o`, `:cd` and friends walk the
-  real filesystem to build their candidate list, so they offer nothing; use
-  `<space>f` instead. `:theme` completion does work — it reads the VFS.
+- **Path completion reads the VFS.** `:o`, `:cd` and the other
+  path-completing commands offer the keys under the directory you have typed,
+  one level at a time. A name that other keys extend counts as a directory
+  and completes with a trailing separator (`proj/`) — the one place a shared
+  prefix is read as a directory, which is a way of looking at the key set and
+  not an entry the store holds. There is nothing on disk to hide or ignore
+  here, so `hidden` and gitignore filtering do not apply. `:theme` completion
+  reads the VFS too. In-buffer path completion is a separate surface and
+  still offers nothing — see "No completion popup and no signature help".
 - `:config-open` and `:log-open` open empty buffers at
   `/.config/helix/config.toml` and `/.cache/helix/helix.log`. Those keys are
   real, but nothing ever writes them; log output goes to the browser console.

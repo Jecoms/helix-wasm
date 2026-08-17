@@ -576,6 +576,66 @@ pub mod completers {
         Accept,
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    use ignore::DirEntry;
+    // On wasm32 the candidates come out of the virtual file system rather
+    // than a directory walk, and `vfs_walk::DirEntry` stands in for
+    // `ignore`'s — so the `filter_fn`s above and `filename_impl`'s whole
+    // post-walk body read the same on both targets.
+    #[cfg(target_arch = "wasm32")]
+    use vfs_walk::DirEntry;
+
+    /// The wasm32 stand-in for [`ignore`]'s depth-1 directory walk.
+    ///
+    /// `helix_stdx::vfs` is a flat key namespace, so "the entries of `dir`"
+    /// means the distinct next path components of the keys under it — the
+    /// only sense in which a directory exists there at all.
+    #[cfg(target_arch = "wasm32")]
+    mod vfs_walk {
+        use std::io;
+        use std::path::{Path, PathBuf};
+
+        /// Shaped like [`ignore::DirEntry`] in the two ways `filename_impl`
+        /// and its `filter_fn`s use one.
+        pub struct DirEntry {
+            path: PathBuf,
+            is_dir: bool,
+        }
+
+        pub struct FileType(bool);
+
+        impl FileType {
+            pub fn is_dir(&self) -> bool {
+                self.0
+            }
+        }
+
+        impl DirEntry {
+            pub fn path(&self) -> &Path {
+                &self.path
+            }
+
+            pub fn file_type(&self) -> Option<FileType> {
+                Some(FileType(self.is_dir))
+            }
+        }
+
+        /// The entries of `dir`, each joined onto `dir` as the caller spelled
+        /// it: store keys are normalized and absolute, but the prompt
+        /// completes against what the user typed.
+        pub fn walk(dir: &Path) -> impl Iterator<Item = io::Result<DirEntry>> {
+            let dir = dir.to_path_buf();
+            helix_stdx::vfs::read_dir(&dir)
+                .into_iter()
+                .map(move |(name, is_dir)| {
+                    Ok(DirEntry {
+                        path: dir.join(name),
+                        is_dir,
+                    })
+                })
+        }
+    }
+
     // TODO: we could return an iter/lazy thing so it can fetch as many as it needs.
     fn filename_impl<F>(
         editor: &Editor,
@@ -584,10 +644,11 @@ pub mod completers {
         filter_fn: F,
     ) -> Vec<Completion>
     where
-        F: Fn(&ignore::DirEntry) -> FileMatch,
+        F: Fn(&DirEntry) -> FileMatch,
     {
         // Rust's filename handling is really annoying.
 
+        #[cfg(not(target_arch = "wasm32"))]
         use ignore::WalkBuilder;
         use std::path::Path;
 
@@ -622,12 +683,23 @@ pub mod completers {
 
         let end = input.len()..;
 
-        let files = WalkBuilder::new(&dir)
+        #[cfg(not(target_arch = "wasm32"))]
+        let entries = WalkBuilder::new(&dir)
             .hidden(false)
             .follow_links(false) // We're scanning over depth 1
             .git_ignore(git_ignore)
             .max_depth(Some(1))
-            .build()
+            .build();
+        // wasm32 has no directories to walk: take the entries from the
+        // virtual file system. Nothing there is on disk to be hidden or
+        // ignored, so `git_ignore` has no meaning.
+        #[cfg(target_arch = "wasm32")]
+        let entries = {
+            let _ = git_ignore;
+            vfs_walk::walk(&dir)
+        };
+
+        let files = entries
             .filter_map(|file| {
                 file.ok().and_then(|entry| {
                     let fmatch = filter_fn(&entry);
