@@ -133,17 +133,21 @@ above). What that changes:
   store last saw, and it changes neither. That means it also skips the
   transforms `:w` applies on its way out (`insert-final-newline` and the two
   trims edit the *document*, and an export has no business doing that), and
-  it writes UTF-8 whatever `:set-encoding` says. The name comes from the
-  argument or the buffer, minus any directories — a download lands wherever
-  your browser puts downloads. There is no whole-store export; a scratch
-  buffer with no name is refused rather than given one. Saving is the host
-  page's half (`on_download`, see "Embedding the editor"), so a page that
-  registers no handler gets "Could not download …: this host cannot save
-  files", and one whose handler throws reports what it threw. `Downloaded
-  <name>` means the file reached the page, not that it reached your disk:
-  the demo hands it to the browser and never hears back, so a save the
-  browser asks about and you cancel still reads as a success.
-  Native helix has no such command: there, `:w <path>` is this.
+  it writes UTF-8 whatever `:encoding` says: save a windows-1252 buffer and
+  the store gets one byte for `é` where the download gets two. The name
+  comes from the argument or the buffer, minus any directories — a download
+  lands wherever your browser puts downloads. There is no whole-store
+  export; a scratch buffer with no name is refused rather than given one.
+  Saving is the host page's half (`on_download`, see "Embedding the
+  editor"), so a page whose handler throws reports what it threw, and one
+  that registers no handler at all gets "Could not download …: this host
+  cannot save files" — that last message read from
+  `helix_stdx::download` rather than run, since the demo page always
+  registers one and nothing here can reach the state. `Downloading <name>`
+  says the file reached the page, which is all this side can know: `main.js`
+  hands it to the browser and never hears back, so a save you cancel in a
+  browser that asks is not reported either. Native helix has no such
+  command: there, `:w <path>` is this.
 - **`:w` is last-write-wins and never warns.** There are no mtimes, so the
   "file modified externally" guard can never fire — a `:w` silently
   overwrites whatever a `helixVfs.write` put there in the meantime. `:w!`

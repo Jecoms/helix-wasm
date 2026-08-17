@@ -558,13 +558,16 @@ fn download(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> any
         .and_then(|name| name.to_str())
         .ok_or_else(|| anyhow!("'{}' names no file", path.display()))?
         .to_string();
-    // UTF-8 of the rope, which is what the buffer is: `:set-encoding` is a
-    // property of writing the store back out and does not apply here.
+    // UTF-8 of the rope, which is what the buffer is: the document's
+    // encoding (`:encoding`) belongs to writing the store back out, and
+    // there is no encoder in this path at all.
     let contents = doc.text().to_string();
 
     helix_stdx::download::send(&name, contents.as_bytes())
         .map_err(|err| anyhow!("Could not download {name}: {err}"))?;
-    cx.editor.set_status(format!("Downloaded {name}"));
+    // Present tense on purpose: the host has taken the bytes, which is all
+    // this side can know — a browser may still be asking where to put them.
+    cx.editor.set_status(format!("Downloading {name}"));
 
     Ok(())
 }
@@ -2904,9 +2907,12 @@ pub const TYPABLE_COMMAND_LIST: &[TypableCommand] = &[
     TypableCommand {
         name: "download",
         aliases: &[],
-        doc: "Save the current file out of the browser. Accepts an optional name (:download notes.txt), required when the buffer has none.",
+        doc: "Save the current file out of the browser. Accepts an optional name for it (:download notes.txt), required when the buffer has none.",
         fun: download,
-        completer: CommandCompleter::positional(&[completers::filename]),
+        // Deliberately not `:write`'s filename completer: the argument names
+        // the download, and completing store keys would advertise a choice
+        // of *what* to download that this command does not offer.
+        completer: CommandCompleter::none(),
         signature: Signature {
             positionals: (0, Some(1)),
             ..Signature::DEFAULT

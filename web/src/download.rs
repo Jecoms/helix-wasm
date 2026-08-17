@@ -73,7 +73,7 @@ fn forward_download(name: &str, contents: &[u8]) -> io::Result<()> {
             &Uint8Array::from(contents).into(),
         )
         .map(|_| ())
-        .map_err(|err| io::Error::new(io::ErrorKind::Other, describe(err)))
+        .map_err(|err| io::Error::other(describe(err)))
 }
 
 /// The message out of whatever the handler threw. JS can throw anything, so

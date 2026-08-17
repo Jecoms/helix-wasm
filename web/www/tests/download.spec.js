@@ -108,6 +108,26 @@ test(":download <name> names the download without touching anything", async ({
   expect(await vfsRead(page, "hello.txt")).toBeUndefined();
 });
 
+test(":download writes UTF-8 whatever :encoding says", async ({ page }) => {
+  await bootEditor(page);
+
+  await typeText(page, "café");
+  // `:w` runs the rope through the document's encoder; `:download` has no
+  // encoder in the path at all. The two disagree here on purpose:
+  // windows-1252 puts é in one byte, UTF-8 in two.
+  await run(page, ":encoding windows-1252");
+  await run(page, ":w /encoded.txt");
+  await expect.poll(() => vfsRead(page, "/encoded.txt")).not.toBeUndefined();
+
+  // `vfsRead` decodes the store as UTF-8, lossily, so the lone 0xE9 that
+  // windows-1252 wrote comes back as the replacement character — that is
+  // what non-UTF-8 in the store looks like from JS.
+  expect(await vfsRead(page, "/encoded.txt")).toBe("caf\uFFFD\n");
+
+  const saved = await downloadFrom(page, ":download");
+  expect(saved.contents).toBe("café\n");
+});
+
 test(":download refuses a nameless buffer instead of inventing a name", async ({
   page,
 }) => {

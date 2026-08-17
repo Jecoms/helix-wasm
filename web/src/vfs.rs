@@ -21,7 +21,7 @@ pub fn vfs_write(path: &str, contents: &str) -> Result<(), JsError> {
 
 /// The contents of the file at `path`, or `undefined` if it does not exist.
 /// Contents are decoded as UTF-8 (lossily — the editor can save in other
-/// encodings via `:set-encoding`).
+/// encodings via `:encoding`).
 #[wasm_bindgen]
 pub fn vfs_read(path: &str) -> Option<String> {
     vfs::read(path)

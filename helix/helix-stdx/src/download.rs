@@ -80,6 +80,12 @@ mod tests {
     // The handler is a process-wide static and the harness runs tests in
     // parallel, so the whole lifecycle is one test: a second test observing
     // the unregistered state would race this one's registration.
+    //
+    // Local-only coverage: CI runs `cargo check` and the browser suite
+    // (`.github/workflows/wasm-check.yml`), never helix's host unit tests.
+    // The browser suite covers the registered path end to end and cannot
+    // reach the unregistered one at all — the demo page registers a handler
+    // at boot — so this is the only place that arm is exercised anywhere.
     #[test]
     fn sends_to_the_registered_handler() {
         let err = send("a.txt", b"contents").unwrap_err();
