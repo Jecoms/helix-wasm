@@ -266,7 +266,8 @@ loop either does not happen or happens inline:
   of parsing to completion. The bound is not airtight — tree-sitter samples
   the deadline once per 100 parse operations, so input that makes a single
   operation expensive (deeply unbalanced delimiters, where error recovery
-  goes quadratic) can still overrun it by a lot.
+  goes quadratic) can still overrun it by a lot — see
+  [#92](https://github.com/Jecoms/helix-wasm/issues/92).
 
 ### Terminal and browser differences
 
