@@ -22,12 +22,15 @@ export const vfsList = (page) =>
       paths.filter((path) => !path.startsWith("/.config/helix/runtime/")),
     );
 
-// The rendered terminal, as text. Reach for this only where the pixels are
-// the point — boot proving a statusline drew at all, the theme tests
-// proving a theme painted the screen, the tutor split tests counting views
-// the inspection API cannot report (it sees the focused view only).
-// Everything else reads editor state, not pixels: the state-over-scraping
-// rule from the issue #18 inspection API.
+// The rendered terminal, as text. Reach for this only where the screen is
+// the only place the answer appears: pixels being the point (boot proving a
+// statusline drew at all, the theme tests proving a theme painted the
+// screen), state the inspection API does not report (the tutor split tests
+// counting views — it sees the focused view only), or a statusline message,
+// which has no `helixState` surface at all and is the sole evidence a
+// command ran and said something (the `jobs.spec.js` errors, the refused
+// `:move` in `vfs.spec.js`). Everything else reads editor state, not pixels:
+// the state-over-scraping rule from the issue #18 inspection API.
 export const terminalText = (page) =>
   page.evaluate(() => {
     const buffer = window.__helixTerminal.buffer.active;

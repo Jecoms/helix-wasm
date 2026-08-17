@@ -144,6 +144,29 @@ test(":move onto an existing key replaces it, as rename(2) does", async ({
   expect(await vfsRead(page, "/source.txt")).toBeUndefined();
 });
 
+test(":move onto a directory-shaped key renames to it, not into it", async ({
+  page,
+}) => {
+  await bootEditor(page);
+
+  await page.keyboard.press("i");
+  await page.keyboard.type("payload");
+  await page.keyboard.press("Escape");
+  await saveAs(page, "/dir/file.txt");
+
+  // There are no directories in the store, only keys with slashes in them,
+  // so `move_buffer`'s `new_path.is_dir()` test is false and it never
+  // appends the original file name the way native helix would. `/dir`
+  // becomes an ordinary sibling key holding the contents — this is the
+  // README's "There are no directories" entry, pinned.
+  await page.keyboard.type(":move /dir");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => getState(page).then((s) => s.path)).toBe("/dir");
+
+  await expect.poll(() => vfsRead(page, "/dir")).toContain("payload");
+  expect(await vfsRead(page, "/dir/file.txt")).toBeUndefined();
+});
+
 test(":move to a path the vfs cannot store fails without moving anything", async ({
   page,
 }) => {

@@ -65,6 +65,13 @@ any hunk we hold there is a conflict on the next replay. Regenerating it is
 not a fix; if a `cargo` run rooted at `helix/` ever needs a current lockfile,
 it re-resolves one (and fails under `--locked`).
 
+That re-resolution rewrites the file in place, so any command run from
+`helix/` leaves the tree dirty — `cargo test -p helix-stdx`, the way to
+exercise the unit tests in helix crates (the `helix_stdx::vfs` ones build
+under `cfg(test)` on the host), is the one that comes up. It is only the
+lockfile, and the fix is the same as everywhere else: restore upstream's copy
+before committing.
+
 Two patches in the series still edit that file on their way past, so a replay
 can stop on it even though the net diff is empty. Resolve it by taking
 upstream's copy every time it comes up — `git checkout upstream/$V --

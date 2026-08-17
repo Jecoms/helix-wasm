@@ -22,6 +22,12 @@ use futures_util::{future, StreamExt};
 use helix_lsp::{Call, LanguageServerId};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 
+// `fs` is used by one call (`move_path`'s rename), which is cfg'd out on
+// wasm32 in favor of a virtual-file-system rename — so the import is unused
+// there. Allowed rather than lifted out of the group: an added attribute
+// leaves upstream's import list untouched and replays clean, while splitting
+// the group would conflict with the next release's churn in it.
+#[cfg_attr(target_arch = "wasm32", allow(unused_imports))]
 use std::{
     borrow::Cow,
     cell::Cell,
