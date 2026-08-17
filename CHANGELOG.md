@@ -35,7 +35,7 @@ behavior can move under you for reasons that are upstream's rather than this por
 **What it does not do.** The browser takes away subprocesses, a real filesystem and
 threads, and that is load-bearing rather than incidental: no language servers, no
 debugger, no shell commands, no external formatters, no git integration, no OS clipboard
-write, no persistence across a page reload. The README's
+in either direction, no persistence across a page reload. The README's
 [Limitations and behavioral differences](README.md#limitations-and-behavioral-differences)
 catalogs every one of those and is the section to read before deciding to embed this —
 it is written from behavior reproduced by hand, not from what the source suggests.
@@ -43,9 +43,13 @@ it is written from behavior reproduced by hand, not from what the source suggest
 ### Added
 
 - **The editor.** helix 25.07.1 boots in the browser and drives an xterm.js terminal
-  through a wasm-bindgen module: modal editing, registers, macros, multiple selections,
-  splits, the command line and `:tutor` all work. Mouse input (click, drag, wheel) and
-  focus changes are forwarded.
+  through a wasm-bindgen module. This is upstream helix rather than a subset of it: the
+  editor is unmodified except where the browser forced a change, and the "Known
+  limitations" below — with the README catalog it points at — is the list of those
+  changes, so treat anything not named there as behaving the way upstream's
+  documentation says. Modal editing, splits, the `:` command prompt and `:tutor` are
+  covered directly by the browser smoke suite. Mouse input (click, drag, wheel) and focus
+  changes are forwarded.
 - **Syntax highlighting** for a static grammar set linked at build time — c, go, java,
   javascript, python, regex, rust, toml — with queries read out of the in-tree helix
   runtime. `HELIX_WEB_GRAMMARS` narrows the set to slim the bundle; the published tarball
@@ -123,9 +127,14 @@ truth and goes further than this list:
   or a big parse blocks input and rendering rather than streaming.
 - **`languages.toml` and `.editorconfig` are unreachable**, and `.helix/` is never
   detected — the workspace is always the working directory.
-- **One editor per page**, no command line (`hx <file>`, `-c`, `--tutor` have no
-  equivalent), no kitty keyboard protocol, no suspend, and only the grammars and themes
-  linked into the bundle.
+- **One editor per page**, and no shell command line — the page boots the module with
+  default arguments, so `hx <file>`, `-c` and `--tutor` have no equivalent (helix's own
+  `:` prompt is unaffected). No kitty keyboard protocol, no suspend, and only the
+  grammars and themes linked into the bundle.
+
+<!-- Both links below resolve once `web-v0.1.0` is pushed; until then they are
+     pending rather than broken. Publishing is a separate, deliberate step —
+     see the README's "Embedding the editor" for the procedure. -->
 
 [Unreleased]: https://github.com/Jecoms/helix-wasm/compare/web-v0.1.0...main
 [0.1.0]: https://github.com/Jecoms/helix-wasm/releases/tag/web-v0.1.0
