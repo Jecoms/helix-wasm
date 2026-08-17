@@ -7,8 +7,7 @@ publish = false
 
 # The patched helix source lives in helix/ — upstream's 25.07.1 release tree
 # plus the wasm patch set, as ordinary commits. Path dependencies, so editing
-# a helix file is an edit in this workspace: no ref to publish, nothing to
-# pin, no `cargo update`.
+# a helix file is an edit in this workspace.
 [dependencies]
 helix-core = { path = "helix/helix-core" }
 helix-view = { path = "helix/helix-view" }

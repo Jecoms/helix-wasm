@@ -21,8 +21,8 @@ It further embeds three kinds of runtime files from the in-tree helix port at
   `build.rs`'s `THEME_CATALOG` — see `themes/README.md`;
 - the tutor text at `helix/runtime/tutor` — see `runtime/README.md`.
 
-Those are helix's own files and MPL-2.0 like helix itself (see the
-repository's top-level `LICENSE`) — with one exception: upstream carries
+Those are helix's own files and MPL-2.0 like helix itself (see
+`../helix/LICENSE`) — with one exception: upstream carries
 per-theme licenses in `helix/runtime/themes/licenses/` for themes
 contributed under other terms, and one of the embedded themes has an entry
 there. It is in "[Themes](#themes)" below.

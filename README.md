@@ -1,119 +1,49 @@
 # helix-wasm
 
-A wasm32 port of [Helix](https://github.com/helix-editor/helix). `main` is a
-**version line rooted at an upstream release**: `helix/` carries the pristine
-25.07.1 release tree with the wasm patch set as ordinary commits on top, and
-everything that does not belong in helix — the browser frontend, the
-dependency stubs, the C sysroot — sits alongside it. The helix crates are
-path dependencies, so patching helix is editing a file in this workspace, and
-the repo has no cargo git dependencies at all: a checkout of `main` is the
-whole build input.
+[Helix](https://github.com/helix-editor/helix) compiled to `wasm32`, running in
+a browser tab: the editor drives an xterm.js terminal through a wasm-bindgen
+module, with modal editing, tree-sitter highlighting, themes, pickers and
+`:tutor` all present. What the browser cannot give it — a subprocess, a real
+filesystem, a thread — is either adapted or missing, and
+"[Limitations and behavioral differences](#limitations-and-behavioral-differences)"
+lists every one of those.
 
-## Layout
+**Live demo: <https://jecoms.github.io/helix-wasm/>**
 
-| Path | Purpose |
-| --- | --- |
-| `helix/` | The patched Helix source: upstream's `25.07.1` release tree (the parentless `upstream/25.07.1` commit) plus this port's patches. Its own cargo workspace — upstream's, left pristine — excluded from the root one and consumed as path dependencies |
-| `Cargo.toml` | Wrapper workspace: the helix crates as path dependencies on `helix/`, plus `[patch.crates-io]` stub swaps |
-| `stubs/` | Stand-ins for third-party dependencies with no wasm32 support: transitive crates (`home`, `which`, `libloading`, and `url` with a wasm cfg), a vendored `crossterm` whose OS terminal layer is replaced by a browser bridge, and a vendored `nucleo` that runs picker matching inline instead of on a threadpool. Plus one that is not a wasm32 gap: a vendored `tree-house-bindings` carrying a one-declaration ABI fix, without which every syntax-highlighted buffer traps on wasm32 — the only stub shipping third-party C (a vendored tree-sitter; see `web/NOTICE.md`) |
-| `sysroot/` | Stub libc headers, the `wasm-cc` clang shim that lets tree-sitter's stock build script compile its C for wasm32, and the libc shim implementations (`shims.c`, `wctype.c`) the final wasm link needs |
-| `web/` | The browser frontend: a wasm-bindgen cdylib that boots helix-term against the crossterm bridge, plus the xterm.js host page in `web/www/` |
-| `.cargo/config.toml` | Wires `wasm-cc` up as the C compiler for the wasm32 target |
-
-## Building
+## Run it locally
 
 ```sh
 rustup target add wasm32-unknown-unknown
-cargo check -p helix-core --target wasm32-unknown-unknown
-cargo check -p helix-view --target wasm32-unknown-unknown
-cargo check -p helix-term --target wasm32-unknown-unknown
-```
-
-A clang that can emit wasm is required. Linux distro clang works; on macOS the
-system clang cannot emit wasm, so install LLVM (`brew install llvm`) or point
-`HELIX_WASM_CLANG` at a suitable clang.
-
-## Patching helix
-
-`helix/` is ordinary source in this workspace, so a helix change is an
-ordinary edit:
-
-```sh
-$EDITOR helix/helix-view/src/document.rs
-cargo check -p helix-view --target wasm32-unknown-unknown
-```
-
-Commit it like any other change. There is no ref to publish first, no pin to
-bump, no `cargo update` — the path dependency picks the edit up directly.
-
-Two things keep the patch set cheap to carry onto the next release. Shape:
-localized insertions and `#[cfg(target_arch = "wasm32")]` arms replay clean,
-while re-indenting a block of otherwise-untouched native code conflicts with
-any upstream edit to it — prefer extracting a native body into its own
-function over wrapping it. And blast radius: `helix/Cargo.toml` is
-byte-identical to upstream on purpose (it is the file upstream churns most),
-so declare a new dependency in the individual crate manifests rather than in
-its `[workspace.dependencies]`.
-
-`helix/Cargo.lock` is byte-identical to upstream for the same reason, and it
-takes no upkeep to keep it that way: `helix/` is excluded from the root
-workspace, so every build here resolves against the root `Cargo.lock` and
-nothing reads helix's. It is upstream's lockfile riding along with upstream's
-tree — deliberately stale against the crate manifests, and left alone rather
-than regenerated, because upstream rewrites it on every dependency bump and
-any hunk we hold there is a conflict on the next replay. Regenerating it is
-not a fix; if a `cargo` run rooted at `helix/` ever needs a current lockfile,
-it re-resolves one (and fails under `--locked`).
-
-That re-resolution rewrites the file in place, so any command run from
-`helix/` leaves the tree dirty — `cargo test -p helix-stdx`, the way to
-exercise the unit tests in helix crates (the `helix_stdx::vfs` ones build
-under `cfg(test)` on the host), is the one that comes up. It is only the
-lockfile, and the fix is the same as everywhere else: restore upstream's copy
-before committing.
-
-Two patches in the series still edit that file on their way past, so a replay
-can stop on it even though the net diff is empty. Resolve it by taking
-upstream's copy every time it comes up — `git checkout upstream/$V --
-helix/Cargo.lock`. That is always the right answer, because upstream's copy
-*is* the target state; there is nothing of ours in the file to preserve.
-
-What the patch set changes, at any point:
-
-```sh
-git diff upstream/25.07.1 main -- helix/
-```
-
-## Running the browser demo
-
-```sh
 wasm-pack build web --target web
 cd web/www
 npm install
 npm run dev      # serves the demo on a local vite dev server
 ```
 
-The demo boots helix into an xterm.js terminal with a scratch buffer, with
-syntax highlighting for a small static grammar set (c, go, java,
-javascript, python, regex, rust, toml — try `:set-language rust`) and a
-curated set of bundled color schemes (`THEME_CATALOG` in
-`web/build.rs` — try `:theme gruvbox`).
-It is helix, not a subset of it — but the browser has no subprocesses, no
-filesystem and no threads, so some things behave differently and some do not
-work at all. "Limitations and behavioral differences" below collects them.
-`:tutor` works, with a handful of steps the browser cannot honor as written;
+That needs a Rust toolchain, [wasm-pack](https://rustwasm.github.io/wasm-pack/)
+and Node. The grammar build compiles C for wasm32 as well, so a clang that can
+emit wasm is required: Linux distro clang works, but on macOS the system clang
+cannot emit wasm, so install LLVM (`brew install llvm`) or point
+`HELIX_WASM_CLANG` at a suitable clang. It also fetches pinned parser sources
+at build time, so it needs network access and `git`.
+
+## What the bundle ships with
+
+The demo boots helix on a scratch buffer, with syntax highlighting for a small
+static grammar set (c, go, java, javascript, python, regex, rust, toml — try
+`:set-language rust`) and a curated set of bundled color schemes
+(`THEME_CATALOG` in `web/build.rs` — try `:theme gruvbox`). `:tutor` works,
+with a handful of steps the browser cannot honor as written;
 `web/runtime/README.md` lists those under "Known gaps in the browser".
 
-The grammar build fetches pinned parser sources at
-build time, so it needs network access and `git`. Set `HELIX_WEB_GRAMMARS`
-to a comma-separated subset (e.g. `HELIX_WEB_GRAMMARS=rust,toml wasm-pack
-build web --target web`) to slim the bundle; to add a grammar to the
-catalog, see `GRAMMARS` in `web/build.rs`. The queries and themes the bundle
-embeds are read out of the in-tree port at `helix/runtime/`, not copied into
-`web/` — see `web/queries/README.md` and `web/themes/README.md` for how the
-build picks which of them to embed.
+Set `HELIX_WEB_GRAMMARS` to a comma-separated subset (e.g.
+`HELIX_WEB_GRAMMARS=rust,toml wasm-pack build web --target web`) to slim the
+bundle; to add a grammar to the catalog, see `GRAMMARS` in `web/build.rs`. The
+queries and themes the bundle embeds are read out of the in-tree port at
+`helix/runtime/`, not copied into `web/` — see `web/queries/README.md` and
+`web/themes/README.md` for how the build picks which of them to embed.
 
-### Virtual file system
+## Virtual file system
 
 Documents live in an in-memory virtual file system (`helix_stdx::vfs`, part
 of the wasm patch set): `:w /notes.txt` saves there, `:o` and the `<space>f`
@@ -128,7 +58,7 @@ backends (localStorage/OPFS) can be layered on those hooks by the host
 page. Boot seeds a couple of sample files (`web/src/samples.rs`) so the
 picker opens on something selectable.
 
-### Editor state inspection
+## Editor state inspection
 
 The wasm module also exports a read-only inspection surface
 ([#18](https://github.com/Jecoms/helix-wasm/issues/18)) so embedding pages
@@ -143,30 +73,14 @@ return `undefined` when helix is not running; see `web/src/inspect.rs` for
 the coordinate semantics (0-based rows, grapheme-cluster cols, char-index
 anchors/heads).
 
-### Browser smoke tests
-
-A Playwright suite (`web/www/tests/`) boots the built bundle in headless
-Chromium and asserts on editor behavior through `helixState` / `helixVfs`
-and the terminal buffer — the same checks CI runs in the `wasm32 check`
-workflow. Run it against a fresh build:
-
-```sh
-wasm-pack build web --target web
-cd web/www
-npm install
-npm run build                      # tests run against dist/, not the dev server
-npx playwright install chromium    # first run only
-npm test
-```
-
 ## Limitations and behavioral differences
 
-The aim is to be helix, not a lookalike, so this section catalogs the places
-where the browser makes that impossible. Everything below was reproduced by
-hand in a build of this tree, except where an entry says otherwise — it is
-what the port does today, not what its source suggests it might do. The
-entries track `helix/` plus the `web/` crate, so re-check them when the port
-is replayed onto a new release (see "Taking a new helix release").
+This section catalogs where the browser changes what helix does. Everything
+below was reproduced by hand in a build of this tree, except where an entry
+says otherwise — it is what the port does today, not what its source suggests
+it might do. The entries track `helix/` plus the `web/` crate, so re-check them
+when the port is replayed onto a new release (see "Taking a new helix
+release").
 
 ### No subprocesses
 
@@ -330,22 +244,11 @@ scroll), and so are focus changes.
 ### Bundled content only
 
 Syntax highlighting covers only the grammars linked into the bundle (listed
-under "Running the browser demo" above), and `:theme` only the themes the
+under "What the bundle ships with" above), and `:theme` only the themes the
 bundle embeds (`THEME_CATALOG` in `web/build.rs`). Anything else opens as plain
 text —
 `:set-language haskell` is accepted without complaint and simply highlights
 nothing — and any other theme name is not found.
-
-## Live demo
-
-The demo deploys to <https://jecoms.github.io/helix-wasm/> via the
-`Deploy web demo` workflow (`.github/workflows/web_demo.yml`), which builds
-the full-catalog bundle and publishes it with `actions/deploy-pages`.
-
-Every push to `main` deploys automatically; a manual
-`gh workflow run web_demo.yml` works too. Deploys are gated by the
-`github-pages` environment's deployment branch policy — only `main` is on
-the allowed list.
 
 ## Embedding the editor
 
@@ -399,7 +302,117 @@ commit `web-v<version>` and push the tag. The workflow verifies the tag
 against the crate version, rebuilds the bundle with `--locked`, and
 attaches the tarball to a release on the tag.
 
-## Taking a new helix release
+## Working on the port
+
+`main` is a version line rooted at an upstream release: `helix/` carries the
+pristine 25.07.1 release tree with the wasm patch set as ordinary commits on
+top, and everything that does not belong in helix — the browser frontend, the
+dependency stubs, the C sysroot — sits alongside it. The helix crates are path
+dependencies, so patching helix is editing a file in this workspace and a
+checkout of `main` is the whole build input.
+
+### Layout
+
+| Path | Purpose |
+| --- | --- |
+| `helix/` | The patched Helix source: upstream's `25.07.1` release tree plus this port's patches. Its own cargo workspace — upstream's, left pristine — excluded from the root one and consumed as path dependencies |
+| `Cargo.toml` | Wrapper workspace: the helix crates as path dependencies on `helix/`, plus `[patch.crates-io]` stub swaps |
+| `stubs/` | Stand-ins for third-party dependencies with no wasm32 support: transitive crates (`home`, `which`, `libloading`, and `url` with a wasm cfg), a vendored `crossterm` whose OS terminal layer is replaced by a browser bridge, and a vendored `nucleo` that runs picker matching inline instead of on a threadpool. A vendored `tree-house-bindings` rides here too — not a missing-support stand-in but a one-declaration ABI fix, without which every syntax-highlighted buffer traps on wasm32 — the only stub shipping third-party C (a vendored tree-sitter; see `web/NOTICE.md`) |
+| `sysroot/` | Stub libc headers, the `wasm-cc` clang shim that lets tree-sitter's stock build script compile its C for wasm32, and the libc shim implementations (`shims.c`, `wctype.c`) the final wasm link needs |
+| `web/` | The browser frontend: a wasm-bindgen cdylib that boots helix-term against the crossterm bridge, plus the xterm.js host page in `web/www/` |
+| `.cargo/config.toml` | Wires `wasm-cc` up as the C compiler for the wasm32 target |
+
+### Checking the crates
+
+The wasm32 type-check, crate by crate — part of what CI gates on, and the
+fast loop while patching:
+
+```sh
+rustup target add wasm32-unknown-unknown
+cargo check -p helix-core --target wasm32-unknown-unknown
+cargo check -p helix-view --target wasm32-unknown-unknown
+cargo check -p helix-term --target wasm32-unknown-unknown
+```
+
+### Patching helix
+
+`helix/` is ordinary source in this workspace, so a helix change is an
+ordinary edit:
+
+```sh
+$EDITOR helix/helix-view/src/document.rs
+cargo check -p helix-view --target wasm32-unknown-unknown
+```
+
+Commit it like any other change — the path dependency picks the edit up
+directly.
+
+Two things keep the patch set cheap to carry onto the next release. Shape:
+localized insertions and `#[cfg(target_arch = "wasm32")]` arms replay clean,
+while re-indenting a block of otherwise-untouched native code conflicts with
+any upstream edit to it — prefer extracting a native body into its own
+function over wrapping it. And blast radius: `helix/Cargo.toml` is
+byte-identical to upstream on purpose (it is the file upstream churns most),
+so declare a new dependency in the individual crate manifests rather than in
+its `[workspace.dependencies]`.
+
+`helix/Cargo.lock` is byte-identical to upstream for the same reason, and it
+takes no upkeep to keep it that way: `helix/` is excluded from the root
+workspace, so every build here resolves against the root `Cargo.lock` and
+nothing reads helix's. It is upstream's lockfile riding along with upstream's
+tree — deliberately stale against the crate manifests, and left alone rather
+than regenerated, because upstream rewrites it on every dependency bump and
+any hunk we hold there is a conflict on the next replay. Regenerating it is
+not a fix; if a `cargo` run rooted at `helix/` ever needs a current lockfile,
+it re-resolves one (and fails under `--locked`).
+
+That re-resolution rewrites the file in place, so any command run from
+`helix/` leaves the tree dirty — `cargo test -p helix-stdx`, the way to
+exercise the unit tests in helix crates (the `helix_stdx::vfs` ones build
+under `cfg(test)` on the host), is the one that comes up. It is only the
+lockfile, and the fix is the same as everywhere else: restore upstream's copy
+before committing.
+
+Two patches in the series still edit that file on their way past, so a replay
+can stop on it even though the net diff is empty. Resolve it by taking
+upstream's copy every time it comes up — `git checkout upstream/$V --
+helix/Cargo.lock`. That is always the right answer, because upstream's copy
+*is* the target state; there is nothing of ours in the file to preserve.
+
+What the patch set changes, at any point:
+
+```sh
+git diff upstream/25.07.1 main -- helix/
+```
+
+### Browser smoke tests
+
+A Playwright suite (`web/www/tests/`) boots the built bundle in headless
+Chromium and asserts on editor behavior through `helixState` / `helixVfs`
+and the terminal buffer — the same checks CI runs in the `wasm32 check`
+workflow. Run it against a fresh build:
+
+```sh
+wasm-pack build web --target web
+cd web/www
+npm install
+npm run build                      # tests run against dist/, not the dev server
+npx playwright install chromium    # first run only
+npm test
+```
+
+### Deploying the demo
+
+The demo deploys to <https://jecoms.github.io/helix-wasm/> via the
+`Deploy web demo` workflow (`.github/workflows/web_demo.yml`), which builds
+the full-catalog bundle and publishes it with `actions/deploy-pages`.
+
+Every push to `main` deploys automatically; a manual
+`gh workflow run web_demo.yml` works too. Deploys are gated by the
+`github-pages` environment's deployment branch policy — only `main` is on
+the allowed list.
+
+### Taking a new helix release
 
 Each helix release gets a permanent **base branch**: a single parentless
 commit holding that release's pristine tree under `helix/`, and nothing else.
@@ -426,7 +439,7 @@ Identity and dates come from the release commit and the commit is left
 unsigned, so re-running the recipe reproduces the same SHA — the base is
 verifiable by anyone rather than taken on trust. Being unsigned it needs an
 admin push past the repo-wide signature requirement; that is the one
-privileged step left, once per release instead of once per patch.
+privileged step, once per release.
 
 Then replay the port onto it:
 
@@ -446,7 +459,7 @@ continue — see "Patching helix" above for why that is always correct.
 Promote by moving `main` to the reviewed tip, keeping the outgoing line as a
 versioned branch.
 
-## Branch and tag map
+### Branch and tag map
 
 - `main` (this branch) — the current version line: `upstream/25.07.1` plus
   the wasm patch set plus the wrapper. Self-sufficient; every other ref below
@@ -465,3 +478,16 @@ versioned branch.
   wasm-pack output, and attaches it to a GitHub release as
   `helix-web-<version>.tar.gz` — the artifact "Embedding the editor" above
   pins.
+
+## Credits and license
+
+- [helix-editor/helix](https://github.com/helix-editor/helix) — the editor
+  itself, MPL-2.0. Its [documentation](https://docs.helix-editor.com/) is the
+  place to learn helix; all of it applies here except what "Limitations and
+  behavioral differences" carves out.
+- [makemeunsee/helix](https://github.com/makemeunsee/helix), branch `wasm32` —
+  the browser port this one grew out of.
+
+The port keeps upstream's MPL-2.0 (`helix/LICENSE`). The tree-sitter parsers
+and runtime the wasm bundle statically links carry their own notices, in
+`web/NOTICE.md`.
