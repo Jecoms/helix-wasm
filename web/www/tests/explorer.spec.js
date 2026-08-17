@@ -28,9 +28,19 @@ async function openExplorer(page) {
 // Type into the picker's filter and open the highlighted row. Filtering
 // rather than arrowing, so a row that moved does not make the test open the
 // wrong one.
-async function pick(page, filter) {
+//
+// `narrowed` is the match counter the filter should leave behind (`1/4`),
+// and waiting on it is the whole point of the helper: every filter here is
+// typed *towards* a row already on the unfiltered screen, so waiting for the
+// filter text to appear would be satisfied before a key was pressed and
+// `Enter` could open whichever row happened to be highlighted.
+async function pick(page, filter, narrowed) {
   await page.keyboard.type(filter);
-  await expect.poll(() => terminalText(page)).toContain(filter);
+  await expect
+    .poll(() => terminalText(page), {
+      message: `filter did not narrow to ${narrowed}`,
+    })
+    .toContain(narrowed);
   await page.keyboard.press("Enter");
 }
 
@@ -60,7 +70,9 @@ test("the explorer descends into a prefix and `..` comes back up", async ({
   await page.evaluate(() => window.helixVfs.write("/proj/alpha.txt", "a"));
 
   await openExplorer(page);
-  await pick(page, "proj");
+  // Four rows at the root — `.config/`, `proj/` and the two samples — and
+  // only `proj/` matches.
+  await pick(page, "proj", "1/4");
 
   // Polling on `../` rather than on `alpha.txt`: the root explorer already
   // has `alpha.txt` on screen, in the preview pane beside the highlighted
@@ -77,7 +89,7 @@ test("the explorer descends into a prefix and `..` comes back up", async ({
   // below, because `../` highlights first and previews the parent.
   expect(inside).toContain("2/2");
 
-  await pick(page, "..");
+  await pick(page, "..", "1/2");
   // `/proj/..` normalized back to `/` rather than becoming a third level.
   await expect
     .poll(() => terminalText(page), { message: "`..` did not go back up" })
@@ -164,6 +176,34 @@ test(":o on a directory opens a picker on it", async ({ page }) => {
   expect(screen).toContain("beta.txt");
   // The old symptom: an ordinary empty buffer named after the directory.
   expect(await getState(page).then((s) => s.path)).not.toBe("/proj");
+});
+
+test(":o on a relative directory opens a picker with its files in it", async ({
+  page,
+}) => {
+  await bootEditor(page);
+  await page.evaluate(() => {
+    window.helixVfs.write("/proj/alpha.txt", "a");
+    window.helixVfs.write("/proj/beta.txt", "b");
+  });
+
+  // Store keys are absolute, and the picker measures its root against them
+  // both to walk and to strip the path column, so a relative root has to be
+  // resolved against the working directory first. Native helix never resolves
+  // one explicitly — the directory walk does it — which is how this reached
+  // the browser as an empty picker.
+  await page.keyboard.type(":o proj/");
+  await page.keyboard.press("Enter");
+
+  await expect
+    .poll(() => terminalText(page), { message: ":o did not open a picker" })
+    .toContain("alpha.txt");
+  const screen = await terminalText(page);
+  expect(screen).toContain("beta.txt");
+  // Two matches, not the `0/0` an unresolved root leaves; and the column
+  // strips the root, so the rows are bare names.
+  expect(screen).toContain("2/2");
+  expect(screen).not.toContain("/proj/alpha.txt");
 });
 
 test(":o on a key that is also a prefix opens the picker", async ({ page }) => {

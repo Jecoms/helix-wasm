@@ -314,6 +314,17 @@ fn walk_files(editor: &Editor, root: &Path) -> impl Iterator<Item = PathBuf> {
 pub fn file_picker(editor: &Editor, root: PathBuf) -> FilePicker {
     use web_time::Instant;
 
+    // Both things done with `root` below measure against store keys, which
+    // are normalized and absolute: `walk_files` filters on
+    // `strip_prefix(&root)` and the path column strips the same prefix for
+    // display. A relative root — `:o subdir/` reaches here with one — would
+    // match nothing and strip nothing. Native helix never has to resolve it
+    // explicitly, because `WalkBuilder` resolves it against the process
+    // working directory; the same call the store normalizes with resolves it
+    // against `helix_stdx::env::current_working_dir` here.
+    #[cfg(target_arch = "wasm32")]
+    let root = helix_stdx::path::canonicalize(root);
+
     let data = FilePickerData {
         root: root.clone(),
         directory_style: editor.theme.get("ui.text.directory"),

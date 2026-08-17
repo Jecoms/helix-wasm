@@ -132,18 +132,20 @@ above). What that changes:
   missing one are the same thing — `<space>e` on a prefix no key lives under
   shows nothing but its `../` row rather than reporting the directory gone,
   and `:o` on one opens the new buffer it opens natively for a path that does
-  not exist. And `:move
-  /some/dir` renames the file *to* that key instead of moving it into the
-  directory: native helix appends the original file name when the target is a
-  directory, and there is none here to recognize. `:cd` works, does change how
-  relative paths resolve, and accepts a directory no key lives under — there
-  is no way to create one first, so that is where a first `:w` lands. `:pwd`
-  reports the working directory; nothing can delete a directory the store
-  never held. A key that is *also* a prefix (`/proj` beside `/proj/alpha.txt`)
-  reads as the directory everywhere a choice has to be made — `<space>e` and
-  `:o` descend into it rather than opening it — since descending is the only
-  one of the two things a picker can do. Its contents are still readable by
-  any command that takes a file.
+  not exist. And `:move /some/dir` renames the file *to* that key instead of
+  moving it into the directory: native helix appends the original file name
+  when the target is a directory, and there is none here to recognize. `:cd`
+  works, does change how relative paths resolve, and accepts a directory no
+  key lives under — there is no way to create one first, so that is where a
+  first `:w` lands. `:pwd` reports the working directory; nothing can delete a
+  directory the store never held. A key that is *also* a prefix (`/proj`
+  beside `/proj/alpha.txt`) reads as the directory everywhere a choice has to
+  be made — `<space>e` and `:o` descend into it rather than opening it, and it
+  previews as its listing rather than its contents even in `<space>f`, which
+  offers it as a file — since descending is the only one of the two things a
+  picker can do. Its contents are still readable by any command that takes a
+  file, `<space>f` included: selecting the row opens the file the preview did
+  not show.
 - **The file picker lists the VFS, minus the files boot seeds.** The bundled
   themes and the tutor text live under `/.config/helix/runtime/` and are
   artifacts of the build rather than anything you put there, so `<space>f`

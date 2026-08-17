@@ -615,7 +615,13 @@ impl<T: 'static + Send + Sync, D: 'static + Send + Sync> Picker<T, D> {
                 // wasm32 its directory rows are prefixes the keys extend
                 // rather than entries the store holds (issue #105). A name
                 // that is both a key and a prefix previews as the directory,
-                // which is how the explorer and `:o` read it too.
+                // which is how the explorer and `:o` read it too — including
+                // from the file picker, which offers such a name as a file.
+                //
+                // Asking costs a scan of every key, where reading one is a
+                // single lookup. Affordable because it is the cache miss that
+                // pays it: this whole block runs once per path, not once per
+                // keystroke.
                 #[cfg(target_arch = "wasm32")]
                 let entries = helix_stdx::vfs::read_dir(&path);
                 #[cfg(target_arch = "wasm32")]
