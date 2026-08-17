@@ -34,6 +34,10 @@ js-sys = "0.3"
 console_error_panic_hook = "0.1.7"
 console_log = "1.0"
 log = "0.4"
+# The clock behind the `clock_gettime` shim in ../sysroot/shims.c: the same
+# crate — and so the same `performance.now()` timeline — the helix crates
+# already read `Instant` from on wasm32.
+web-time = "1"
 
 [build-dependencies]
 cc = "1"
