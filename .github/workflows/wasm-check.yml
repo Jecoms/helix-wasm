@@ -79,6 +79,7 @@ jobs:
 
       # EXPERIMENT (issue #86): measure sccache's ceiling on this workload.
       # Set the wrapper AFTER rust-cache so its restore key is unaffected.
+      # Run 2: warm sccache, warm rust-cache, zero Rust source change.
       - name: Install sccache
         uses: mozilla-actions/sccache-action@v0.0.11
 
