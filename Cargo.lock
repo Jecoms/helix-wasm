@@ -622,6 +622,7 @@ dependencies = [
  "tokio-stream",
  "toml",
  "url",
+ "wasm-bindgen-futures",
  "web-time",
 ]
 
