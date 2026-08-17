@@ -74,6 +74,18 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          prefix-key: "v0-sccache-experiment"
+
+      # EXPERIMENT (issue #86): measure sccache's ceiling on this workload.
+      # Set the wrapper AFTER rust-cache so its restore key is unaffected.
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
+
+      - name: Enable sccache
+        run: |
+          echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+          echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
 
       - name: Install wasm-pack
         uses: taiki-e/install-action@v2
@@ -82,6 +94,10 @@ jobs:
 
       - name: Build the wasm package
         run: wasm-pack build web --target web -- --locked
+
+      - name: sccache stats
+        if: always()
+        run: sccache --show-stats
 
       - name: Setup node
         uses: actions/setup-node@v4
