@@ -5,6 +5,7 @@ use helix_view::document::Mode;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fmt::Display;
+#[cfg(not(target_arch = "wasm32"))]
 use std::fs;
 use std::io::Error as IOError;
 use toml::de::Error as TomlError;
@@ -118,12 +119,36 @@ impl Config {
     }
 
     pub fn load_default() -> Result<Config, ConfigLoadError> {
+        #[cfg(not(target_arch = "wasm32"))]
         let global_config =
             fs::read_to_string(helix_loader::config_file()).map_err(ConfigLoadError::Error);
+        #[cfg(not(target_arch = "wasm32"))]
         let local_config = fs::read_to_string(helix_loader::workspace_config_file())
             .map_err(ConfigLoadError::Error);
+        // wasm32 has no file system; config files are read from the virtual
+        // one, same as document IO. Both paths are absolute there, so an
+        // embedder can seed either before the editor boots.
+        #[cfg(target_arch = "wasm32")]
+        let global_config = read_vfs_config(helix_loader::config_file());
+        #[cfg(target_arch = "wasm32")]
+        let local_config = read_vfs_config(helix_loader::workspace_config_file());
         Config::load(global_config, local_config)
     }
+}
+
+/// Reads one config file out of the virtual file system, the wasm32 stand-in
+/// for `fs::read_to_string` in [`Config::load_default`]. A missing file is
+/// `NotFound` and non-UTF-8 contents are `InvalidData`, so both arrive as
+/// [`ConfigLoadError::Error`] — the variant `Config::load` treats as "this
+/// half is absent", exactly as the native read's errors are.
+#[cfg(target_arch = "wasm32")]
+fn read_vfs_config(path: std::path::PathBuf) -> Result<String, ConfigLoadError> {
+    helix_stdx::vfs::read(path)
+        .and_then(|contents| {
+            String::from_utf8(contents)
+                .map_err(|err| IOError::new(std::io::ErrorKind::InvalidData, err))
+        })
+        .map_err(ConfigLoadError::Error)
 }
 
 #[cfg(test)]

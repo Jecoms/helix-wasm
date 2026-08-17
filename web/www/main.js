@@ -116,8 +116,31 @@ on_exit((code) => {
   window.helixExit = { code };
   window.dispatchEvent(new CustomEvent("helix-exit", { detail: { code } }));
 });
+// `config.toml` is unreachable from a browser (issue #75), so a page that
+// wants a non-default keymap, `[editor]` setting or theme hands the text to
+// `start`, which seeds it where helix reads its user config from. Set
+// `window.helixConfig` before this module runs — an inline script above the
+// bundle, or Playwright's `addInitScript`. Left unset, helix boots on its
+// defaults, which is what the demo itself does.
+// A config is likely fetched, so the near-miss worth catching is a Promise
+// (or an already-parsed object) left where the text belongs: helix would boot
+// on its defaults with nothing anywhere to say why. `null` and `undefined`
+// are how a page says "no config", so they pass quietly.
+const configured = window.helixConfig ?? undefined;
+if (configured !== undefined && typeof configured !== "string") {
+  console.warn(
+    "window.helixConfig must be the text of a config.toml; ignoring",
+    configured,
+  );
+}
+const bootConfig = typeof configured === "string" ? configured : undefined;
 callEditor(() =>
-  start((bytes) => terminal.write(bytes), terminal.cols, terminal.rows),
+  start(
+    (bytes) => terminal.write(bytes),
+    terminal.cols,
+    terminal.rows,
+    bootConfig,
+  ),
 );
 
 // For a keystroke xterm.js fires onKey and then, synchronously, onData with

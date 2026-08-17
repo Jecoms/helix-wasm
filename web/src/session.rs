@@ -13,7 +13,7 @@ use crossterm::event::{Event, EventStream};
 use crossterm::execute;
 use helix_wasm::helix_term::application::Application;
 use helix_wasm::helix_term::args::Args;
-use helix_wasm::helix_term::config::Config;
+use helix_wasm::helix_term::config::{Config, ConfigLoadError};
 use js_sys::{Function, Uint8Array};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
@@ -69,11 +69,34 @@ fn forward_output(bytes: &[u8]) {
 /// Boots the editor. `output` receives `Uint8Array` chunks of ANSI to write
 /// to the terminal emulator; `columns`/`rows` are its current dimensions.
 ///
+/// `config` is the text of a `config.toml` — `[keys]` remaps, `[editor]`
+/// settings, a `theme` — or `undefined` for helix's defaults. It is seeded
+/// into the virtual file system at the path helix reads its user config
+/// from, which is the whole of the mechanism: an embedder that would rather
+/// write there itself can call [`crate::vfs_write`] before this, and one
+/// that wants a *workspace* config can seed `.helix/config.toml` under the
+/// working directory the same way. Both are read, and the workspace one
+/// wins, exactly as native helix merges them. This argument is written last,
+/// so it takes precedence over an earlier write to the same path.
+///
+/// A config that arrives after this call is not live until `:config-reload`
+/// re-reads both files. A malformed one boots the editor on the defaults and
+/// is reported — what native helix does with a bad config, minus the prompt
+/// there is no stdin for. The report goes to the console and to the
+/// statusline, but the statusline half is only as durable as any other status
+/// message: the first event helix handles clears it, so a page that wants to
+/// hold the reader on it has to render it itself.
+///
 /// Must be called exactly once per page load, before any other export, and
 /// with the real terminal size — the bridge otherwise reports a placeholder
 /// 80x24 and helix would lay out against it.
 #[wasm_bindgen]
-pub fn start(output: Function, columns: u16, rows: u16) -> Result<(), JsValue> {
+pub fn start(
+    output: Function,
+    columns: u16,
+    rows: u16,
+    config: Option<String>,
+) -> Result<(), JsValue> {
     if STARTED.with(|started| started.replace(true)) {
         return Err(JsValue::from_str("helix is already running on this page"));
     }
@@ -85,9 +108,10 @@ pub fn start(output: Function, columns: u16, rows: u16) -> Result<(), JsValue> {
     bridge::set_output(forward_output);
     bridge::set_size(columns, rows);
 
-    // Config and log paths resolve under the stubbed home directory; the
-    // reads fail cleanly (no fs on wasm32) and defaults apply. Logs actually
-    // land on the JS console via console_log.
+    // Config and log paths resolve under the stubbed home directory. The
+    // config path is a real key in the virtual file system (see below); the
+    // log one is never written, because logs land on the JS console via
+    // console_log instead.
     helix_wasm::helix_loader::initialize_config_file(None);
     helix_wasm::helix_loader::initialize_log_file(None);
 
@@ -101,19 +125,32 @@ pub fn start(output: Function, columns: u16, rows: u16) -> Result<(), JsValue> {
     // the runtime themes directory holds.
     crate::themes::seed();
 
-    let mut config = Config::load_default().unwrap_or_else(|_| Config::default());
-    // helix detects true color from COLORTERM/terminfo, neither of which
-    // exists on wasm32 — without this override it refuses every RGB theme
-    // ("theme requires true color support"). xterm.js always renders 24-bit
-    // color, so claim it unconditionally, like `true-color = true` in a
-    // user's config.toml would.
-    //
-    // The override survives `:config-reload`: `Application::refresh_config`
-    // propagates the `Config::load_default()` error — always Err on wasm32,
-    // where config.toml is read through `std::fs` — before it stores the new
-    // config or reloads the theme, so the running config, this override and
-    // the active RGB theme are all left alone.
-    config.editor.true_color = true;
+    // The host page's config, if it passed one, at the path helix reads the
+    // user config from — before the load below, and before `Application::new`
+    // resolves the theme it may name. Seeding rather than handing the parsed
+    // config over is what keeps one channel for configuration: `:config-open`
+    // opens this very key, `:w` saves back to it, and `:config-reload` reads
+    // it again.
+    if let Some(config) = config {
+        helix_wasm::helix_stdx::vfs::write(helix_wasm::helix_loader::config_file(), config)
+            .map_err(|err| JsValue::from_str(&format!("failed to seed the config file: {err}")))?;
+    }
+
+    // A config that will not parse is worth saying out loud — native helix
+    // prints it and waits for a keypress before falling back to the defaults;
+    // here it goes to the console and to the statusline, once there is an
+    // editor to hold one.
+    let (config, config_error) = match Config::load_default() {
+        Ok(config) => (config, None),
+        // No config at all is the common case rather than a failure, and it
+        // arrives as the same variant a read error would.
+        Err(ConfigLoadError::Error(_)) => (Config::default(), None),
+        Err(err) => {
+            let message = format!("Bad config: {err}");
+            log::error!("{message}");
+            (Config::default(), Some(message))
+        }
+    };
     let mouse = config.editor.mouse;
     let lang_loader = helix_wasm::helix_core::config::default_lang_loader();
 
@@ -135,8 +172,12 @@ pub fn start(output: Function, columns: u16, rows: u16) -> Result<(), JsValue> {
     crate::samples::seed();
 
     // Default args: no files, so helix opens a scratch buffer.
-    let app = Application::new(Args::default(), config, lang_loader)
+    let mut app = Application::new(Args::default(), config, lang_loader)
         .map_err(|err| JsValue::from_str(&format!("failed to initialize helix: {err}")))?;
+
+    if let Some(message) = config_error {
+        app.editor.set_error(message);
+    }
 
     claim_terminal(mouse)
         .map_err(|err| JsValue::from_str(&format!("failed to claim the terminal: {err}")))?;

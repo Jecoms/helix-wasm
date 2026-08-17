@@ -43,7 +43,11 @@ chapters 2 through 12 — behaves as the text says.
   `space w`, so read every `Ctrl-w` in chapter 13 as `space w`:
   `space w n v` splits, `space w hjkl` moves, `space w q` closes,
   `space w o` closes the others, `space w HJKL` swaps, `space w t`
-  transposes. 13.4's `:vs` / `:hs` need no chord at all.
+  transposes. 13.4's `:vs` / `:hs` need no chord at all. The chord itself
+  stays out of reach whatever anyone configures, but the menu no longer has
+  to be read under upstream's alias: `config.toml` reaches the browser as of
+  [#75](https://github.com/Jecoms/helix-wasm/issues/75), so a host page that
+  wants chapter 13's prefix somewhere else can bind it in `[keys.normal]`.
 - **4.2 note, 4.3 recap — `space y` / `space p` "on the system's
   clipboard".** The `+` and `*` registers are editor-local here: the wasm
   clipboard provider silently drops writes and refuses reads, so the

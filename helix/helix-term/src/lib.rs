@@ -25,7 +25,20 @@ fn true_color() -> bool {
     true
 }
 
-#[cfg(not(windows))]
+/// wasm32 has neither `COLORTERM` nor terminfo to detect true color from, so
+/// the detection below would report none — and helix then refuses every RGB
+/// theme ("theme requires true color support"). The terminal emulator on the
+/// other end is xterm.js, which always renders 24-bit color, so claim it
+/// unconditionally, the way `true-color = true` in a config.toml would.
+/// Answering here rather than overriding `editor.true_color` once at boot is
+/// what makes the claim survive `:config-reload`, which replaces the whole
+/// config with what the config files say.
+#[cfg(target_arch = "wasm32")]
+fn true_color() -> bool {
+    true
+}
+
+#[cfg(not(any(windows, target_arch = "wasm32")))]
 fn true_color() -> bool {
     if matches!(
         std::env::var("COLORTERM").map(|v| matches!(v.as_str(), "truecolor" | "24bit")),
