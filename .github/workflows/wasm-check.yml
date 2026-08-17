@@ -80,6 +80,9 @@ jobs:
         with:
           tool: wasm-pack
 
+      - name: Install wasm-opt
+        uses: ./.github/actions/wasm-opt
+
       - name: Build the wasm package
         run: wasm-pack build web --target web -- --locked
 
