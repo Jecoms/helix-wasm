@@ -67,8 +67,14 @@ anyway, so those steps run as written
 ([#68](https://github.com/Jecoms/helix-wasm/issues/68),
 [#81](https://github.com/Jecoms/helix-wasm/issues/81)). The trade is that
 Option no longer types composed characters (`é`, `ß`, `…`) in insert mode
-on macOS — nothing the tutorial asks for. Unlike everything else on this
-page, that is not a claim from a hand walk: browser automation drives the
-renderer directly and never invokes the OS input method, so it cannot
-compose a real Option keystroke, and `../www/tests/keys.spec.js` stands in
-with synthetic events of the shape macOS produces.
+on macOS — nothing the tutorial asks for.
+
+Unlike everything else on this page, that is not a claim from a hand walk,
+and it is not chord-by-chord either. Browser automation drives the renderer
+directly and never invokes the OS input method, so it cannot compose a real
+Option keystroke; `../www/tests/keys.spec.js` stands in with synthetic
+events, and it covers the three *shapes* macOS delivers rather than the nine
+chords above — an Option-composed character (`Alt-s`), a letter dead key
+(`Alt-u`) and a punctuation dead key (`` Alt-` ``). Every chord on that list
+arrives as one of the three, which is why the list follows, but only the
+shapes are checked.

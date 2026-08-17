@@ -233,6 +233,13 @@ test("a shifted punctuation dead key takes the shifted character", async ({
   // keys it resolves itself (its letter branch uppercases on `ev.shiftKey`)
   // and its keyCode table carries both columns, so main.js's carries both
   // for the same reason.
+  //
+  // Unlike the `Backquote` and `KeyU` cases, this shape is constructed
+  // rather than observed: no US-layout dead key sits on a shifted
+  // punctuation key, so nobody can type this. It tests that the table is a
+  // faithful transposition of xterm's, which is the only claim main.js
+  // makes about the shifted column — layouts that do put a dead key there
+  // are exactly the ones this cannot be checked against by hand.
   await dispatchKey(page, {
     key: "Dead",
     code: "Digit0",
@@ -273,6 +280,65 @@ test("off macOS a punctuation dead key is left alone", async ({ page }) => {
   await expect.poll(() => getState(page).then((s) => s.mode)).toBe("insert");
   await page.keyboard.press("Escape");
   expect(await getText(page)).toBe("this stays lowercase\n");
+});
+
+test("the dead-key handler holds xterm's own conditions on an Alt chord", async ({
+  page,
+}) => {
+  // The handler is the missing case of xterm's Alt branch, not a second
+  // policy about Alt chords, so it restates that branch's condition:
+  // `(!isMac || macOptionIsMeta) && ev.altKey && !ev.metaKey`
+  // (Keyboard.ts:349). Both of the clauses that are not covered elsewhere
+  // are asserted here, against the same chord the tutor 10.3 test uses.
+  await bootAsMac(page);
+  await openFile(page, "conditions.txt", "this stays lowercase\n");
+  await page.keyboard.press("x");
+
+  // Cmd-Option chords belong to the browser and the OS; xterm declines them
+  // and so does this.
+  await dispatchKey(page, {
+    key: "Dead",
+    code: "Backquote",
+    keyCode: 229,
+    altKey: true,
+    metaKey: true,
+  });
+
+  // With Option no longer claimed as Meta it goes back to being a compose
+  // key, and xterm drops every Alt chord in `_isThirdLevelShift`. The two
+  // have to move together, or this one chord would keep firing while the
+  // rest of the `A-` space went dead.
+  await page.evaluate(() => {
+    window.__helixTerminal.options.macOptionIsMeta = false;
+  });
+  await dispatchKey(page, {
+    key: "Dead",
+    code: "Backquote",
+    keyCode: 229,
+    altKey: true,
+  });
+
+  await page.keyboard.press("i");
+  await expect.poll(() => getState(page).then((s) => s.mode)).toBe("insert");
+  await page.keyboard.press("Escape");
+  expect(await getText(page)).toBe("this stays lowercase\n");
+
+  // The positive control: with the option back on and no `metaKey`, the
+  // very same event does land — so the two assertions above are the gates
+  // holding, not a setup that could never have fired.
+  await page.evaluate(() => {
+    window.__helixTerminal.options.macOptionIsMeta = true;
+  });
+  await page.keyboard.press("x"); // the round trip above collapsed the selection
+  await dispatchKey(page, {
+    key: "Dead",
+    code: "Backquote",
+    keyCode: 229,
+    altKey: true,
+  });
+  await expect
+    .poll(() => getText(page), { message: "the positive control never fired" })
+    .toBe("THIS STAYS LOWERCASE\n");
 });
 
 test("a named key whose sequence is ESC + a character keeps its DOM name", async ({

@@ -168,7 +168,7 @@ const composed = (key) =>
 // US layout, the same `[unshifted, shifted]` pairs — looked up by the field
 // composition leaves alone. Only the punctuation and digit rows are here;
 // the letters are xterm's to resolve (see the handler below).
-const DEAD_KEY_CODES = {
+const CODE_KEY_MAPPINGS = {
   Digit0: ["0", ")"],
   Digit1: ["1", "!"],
   Digit2: ["2", "@"],
@@ -211,23 +211,30 @@ const DEAD_KEY_CODES = {
 // that early return — it is the first thing `_keyDown` does
 // (Terminal.ts:1004-1007) — so the chord is resolved and forwarded here, and
 // returning `false` stops xterm from processing the event a second time.
-// Two gates keep it narrow. macOS only, for the same reason `composed()` is
-// — nothing else composes Option, and a `code`-driven US-layout guess would
-// turn chords that are inert on a non-US layout into live commands. And
-// `code: "Key*"` is left alone: those are the ones xterm resolves for
-// itself, and one owner per shape is what keeps a chord from being decoded
-// twice by two US-layout tables that could drift apart. Where this does
-// step in, returning `false` is what keeps the chord from *also* going out
-// through `onKey` — forwarding without it would run the binding twice off
-// one keystroke.
+// What keeps it narrow: xterm's own Alt-branch condition, restated below,
+// plus two gates of this page's own. macOS only, for the same reason
+// `composed()` is — nothing else composes Option, and a `code`-driven
+// US-layout guess would turn chords that are inert on a non-US layout into
+// live commands. And `code: "Key*"` is left alone: those are the ones xterm
+// resolves for itself, and one owner per shape is what keeps a chord from
+// being decoded twice by two US-layout tables that could drift apart. Where
+// this does step in, returning `false` is what keeps the chord from *also*
+// going out through `onKey` — forwarding without it would run the binding
+// twice off one keystroke.
 terminal.attachCustomKeyEventHandler((event) => {
   // The handler is consulted for keypress and keyup too (Terminal.ts:1102,
-  // 1129); a composition only ever announces itself on keydown. `metaKey`
-  // bails for the same reason xterm's own Alt branch requires `!ev.metaKey`
-  // (Keyboard.ts:349): Cmd-Option chords are the browser's and the OS's.
+  // 1129); a composition only ever announces itself on keydown. The rest
+  // restates xterm's own Alt-branch condition — `(!isMac || macOptionIsMeta)
+  // && ev.altKey && !ev.metaKey` (Keyboard.ts:349) — because this is that
+  // branch's missing case, not a second policy about Alt chords. Reading
+  // `macOptionIsMeta` off the terminal rather than assuming it means the two
+  // cannot disagree if the option is ever turned off: Option would go back
+  // to composing characters, and every Alt chord (this one included) back to
+  // being dropped, together.
   if (
     event.type !== "keydown" ||
     !IS_MAC ||
+    !terminal.options.macOptionIsMeta ||
     !event.altKey ||
     event.metaKey ||
     event.key !== "Dead" ||
@@ -235,7 +242,7 @@ terminal.attachCustomKeyEventHandler((event) => {
   ) {
     return true;
   }
-  const chord = DEAD_KEY_CODES[event.code];
+  const chord = CODE_KEY_MAPPINGS[event.code];
   if (!chord) {
     return true;
   }

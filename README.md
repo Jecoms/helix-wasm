@@ -294,14 +294,16 @@ web page:
   Option into a plain ASCII character is left alone and still forwards its
   own (macOS UK Option-3 gives `A-#`, not `A-3`). The accent starters compose
   nothing at all until the next keystroke, so they arrive carrying no
-  character to read; those are resolved from the physical key instead, which
-  covers both the letters (`A-e`, `A-i`, `A-n`, `A-u`) and the punctuation
-  ones — `` A-` `` (`switch_to_uppercase`, the chord `:tutor` 10.3 asks for)
-  among them. None of this applies off macOS. The composition half of this
-  entry is the other one here not taken from a run: it is read from
-  xterm.js's source and exercised with synthetic events, because browser
-  automation drives the renderer directly and never goes through the OS
-  input method, so nothing in this tree can compose a real Option keystroke.
+  character to read; those are looked up in that same US table by physical
+  key rather than by the character — one layout, read two ways, not two
+  layouts. That covers both the letter starters (`A-e`, `A-i`, `A-n`, `A-u`)
+  and the punctuation ones, `` A-` `` (`switch_to_uppercase`, the chord
+  `:tutor` 10.3 asks for) among them. None of this applies off macOS. The
+  composition half of this entry is the other one here not taken from a run:
+  it is read from xterm.js's source and exercised with synthetic events,
+  because browser automation drives the renderer directly and never goes
+  through the OS input method, so nothing in this tree can compose a real
+  Option keystroke.
 - **No kitty keyboard protocol.** The bridge reports no keyboard
   enhancement, so this is the classic terminal key space: no key-release or
   repeat events, and no `Tab`/`C-i` or `Enter`/`C-m` disambiguation.
