@@ -119,10 +119,12 @@ above). What that changes:
 
 - **Nothing survives a page reload.** Pull anything you care about out
   through `helixVfs.read` / `helixVfs.list` first.
-- **`:w` is last-write-wins and never warns.** There are no mtimes, so the
-  "file modified externally" guard can never fire — a `:w` silently
-  overwrites whatever a `helixVfs.write` put there in the meantime. `:w!`
-  does exactly what `:w` does, and nothing is ever read-only.
+- **`:w` will not clobber an outside write, and nothing is read-only.**
+  Store entries carry a modification time, so helix's "file modified by an
+  external process" guard works: a `:w` over a key that a `helixVfs.write`
+  changed since the buffer was opened or last saved is refused, and `:w!`
+  overrides it exactly as it does natively. File permissions have no
+  counterpart here, so nothing is ever read-only.
 - **There are no directories**, only keys with separators in them. `:o
   /some/dir` opens an ordinary empty buffer named `/some/dir`, and `:move
   /some/dir` renames the file *to* that key instead of moving it into the
