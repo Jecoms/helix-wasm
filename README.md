@@ -413,9 +413,11 @@ than scrape the rendered terminal. The JS surface is unstable by design
 read-only inspection surface (`web/src/inspect.rs`,
 [#18](https://github.com/Jecoms/helix-wasm/issues/18)) is meant to be
 kept stable. Either way, pin a tagged tarball and check its `.d.ts` when
-upgrading.
+upgrading — [`CHANGELOG.md`](CHANGELOG.md) is what changed between two of
+them, and its scope note says which changes reach the bundle at all.
 
-To cut a release: bump `version` in `web/Cargo.toml`, merge, then tag that
+To cut a release: bump `version` in `web/Cargo.toml` and turn the changelog's
+`[Unreleased]` section into the new version's entry, merge, then tag that
 commit `web-v<version>` and push the tag. The workflow verifies the tag
 against the crate version, rebuilds the bundle with `--locked`, and
 attaches the tarball to a release on the tag.
@@ -595,7 +597,7 @@ versioned branch.
   `web/Cargo.toml`'s `version`, rebuilds the full-catalog `web/pkg`
   wasm-pack output, and attaches it to a GitHub release as
   `helix-web-<version>.tar.gz` — the artifact "Embedding the editor" above
-  pins.
+  pins, and the thing [`CHANGELOG.md`](CHANGELOG.md) versions.
 
 ## Credits and license
 

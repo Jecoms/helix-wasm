@@ -6,10 +6,13 @@ name: Publish web bundle
 # and every push to main replaces them, so there is nothing stable to link
 # against there.
 #
-# Triggered by pushing a `web-v<semver>` tag (a namespace of its own, apart
-# from the signed `helix-<version>` snapshot-attestation tags). To cut a
-# release: make sure `web/Cargo.toml`'s `version` matches, tag the commit
-# `web-v<version>`, push the tag. `workflow_dispatch` exists to re-run a
+# Triggered by pushing a `web-v<semver>` tag — the repo's only tag namespace
+# (the snapshot-attestation tags this once shared the space with went away
+# with the pin machinery). To cut a release: make sure `web/Cargo.toml`'s
+# `version` matches and `CHANGELOG.md` carries that version's entry — the
+# notes below link the changelog *at the tag*, so it has to be on the tagged
+# commit — then tag the commit `web-v<version>` and push the tag.
+# `workflow_dispatch` exists to re-run a
 # failed run and must be dispatched *on the tag ref*
 # (`gh workflow run web_release.yml --ref web-v<version>`) — a dispatch on a
 # branch ref fails the tag guard below. A re-run after the release was
@@ -97,5 +100,5 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --verify-tag \
             --title "helix-web $version" \
-            --notes "The embeddable wasm bundle: the \`web/pkg\` wasm-pack output (\`--target web\`, full grammar catalog), with \`NOTICE.md\` covering the statically linked grammars. See the README's \"Embedding the editor\" section for the pinning and host-wiring recipe." \
+            --notes "The embeddable wasm bundle: the \`web/pkg\` wasm-pack output (\`--target web\`, full grammar catalog), with \`NOTICE.md\` covering the statically linked grammars. See the README's \"Embedding the editor\" section for the pinning and host-wiring recipe, and [CHANGELOG.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/CHANGELOG.md) for what changed in this version and what the port cannot do." \
             "helix-web-$version.tar.gz"
