@@ -138,6 +138,7 @@ pub fn read_dir(path: impl AsRef<Path>) -> Vec<(OsString, bool)> {
         let Some(name) = components.next() else {
             continue; // `key` is the directory itself.
         };
+        // `|=`, so a name that is both a key and a prefix stays a directory.
         *entries
             .entry(name.as_os_str().to_os_string())
             .or_insert(false) |= components.next().is_some();

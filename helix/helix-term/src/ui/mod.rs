@@ -623,6 +623,10 @@ pub mod completers {
         /// The entries of `dir`, each joined onto `dir` as the caller spelled
         /// it: store keys are normalized and absolute, but the prompt
         /// completes against what the user typed.
+        ///
+        /// Nothing here can fail — reading a `BTreeMap` is not IO. The
+        /// `io::Result` is what `ignore`'s walk yields, and wearing it keeps
+        /// `filename_impl`'s `file.ok()` the line upstream wrote.
         pub fn walk(dir: &Path) -> impl Iterator<Item = io::Result<DirEntry>> {
             let dir = dir.to_path_buf();
             helix_stdx::vfs::read_dir(&dir)

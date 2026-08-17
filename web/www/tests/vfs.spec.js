@@ -195,6 +195,7 @@ async function seedTree(page) {
     window.helixVfs.write("/proj/alpha.txt", "alpha");
     window.helixVfs.write("/proj/beta.txt", "beta");
     window.helixVfs.write("/proj/deep/gamma.txt", "gamma");
+    window.helixVfs.write("/proj/.dotfile.txt", "dot");
     window.helixVfs.write("/top.txt", "top");
   });
 }
@@ -234,6 +235,17 @@ test(":pwd reports the working directory instead of calling it deleted (issue #7
     .poll(() => terminalText(page))
     .toContain("Current working directory is /proj");
   expect(await terminalText(page)).not.toContain("deleted");
+
+  // And the rest of that claim: a relative `:w` is what puts the first key
+  // under such a directory, which is why `:cd` still accepts one.
+  await page.keyboard.press("i");
+  await page.keyboard.type("first file");
+  await page.keyboard.press("Escape");
+  await page.keyboard.type(":w rel.txt");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => vfsRead(page, "/proj/rel.txt"))
+    .toContain("first file");
 });
 
 test("path completion offers the vfs keys, with prefixes as directories (issue #73)", async ({
@@ -252,6 +264,9 @@ test("path completion offers the vfs keys, with prefixes as directories (issue #
   expect(underProj).toContain("deep/");
   // Depth 1, as the native walk is: what is inside `deep` is not offered yet.
   expect(underProj).not.toContain("gamma.txt");
+  // Nothing here is on disk to be hidden or gitignored, so a leading dot
+  // hides nothing either — the native walk runs with `hidden(false)` too.
+  expect(underProj).toContain(".dotfile.txt");
 
   await page.keyboard.press("Escape");
   await (await promptWith(page, ":o /to")).toContain("top.txt");
