@@ -258,9 +258,15 @@ loop either does not happen or happens inline:
   `nucleo` calls the match job directly instead of handing it to a
   threadpool — so a large picker blocks rendering and input while it matches
   instead of streaming results in.
-- **Tree-sitter's 500 ms parse timeout never fires.** The libc clock shim is
-  frozen at zero (`sysroot/shims.c`), so every parse runs to completion and a
-  pathological file can hang the tab.
+- **Tree-sitter parses on the main thread**, so the page is frozen for as
+  long as a parse takes. Helix's 500 ms parse timeout bounds that, and it
+  does fire here: the `clock_gettime` shim (`sysroot/shims.c`) reads the
+  page's `performance.now()` through the web crate's `clock` module, so
+  elapsed time is real and an oversized file drops its highlighting instead
+  of parsing to completion. The bound is not airtight — tree-sitter samples
+  the deadline once per 100 parse operations, so input that makes a single
+  operation expensive (deeply unbalanced delimiters, where error recovery
+  goes quadratic) can still overrun it by a lot.
 
 ### Terminal and browser differences
 

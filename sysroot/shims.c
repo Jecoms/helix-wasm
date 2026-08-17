@@ -6,8 +6,8 @@
  * output, which are never enabled in the wasm build, so those are no-ops.
  * The str* functions and memchr are real implementations here (tree-sitter's
  * query parser relies on them); memcpy/memmove/memset/memcmp come from Rust's
- * compiler-builtins at link time and the allocator from the web crate's
- * c_alloc module. */
+ * compiler-builtins at link time, the allocator from the web crate's c_alloc
+ * module, and the clock behind clock_gettime from its clock module. */
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -83,16 +83,34 @@ _Noreturn void abort(void) {
   __builtin_trap();
 }
 
+/* The host page's monotonic clock, in nanoseconds since its first reading.
+ * Defined on the Rust side (web/src/clock.rs) because
+ * wasm32-unknown-unknown has no clock of its own and the browser's is only
+ * reachable through JS — the same split as the allocator, whose malloc/free
+ * live in the web crate's c_alloc module. */
+extern unsigned long long helix_web_monotonic_nanos(void);
+
 /* tree-sitter reads this clock to enforce parse timeouts (helix sets a
- * 500ms one). Frozen at zero, elapsed time is always zero, so timeouts
- * never fire and every parse runs to completion — acceptable for the
- * grammar set shipped here; a real clock needs a wasm import, not libc. */
+ * 500ms one). It asks for CLOCK_MONOTONIC and ignores the return value, so
+ * every path below writes *tp rather than leaving the caller's timespec
+ * uninitialized.
+ *
+ * CLOCK_MONOTONIC is the only clock served: nothing here has a wall clock,
+ * and answering a CLOCK_REALTIME caller with monotonic nanoseconds would be
+ * a wrong answer rather than a missing one. Any other clk_id therefore gets
+ * the old frozen-at-zero reading and a -1 return. */
 int clock_gettime(clockid_t clk_id, struct timespec *tp) {
-  (void)clk_id;
-  if (tp) {
-    tp->tv_sec = 0;
-    tp->tv_nsec = 0;
+  if (!tp) {
+    return -1;
   }
+  tp->tv_sec = 0;
+  tp->tv_nsec = 0;
+  if (clk_id != CLOCK_MONOTONIC) {
+    return -1;
+  }
+  unsigned long long nanos = helix_web_monotonic_nanos();
+  tp->tv_sec = (time_t)(nanos / 1000000000ULL);
+  tp->tv_nsec = (long)(nanos % 1000000000ULL);
   return 0;
 }
 

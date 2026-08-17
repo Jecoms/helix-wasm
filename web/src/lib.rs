@@ -14,6 +14,8 @@
 #[cfg(target_family = "wasm")]
 mod c_alloc;
 #[cfg(target_family = "wasm")]
+mod clock;
+#[cfg(target_family = "wasm")]
 mod grammars;
 #[cfg(target_family = "wasm")]
 mod inspect;
