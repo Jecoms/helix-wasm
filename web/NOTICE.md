@@ -12,17 +12,16 @@ vendored in this repository under `stubs/tree-house-bindings/vendor/` and
 compiled by that crate's `build.rs`. Their notices are in
 "[tree-sitter runtime](#tree-sitter-runtime)" below.
 
-The vendored query files under `queries/` are copies of helix's own
-`runtime/queries/` (MPL-2.0, like helix itself; see the repository's
-top-level `LICENSE`), documented in `queries/README.md`.
+It further embeds three kinds of helix's own runtime files, read straight
+out of the in-tree port at `../helix/runtime/` (MPL-2.0, like helix itself;
+see the repository's top-level `LICENSE`) rather than copied into this
+crate:
 
-The vendored tutor text under `runtime/` is likewise a copy of helix's own
-`runtime/tutor` (MPL-2.0, like helix itself), documented in
-`runtime/README.md`.
-
-The vendored theme files under `themes/` are copies of helix's own
-`runtime/themes/` (MPL-2.0, like helix itself; see the repository's
-top-level `LICENSE`), documented in `themes/README.md`.
+- the tree-sitter query files under `helix/runtime/queries/`, for the
+  languages the grammar catalog selects — see `queries/README.md`;
+- the theme files under `helix/runtime/themes/`, for the curated set in
+  `build.rs`'s `THEMES` catalog — see `themes/README.md`;
+- the tutor text at `helix/runtime/tutor` — see `runtime/README.md`.
 
 When bumping a grammar pin, re-check its `LICENSE` and update the matching
 entry here. The same applies when re-vendoring `stubs/tree-house-bindings`

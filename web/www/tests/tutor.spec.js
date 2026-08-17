@@ -1,6 +1,6 @@
 // Regression guards for the browser concessions the `:tutor` audit
-// (issue #65) produced. The tutorial text is a pristine copy of helix's own
-// (see web/runtime/README.md — it must not be annotated), so every
+// (issue #65) produced. The tutorial text is helix's own file, embedded
+// verbatim from helix/runtime/tutor (see web/runtime/README.md), so every
 // concession lives outside it: an exit notice, the upstream `space w` alias
 // for the browser-reserved `C-w`, and sample files for the picker. These
 // tests cover only those contested steps, not all 60 tutor sections.

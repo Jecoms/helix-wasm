@@ -236,13 +236,13 @@ test(":w names the buffer in the vfs; live text diverges until re-saved", async 
     .toBe(await getText(page));
 });
 
-test(":theme lists a vendored theme and applying it recolors the screen", async ({
+test(":theme lists a bundled theme and applying it recolors the screen", async ({
   page,
 }) => {
   await bootEditor(page);
 
   // The prompt's completion menu lists the runtime themes directory, which
-  // startup seeds with the vendored set (web/themes/).
+  // startup seeds with the bundled set (`THEMES` in web/build.rs).
   await page.keyboard.type(":theme ");
   await expect.poll(() => terminalText(page)).toContain("gruvbox");
 

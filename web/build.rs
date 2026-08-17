@@ -10,20 +10,22 @@
 //! Grammar sources are fetched at build time, shallow, pinned by revision
 //! (the same name/remote/rev entries as helix's own `languages.toml`), into
 //! OUT_DIR — nothing is vendored and no fork is involved. The queries for
-//! each grammar are vendored in `queries/` (helix's own files; see the
-//! README there) and embedded via generated registration code that the
-//! `grammars` module includes.
+//! each grammar, the bundled themes and the tutor text are helix's own
+//! runtime files, read straight out of the in-tree port at
+//! `../helix/runtime/` (see [`helix_runtime_dir`]) and embedded via
+//! generated registration code that the `grammars` and `themes` modules
+//! include.
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// The grammar catalog: (name, git remote, pinned revision). The pins
 /// mirror the `[[grammar]]` entries in helix's `languages.toml` at the tag
-/// the workspace tracks. To add a grammar: add a row here, vendor its
-/// queries under `queries/<name>/`, keep the name in sync with helix's
-/// language configuration (the `tree_sitter_<name>` symbol is derived from
-/// it), and record its license attribution in `NOTICE.md` (also on pin
-/// bumps).
+/// the workspace tracks. To add a grammar: add a row here, keep the name in
+/// sync with helix's language configuration (the `tree_sitter_<name>` symbol
+/// is derived from it, and it is the `helix/runtime/queries/<name>/`
+/// directory the queries come from), and record its license attribution in
+/// `NOTICE.md` (also on pin bumps).
 ///
 /// A build links the whole catalog by default; set `HELIX_WEB_GRAMMARS` to
 /// a comma-separated subset of these names to slim the bundle (see
@@ -71,15 +73,54 @@ const GRAMMARS: &[(&str, &str, &str)] = &[
     ),
 ];
 
+/// The theme catalog: file stems under `helix/runtime/themes/`. A curated
+/// set — helix ships far more than a browser bundle wants to carry — chosen
+/// to cover distinct palettes, including two light themes
+/// (`catppuccin_latte`, `onelight`). Unlike the query set, which the
+/// `; inherits:` closure of [`GRAMMARS`] derives, this one is a judgement
+/// call and so is written out.
+///
+/// A theme that `inherits` from another must have its parent listed here
+/// too; [`generate_theme_seed`] asserts that closure, because an unresolved
+/// parent surfaces at runtime only as a theme that silently refuses to load.
+const THEMES: &[&str] = &[
+    "catppuccin_latte",
+    "catppuccin_mocha",
+    "dracula",
+    "everforest_dark",
+    "gruvbox",
+    "nord",
+    "onedark",
+    "onelight",
+    "rose_pine",
+    "tokyonight",
+];
+
+/// helix's runtime directory: `helix/runtime/` in this same workspace, one
+/// level up from this crate. The port is an in-tree path dependency, so the
+/// queries and themes this script embeds are read from here rather than
+/// copied into `web/` — a copy could only go stale against the release the
+/// tree carries. (`src/session.rs` embeds `helix/runtime/tutor` the same
+/// way, with a plain `include_str!`.)
+fn helix_runtime_dir() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("the web crate sits one level below the workspace root")
+        .join("helix")
+        .join("runtime")
+}
+
 fn main() {
     // Watch the whole sysroot: the .c files include the sysroot headers
     // (shims.c pulls in stdio.h, stdlib.h, string.h, time.h, unistd.h), and
     // the wasm-cc shim shapes the compile too — a per-file list here
     // under-declared and let local incremental builds link stale objects.
     println!("cargo:rerun-if-changed=../sysroot");
-    println!("cargo:rerun-if-changed=queries");
-    println!("cargo:rerun-if-changed=themes");
     println!("cargo:rerun-if-env-changed=HELIX_WEB_GRAMMARS");
+    // The watches on helix's runtime files are emitted per embedded item by
+    // the generators below, not as a blanket watch on `../helix/runtime`:
+    // cargo walks a watched directory recursively, and upstream's queries
+    // tree alone is 279 languages of files this bundle never reads.
 
     if std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() != Ok("wasm32") {
         return;
@@ -178,13 +219,13 @@ fn git(dir: &Path, args: &[&str]) -> Option<String> {
 }
 
 /// Generates `grammar_registration.rs`: a `register()` function that hands
-/// every grammar in the set, and every vendored query file, to
+/// every grammar in the set, and every query file those grammars need, to
 /// `helix_loader`'s wasm32 static registry. Generated so the grammar list
 /// above stays the single source of truth.
 fn generate_registration(out_dir: &Path, grammars: &[(&str, &str, &str)]) {
     use std::fmt::Write;
 
-    let queries_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("queries");
+    let queries_dir = helix_runtime_dir().join("queries");
 
     let mut code = String::from(
         "/// Registers the static grammar set and its queries with\n\
@@ -211,23 +252,16 @@ fn generate_registration(out_dir: &Path, grammars: &[(&str, &str, &str)]) {
         )
         .unwrap();
     }
-    assert_vendored_queries(&queries_dir, grammars);
-
-    // Query registration walks the vendored directory rather than the
-    // grammar list: `; inherits:` directives can pull in query-only base
-    // languages that have no grammar of their own (javascript inherits from
-    // `ecma` and `_javascript`). Queries for unselected grammars register
-    // too — a few KB of dead text against computing the inherits closure of
-    // an arbitrary subset; helix never reads queries for a language whose
-    // grammar did not resolve.
-    let mut langs: Vec<_> = std::fs::read_dir(&queries_dir)
-        .unwrap()
-        .map(|entry| entry.unwrap().path())
-        .filter(|path| path.is_dir())
-        .collect();
-    langs.sort();
-    for lang_dir in langs {
-        let lang = lang_dir.file_name().unwrap().to_str().unwrap().to_owned();
+    // The registered set is the `; inherits:` closure of the selected
+    // grammars, not the selection itself: a directive can pull in query-only
+    // base languages that have no grammar of their own (javascript inherits
+    // from `ecma` and `_javascript`), and those have to register too.
+    for lang in query_languages(&queries_dir, grammars) {
+        let lang_dir = queries_dir.join(&lang);
+        // Watch the language directory, not each file: this catches a query
+        // file appearing or disappearing upstream as well as its contents
+        // changing.
+        println!("cargo:rerun-if-changed={}", lang_dir.display());
         let mut files: Vec<_> = std::fs::read_dir(&lang_dir)
             .unwrap()
             .map(|entry| entry.unwrap().file_name().into_string().unwrap())
@@ -249,50 +283,49 @@ fn generate_registration(out_dir: &Path, grammars: &[(&str, &str, &str)]) {
     std::fs::write(out_dir.join("grammar_registration.rs"), code).unwrap();
 }
 
-/// Generates `theme_seed.rs`: a `THEMES` table of every vendored theme
-/// file under `themes/`, embedded for the frontend to seed into the
-/// virtual file system at startup (see `src/themes.rs`). Generated by
-/// walking the directory so the vendored set is the single source of
-/// truth. Asserts the `inherits` closure: a theme whose parent is neither
-/// vendored nor built in would resolve at runtime to "File not found" and
-/// the theme would silently refuse to load.
+/// Generates `theme_seed.rs`: a `THEMES` table of every theme in the
+/// [`THEMES`] catalog, read from `helix/runtime/themes/` and embedded for
+/// the frontend to seed into the virtual file system at startup (see
+/// `src/themes.rs`). Asserts the `inherits` closure: a theme whose parent is
+/// neither in the catalog nor built in would resolve at runtime to "File not
+/// found" and the theme would silently refuse to load.
 fn generate_theme_seed(out_dir: &Path) {
     use std::fmt::Write;
 
-    let themes_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("themes");
-    let mut files: Vec<_> = std::fs::read_dir(&themes_dir)
-        .unwrap()
-        .map(|entry| entry.unwrap().path())
-        .filter(|path| path.extension().and_then(|ext| ext.to_str()) == Some("toml"))
-        .collect();
-    files.sort();
-
-    let names: std::collections::BTreeSet<String> = files
-        .iter()
-        .map(|path| path.file_stem().unwrap().to_str().unwrap().to_owned())
-        .collect();
-    for path in &files {
-        let text = std::fs::read_to_string(path).unwrap();
-        if let Some(parent) = inherits_parent(&text) {
-            assert!(
-                names.contains(&parent) || matches!(parent.as_str(), "default" | "base16_default"),
-                "theme '{}' inherits '{parent}', which is not vendored in themes/ \
-                 (see themes/README.md for the closure rule)",
-                path.file_stem().unwrap().to_str().unwrap()
-            );
-        }
-    }
+    let themes_dir = helix_runtime_dir().join("themes");
+    let names: std::collections::BTreeSet<&str> = THEMES.iter().copied().collect();
+    assert_eq!(
+        names.len(),
+        THEMES.len(),
+        "the THEMES catalog names a theme more than once"
+    );
 
     let mut code = String::from(
-        "/// The vendored theme set: (file name, contents). Generated by build.rs\n\
-         /// from the themes/ directory.\n\
+        "/// The bundled theme set: (file name, contents). Generated by build.rs\n\
+         /// from the THEMES catalog, read out of helix/runtime/themes/.\n\
          const THEMES: &[(&str, &str)] = &[\n",
     );
-    for path in &files {
+    for name in &names {
+        let path = themes_dir.join(format!("{name}.toml"));
+        println!("cargo:rerun-if-changed={}", path.display());
+        let text = std::fs::read_to_string(&path).unwrap_or_else(|err| {
+            panic!(
+                "cannot read theme '{name}' at {} ({err}); the THEMES catalog in \
+                 build.rs names it (see themes/README.md)",
+                path.display()
+            )
+        });
+        if let Some(parent) = inherits_parent(&text) {
+            assert!(
+                names.contains(parent.as_str())
+                    || matches!(parent.as_str(), "default" | "base16_default"),
+                "theme '{name}' inherits '{parent}', which the THEMES catalog in \
+                 build.rs does not list (see themes/README.md for the closure rule)"
+            );
+        }
         writeln!(
             code,
-            "    (\"{}\", include_str!(r\"{}\")),",
-            path.file_name().unwrap().to_str().unwrap(),
+            "    (\"{name}.toml\", include_str!(r\"{}\")),",
             path.display()
         )
         .unwrap();
@@ -307,7 +340,7 @@ fn generate_theme_seed(out_dir: &Path) {
 /// dependency, and helix's theme files keep `inherits` as a plain
 /// top-level assignment. The equivalent quoted-key forms
 /// (`"inherits" = ...`, `'inherits' = ...`) are accepted too, so a style
-/// change in the vendoring source can't silently skip the closure assert.
+/// change upstream can't silently skip the closure assert.
 fn inherits_parent(text: &str) -> Option<String> {
     for line in text.lines() {
         let line = line.trim_start();
@@ -329,14 +362,17 @@ fn inherits_parent(text: &str) -> Option<String> {
     None
 }
 
-/// Asserts that every selected grammar has vendored queries — including the
-/// full `; inherits:` closure. A directive can pull in query-only base
-/// languages (javascript inherits `ecma`/`_javascript`), and a missing base
-/// dir is invisible at runtime: `load_runtime_file` feeds
-/// `unwrap_or_default()`, so the inherited part of the query is silently
-/// empty and highlighting quietly degrades. Failing the build here turns
-/// the manual re-vendor rule in `queries/README.md` into a checked one.
-fn assert_vendored_queries(queries_dir: &Path, grammars: &[(&str, &str, &str)]) {
+/// The sorted set of languages whose queries this build embeds: the
+/// selected grammars plus the full `; inherits:` closure over them. A
+/// directive can pull in query-only base languages (javascript inherits
+/// `ecma`/`_javascript`), and a missing base is invisible at runtime:
+/// `load_runtime_file` feeds `unwrap_or_default()`, so the inherited part of
+/// the query is silently empty and highlighting quietly degrades. Deriving
+/// the set here — rather than listing it — is why adding a grammar needs no
+/// second edit: the closure finds its query dependencies in
+/// `helix/runtime/queries/`, and a language upstream has no queries for
+/// fails the build instead.
+fn query_languages(queries_dir: &Path, grammars: &[(&str, &str, &str)]) -> Vec<String> {
     let mut pending: Vec<(String, String)> = grammars
         .iter()
         .map(|&(name, _, _)| (name.to_owned(), format!("selected grammar '{name}'")))
@@ -347,8 +383,9 @@ fn assert_vendored_queries(queries_dir: &Path, grammars: &[(&str, &str, &str)]) 
         let dir = queries_dir.join(&lang);
         assert!(
             dir.is_dir(),
-            "no vendored queries for '{lang}' in queries/ (required by {needed_by}; \
-             see queries/README.md for the re-vendor rule)"
+            "no queries for '{lang}' at {} (required by {needed_by}; \
+             see queries/README.md)",
+            dir.display()
         );
         let mut files: Vec<_> = std::fs::read_dir(&dir)
             .unwrap()
@@ -366,6 +403,7 @@ fn assert_vendored_queries(queries_dir: &Path, grammars: &[(&str, &str, &str)]) 
             }
         }
     }
+    seen.into_iter().collect()
 }
 
 /// The languages named by `; inherits:` directives in a query file.
