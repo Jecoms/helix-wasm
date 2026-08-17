@@ -11,13 +11,23 @@
 import { test, expect } from "@playwright/test";
 import { bootEditor, getState, getText, terminalText } from "./helpers.js";
 
-// Every seeded key is under the runtime directory and nothing else on screen
-// is, so this substring is present exactly when the picker is offering them.
-// It survives the path column's left-truncation of the longest of them
-// (`…onfig/helix/runtime/themes/everforest_dark.toml`), which a whole path
-// would not.
+// The directory boot seeds into (web/src/themes.rs, web/src/session.rs, and
+// `helix_loader::runtime_dirs` on the rust side; `vfsList` in ./helpers.js
+// filters the same prefix). `seededKeys` reads it back out of the store,
+// because every negative assertion below is worthless without it: a stale
+// marker would match nothing whether the picker filtered or not.
+const SEED_DIR = "/.config/helix/runtime/";
+const THE_SEEDED_TUTOR = `${SEED_DIR}tutor`;
+
+const seededKeys = (page) =>
+  page
+    .evaluate(() => window.helixVfs.list())
+    .then((paths) => paths.filter((path) => path.startsWith(SEED_DIR)));
+
+// The substring a seeded key renders as in the picker's path column. Not the
+// whole path: the column truncates from the left, so the longest of them
+// arrives as `…onfig/helix/runtime/themes/everforest_dark.toml`.
 const SEED_MARKER = "helix/runtime/";
-const THE_SEEDED_TUTOR = "/.config/helix/runtime/tutor";
 
 // Opens the picker and waits for it to have drawn. Every negative assertion
 // below needs this first: `not.toContain` on a screen the picker has not
@@ -30,9 +40,14 @@ async function openPicker(page) {
     .toContain("example.rs");
 }
 
+// The picker is a compositor layer, not a mode — `helixState` reports
+// `normal` throughout — so the only evidence it has gone is the screen no
+// longer carrying its list.
 async function closePicker(page) {
   await page.keyboard.press("Escape");
-  await expect.poll(() => getState(page).then((s) => s.mode)).toBe("normal");
+  await expect
+    .poll(() => terminalText(page), { message: "file picker did not close" })
+    .not.toContain("example.rs");
 }
 
 // `:set <option> <value>`, which is session-only here (there is no config
@@ -44,14 +59,34 @@ async function set(page, option, value) {
 
 test("the picker does not offer the files boot seeds", async ({ page }) => {
   await bootEditor(page);
-  await openPicker(page);
 
+  // There is something to filter: the ten bundled themes and the tutor text.
+  // Without this the assertion below would go green on a picker that had
+  // stopped filtering and a seed set that had moved.
+  expect(await seededKeys(page)).toContain(THE_SEEDED_TUTOR);
+  expect((await seededKeys(page)).length).toBeGreaterThan(10);
+
+  await openPicker(page);
   const screen = await terminalText(page);
-  // The ten bundled themes and the tutor text: everything the port writes
-  // into the runtime directory at boot (web/src/themes.rs, web/src/session.rs).
   expect(screen).not.toContain(SEED_MARKER);
   // The sample files are the point of the list, and still in it.
   expect(screen).toContain("welcome.txt");
+});
+
+test("the picker offers the seeded files from inside the runtime directory", async ({
+  page,
+}) => {
+  await bootEditor(page);
+
+  // Not offered where nothing asked for them is not the same as unreachable:
+  // `:cd`-ing in is asking by name, and an empty list would be a dead end in
+  // a directory with eleven files in it.
+  await page.keyboard.type(`:cd ${SEED_DIR}themes`);
+  await page.keyboard.press("Enter");
+
+  await page.keyboard.press(" ");
+  await page.keyboard.press("f");
+  await expect.poll(() => terminalText(page)).toContain("gruvbox.toml");
 });
 
 test("a seeded runtime file is still openable by name", async ({ page }) => {

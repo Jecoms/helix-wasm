@@ -139,7 +139,10 @@ above). What that changes:
   artifacts of the build rather than anything you put there, so `<space>f`
   does not offer them. They are still in the store and still open by name
   (`:o /.config/helix/runtime/tutor`), which is how `:tutor` and `:theme`
-  reach them. Of the `file-picker.*` options, `hidden` and `max-depth` apply
+  reach them, and `:cd`-ing into the runtime directory puts them back in the
+  picker — asking for it by name is the one case where an empty list would
+  be the wrong answer. Of the `file-picker.*` options, `hidden` and
+  `max-depth` apply
   — a leading `.` on any path component below the picker's root, and the
   number of components below it, the same two things `WalkBuilder` counts
   natively. The rest have nothing here to act on and are ignored: `parents`

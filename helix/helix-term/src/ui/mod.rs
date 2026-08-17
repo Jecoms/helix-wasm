@@ -245,12 +245,19 @@ fn walk_files(editor: &Editor, root: &Path) -> impl Iterator<Item = PathBuf> {
 /// The file picker's candidate paths under `root`: the virtual file system's
 /// keys, there being no directories to walk on wasm32.
 ///
+/// `vfs::list` rather than `vfs::read_dir`: the picker wants every key below
+/// `root`, and `read_dir` answers about one level at a time, so reaching for
+/// it would mean walking a tree back out of a store that never had one.
+///
 /// Two of them are dropped. The files the port seeds at boot — the bundled
 /// themes and the tutor text, all under a runtime directory — are artifacts
 /// of the build rather than anything the reader put there, and a picker full
 /// of theme TOMLs is a picker with nothing worth selecting in it. They stay
 /// in the store and stay openable by name (`:tutor` and `:theme` read them
-/// from there), they are just not offered.
+/// from there), they are just not offered — except from inside the runtime
+/// directory itself, where a reader has named it and an empty picker would
+/// be a dead end. That is the concession `hidden` makes too: it hides dotted
+/// entries below the root, never the root you pointed it at.
 ///
 /// And the `file-picker` options a flat key space can answer are answered:
 /// `hidden` against a leading `.` on any component below `root`, and
@@ -266,10 +273,17 @@ fn walk_files(editor: &Editor, root: &Path) -> impl Iterator<Item = PathBuf> {
     let hidden = config.file_picker.hidden;
     let max_depth = config.file_picker.max_depth;
     let root = root.to_path_buf();
-    let runtime_dirs = helix_loader::runtime_dirs();
+    let seeded: &[PathBuf] = if helix_loader::runtime_dirs()
+        .iter()
+        .any(|dir| root.starts_with(dir))
+    {
+        &[]
+    } else {
+        helix_loader::runtime_dirs()
+    };
 
     helix_stdx::vfs::list().into_iter().filter(move |path| {
-        if runtime_dirs.iter().any(|dir| path.starts_with(dir)) {
+        if seeded.iter().any(|dir| path.starts_with(dir)) {
             return false;
         }
         let Ok(relative) = path.strip_prefix(&root) else {
@@ -278,7 +292,7 @@ fn walk_files(editor: &Editor, root: &Path) -> impl Iterator<Item = PathBuf> {
         if hidden
             && relative
                 .components()
-                .any(|component| component.as_os_str().to_string_lossy().starts_with('.'))
+                .any(|component| component.as_os_str().as_encoded_bytes().first() == Some(&b'.'))
         {
             return false;
         }
