@@ -1,4 +1,4 @@
-// Shared plumbing for the browser suites (smoke.spec.js, tutor.spec.js):
+// Shared plumbing for the browser suites (smoke.spec.js, tutor.spec.js, ...):
 // boot, and the three read surfaces the specs assert through. Not a spec —
 // Playwright's default testMatch only picks up `*.spec.js`.
 import { expect } from "@playwright/test";
@@ -50,9 +50,22 @@ export const topLeftBg = (page) =>
     return cell.isBgRGB() ? cell.getBgColor() : -1;
   });
 
+// Boot with `config` as the page's `config.toml` (issue #75). The host page
+// reads `window.helixConfig` and hands it to `start`, which seeds it where
+// helix reads the user config from — so this has to be set before the module
+// runs, which is what `addInitScript` is for.
+export async function bootWithConfig(page, config, options) {
+  await page.addInitScript((text) => {
+    window.helixConfig = text;
+  }, config);
+  await bootEditor(page, options);
+}
+
 // Wait out the wasm fetch + instantiation, then make sure keystrokes land in
-// xterm's hidden textarea.
-export async function bootEditor(page) {
+// xterm's hidden textarea. `focus: false` skips that click, for the one
+// assertion it would invalidate: helix clears the statusline on the first
+// event it handles, and a click is an event.
+export async function bootEditor(page, { focus = true } = {}) {
   await page.goto("/");
   await expect
     .poll(async () => page.evaluate(() => window.helixState?.state()?.mode), {
@@ -60,5 +73,7 @@ export async function bootEditor(page) {
       timeout: 30_000,
     })
     .toBe("normal");
-  await page.locator("#terminal").click();
+  if (focus) {
+    await page.locator("#terminal").click();
+  }
 }

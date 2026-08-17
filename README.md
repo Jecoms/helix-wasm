@@ -144,21 +144,38 @@ above). What that changes:
   here, so `hidden` and gitignore filtering do not apply. `:theme` completion
   reads the VFS too. In-buffer path completion is a separate surface and
   still offers nothing — see "No completion popup and no signature help".
-- `:config-open` and `:log-open` open empty buffers at
-  `/.config/helix/config.toml` and `/.cache/helix/helix.log`. Those keys are
-  real, but nothing ever writes them; log output goes to the browser console.
+- `:config-open` opens the config the page booted with — a real, editable key
+  in the store (see "Configuration" below). `:log-open` opens an empty buffer
+  at `/.cache/helix/helix.log`: that key is real too, but nothing ever writes
+  it, because log output goes to the browser console instead.
 
-### Configuration is runtime-only
+### Configuration
 
-`config.toml`, `languages.toml`, `.editorconfig` and `.helix/` are all read
-through `std::fs`, which is unconditionally an error on wasm32, so none of
-them is reachable:
+`config.toml` is read out of the VFS
+([#75](https://github.com/Jecoms/helix-wasm/issues/75)): the global one at
+`/.config/helix/config.toml`, the workspace one at `.helix/config.toml` under
+the working directory, merged the way native helix merges them. `[keys]`
+remaps, `[editor]` settings and `theme` all work. A host page passes the text
+as `start()`'s fourth argument, which seeds the global path before the editor
+boots (the demo page reads it from `window.helixConfig`); an embedder that
+would rather write either path itself can `helixVfs.write` it first. A
+malformed config is reported in the statusline and on the console and the
+editor boots on the defaults — what native helix does, minus the "press
+ENTER" prompt there is no stdin for.
 
-- **Custom keymaps are not possible.** The default keymap is the only keymap.
-- `:set`, `:set-option` and `:toggle-option` work as usual, for the session.
-- `:config-reload` reports "Failed to load config: operation not supported on
-  this platform" and leaves the running config alone — including the
-  boot-time `true-color` override, so the active theme survives it.
+- `:config-reload` re-reads both files, so a config that arrives after boot
+  applies without a page reload — including one edited in the editor itself
+  with `:config-open` and `:w`.
+- RGB themes need a true-color claim that wasm32 has no `COLORTERM` or
+  terminfo to make. The port answers for the terminal emulator rather than
+  overriding the loaded config, so the claim survives `:config-reload`.
+- **`languages.toml` and `.editorconfig` are still unreachable**, through
+  different readers that are still `std::fs`. A missing `languages.toml` is
+  not an error, so it does not block `:config-reload`.
+- `.helix/` is never *detected*: `find_workspace` probes the real filesystem
+  for a `.git`/`.jj`/`.helix` marker and nothing on wasm32 answers, so the
+  workspace is always the working directory.
+- `:set`, `:set-option` and `:toggle-option` still work, for the session.
 
 ### No background work
 
@@ -284,9 +301,11 @@ the statically linked grammar parsers). Consume it the way the demo's
 
 `web/www/main.js` is the reference host wiring to replicate: call `init()`
 (fetches and instantiates the wasm module), then `start(writeBytes, cols,
-rows)` with a callback that feeds editor output bytes to an xterm.js
+rows, config)` with a callback that feeds editor output bytes to an xterm.js
 `Terminal`, and forward input with `key_event(...)`, `paste(...)`, and
-`resize(cols, rows)`. Register `on_exit(handler)` before `start` to learn
+`resize(cols, rows)`. `config` is the text of a `config.toml`, or `undefined`
+for helix's defaults (see "Configuration" above). Register `on_exit(handler)`
+before `start` to learn
 when helix quits (`:q` and friends really do exit, and nothing can restart
 it in place — the page has to reload), and route the calls into wasm
 through a `try`/`catch` as the demo page does: a panicked instance traps on
