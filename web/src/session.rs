@@ -214,20 +214,16 @@ async fn drive() {
         return;
     };
 
+    // The teardown half of what `Application::run` does around its event
+    // loop: `close()` — wait out the jobs that asked to be waited on, flush
+    // pending writes, shut the language servers down — with anything that
+    // failed on the way turning the exit into a 1, then restore the terminal.
+    // (Upstream restores first and folds the errors in after; the order does
+    // not matter, and this way `restore_terminal` is the last thing before
+    // the notice `announce_exit` writes onto the restored screen.)
     let mut exit_code = app.editor.exit_code;
-    // `Application::close` is unusable here: its third step,
-    // `Editor::close_language_servers`, wraps the shutdown in a
-    // `tokio::time::timeout`, and building that timer calls
-    // `std::time::Instant::now()` — which traps on wasm32-unknown-unknown
-    // ("time not implemented on this platform"), poisoning the module
-    // mid-teardown, so `:q` took the page down instead of exiting. The two
-    // steps worth keeping are covered: pending writes flush below, and
-    // `Jobs::finish` only awaits jobs that asked to be waited on, which
-    // upstream creates solely for format-on-write — unreachable without a
-    // formatter or a language server (and `jobs` is private, so it could
-    // not be drained on its own regardless).
-    if let Err(err) = app.editor.flush_writes().await {
-        log::error!("error flushing writes on exit: {err}");
+    for err in app.close().await {
+        log::error!("error closing helix: {err}");
         exit_code = 1;
     }
     let mouse = app.editor.config().mouse;
