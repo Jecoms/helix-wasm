@@ -4,7 +4,8 @@ Notable changes to **`helix-web`** — the embeddable wasm bundle this repo publ
 
 **Scope.** This file tracks the *artifact*, not the repository. The unit that gets
 versioned is the `web/pkg` wasm-pack output that a `web-v<semver>` tag ships as
-`helix-web-<version>.tar.gz` (see [Embedding the editor](README.md#embedding-the-editor)),
+`helix-web-<version>.tar.gz` (see
+[Embedding the editor](https://github.com/Jecoms/helix-wasm/blob/main/README.md#embedding-the-editor)),
 so an entry earns its place by changing what an embedder gets: the editor's behavior in
 the browser, the JS surface, or what the bundle contains. That is a narrower thing than
 the repo but a wider one than the `web/` crate — the patch set under `helix/`, the
@@ -15,7 +16,8 @@ to the git history.
 
 The format is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are
 [semantic](https://semver.org/spec/v2.0.0.html), read against the stability note in each
-entry.
+entry. This file ships *inside* the tarball as well as living here, so its links out are
+absolute — the copy in an embedder's extracted tree has no README next to it.
 
 ## [Unreleased]
 
@@ -36,7 +38,7 @@ behavior can move under you for reasons that are upstream's rather than this por
 threads, and that is load-bearing rather than incidental: no language servers, no
 debugger, no shell commands, no external formatters, no git integration, no OS clipboard
 in either direction, no persistence across a page reload. The README's
-[Limitations and behavioral differences](README.md#limitations-and-behavioral-differences)
+[Limitations and behavioral differences](https://github.com/Jecoms/helix-wasm/blob/main/README.md#limitations-and-behavioral-differences)
 catalogs every one of those and is the section to read before deciding to embed this —
 it is written from behavior reproduced by hand, not from what the source suggests.
 
@@ -118,8 +120,8 @@ it is written from behavior reproduced by hand, not from what the source suggest
 ### Known limitations
 
 The short version of the README's
-[catalog](README.md#limitations-and-behavioral-differences), which is the source of
-truth and goes further than this list:
+[catalog](https://github.com/Jecoms/helix-wasm/blob/main/README.md#limitations-and-behavioral-differences),
+which is the source of truth and goes further than this list:
 
 - **Nothing survives a page reload.** The VFS is memory. `:download`, `helixVfs.read`
   and `helixVfs.list` are the ways out; a persistent backend is the host page's to build
