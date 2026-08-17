@@ -3,8 +3,8 @@
 [Helix](https://github.com/helix-editor/helix) compiled to `wasm32`, running in
 a browser tab: the editor drives an xterm.js terminal through a wasm-bindgen
 module, with modal editing, tree-sitter highlighting, themes, pickers and
-`:tutor` all working as they do natively. What the browser cannot give it — a
-subprocess, a real filesystem, a thread — is either adapted or missing, and
+`:tutor` all present. What the browser cannot give it — a subprocess, a real
+filesystem, a thread — is either adapted or missing, and
 "[Limitations and behavioral differences](#limitations-and-behavioral-differences)"
 lists every one of those.
 
@@ -43,7 +43,7 @@ queries and themes the bundle embeds are read out of the in-tree port at
 `helix/runtime/`, not copied into `web/` — see `web/queries/README.md` and
 `web/themes/README.md` for how the build picks which of them to embed.
 
-### Virtual file system
+## Virtual file system
 
 Documents live in an in-memory virtual file system (`helix_stdx::vfs`, part
 of the wasm patch set): `:w /notes.txt` saves there, `:o` and the `<space>f`
@@ -58,7 +58,7 @@ backends (localStorage/OPFS) can be layered on those hooks by the host
 page. Boot seeds a couple of sample files (`web/src/samples.rs`) so the
 picker opens on something selectable.
 
-### Editor state inspection
+## Editor state inspection
 
 The wasm module also exports a read-only inspection surface
 ([#18](https://github.com/Jecoms/helix-wasm/issues/18)) so embedding pages
@@ -317,15 +317,15 @@ checkout of `main` is the whole build input.
 | --- | --- |
 | `helix/` | The patched Helix source: upstream's `25.07.1` release tree plus this port's patches. Its own cargo workspace — upstream's, left pristine — excluded from the root one and consumed as path dependencies |
 | `Cargo.toml` | Wrapper workspace: the helix crates as path dependencies on `helix/`, plus `[patch.crates-io]` stub swaps |
-| `stubs/` | Stand-ins for third-party dependencies with no wasm32 support: transitive crates (`home`, `which`, `libloading`, and `url` with a wasm cfg), a vendored `crossterm` whose OS terminal layer is replaced by a browser bridge, and a vendored `nucleo` that runs picker matching inline instead of on a threadpool. Also a vendored `tree-house-bindings` carrying a one-declaration ABI fix, without which every syntax-highlighted buffer traps on wasm32 — the only stub shipping third-party C (a vendored tree-sitter; see `web/NOTICE.md`) |
+| `stubs/` | Stand-ins for third-party dependencies with no wasm32 support: transitive crates (`home`, `which`, `libloading`, and `url` with a wasm cfg), a vendored `crossterm` whose OS terminal layer is replaced by a browser bridge, and a vendored `nucleo` that runs picker matching inline instead of on a threadpool. A vendored `tree-house-bindings` rides here too — not a missing-support stand-in but a one-declaration ABI fix, without which every syntax-highlighted buffer traps on wasm32 — the only stub shipping third-party C (a vendored tree-sitter; see `web/NOTICE.md`) |
 | `sysroot/` | Stub libc headers, the `wasm-cc` clang shim that lets tree-sitter's stock build script compile its C for wasm32, and the libc shim implementations (`shims.c`, `wctype.c`) the final wasm link needs |
 | `web/` | The browser frontend: a wasm-bindgen cdylib that boots helix-term against the crossterm bridge, plus the xterm.js host page in `web/www/` |
 | `.cargo/config.toml` | Wires `wasm-cc` up as the C compiler for the wasm32 target |
 
 ### Checking the crates
 
-The wasm32 type-check, crate by crate — what CI gates on, and the fast loop
-while patching:
+The wasm32 type-check, crate by crate — part of what CI gates on, and the
+fast loop while patching:
 
 ```sh
 rustup target add wasm32-unknown-unknown
