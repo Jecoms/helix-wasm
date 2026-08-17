@@ -51,14 +51,30 @@ chapters 2 through 12 — behaves as the text says.
   the editor works; nothing crosses into the OS clipboard. Browser-native
   copy/paste (Ctrl/Cmd-V into the terminal) still works — it arrives as a
   bracketed paste.
-- **Every `Alt-` chord on macOS** (3.8's `Alt-;`, 4.2's `Alt-d` / `Alt-c`,
-  5.1's `Alt-C`, 5.5's `Alt-s`, 6.3's `Alt-.`, 10.1-10.3's `Alt-,`,
-  `Alt-)`, `Alt-(`, `` Alt-` ``). xterm.js treats Option as a compose key
-  on macOS and never forwards the keystroke, so these steps do nothing at
-  all there. They work on Windows and Linux. Tracked in
-  [#68](https://github.com/Jecoms/helix-wasm/issues/68).
 
 The rest of chapter 13 works once the prefix is swapped: 13.7's file picker
 opens on the sample files seeded at boot (`../src/samples.rs`), and its
 `Ctrl-v` / `Ctrl-s` split shortcuts do reach the editor — of the chords the
 tutorial teaches, only `Ctrl-w` is one the browser refuses to hand over.
+
+The #65 walk found one more gap that has since been closed, and it was the
+largest: every `Alt-` chord the tutorial teaches (3.8's `Alt-;`, 4.2's
+`Alt-d` / `Alt-c`, 5.1's `Alt-C`, 5.5's `Alt-s`, 6.3's `Alt-.`, 10.1-10.3's
+`Alt-,`, `Alt-)`, `Alt-(` and `` Alt-` ``) did nothing at all on macOS,
+because xterm.js treats Option as a compose key unless the terminal claims
+it as Meta. The host page now claims it and resolves what macOS composed
+anyway, so those steps run as written
+([#68](https://github.com/Jecoms/helix-wasm/issues/68),
+[#81](https://github.com/Jecoms/helix-wasm/issues/81)). The trade is that
+Option no longer types composed characters (`é`, `ß`, `…`) in insert mode
+on macOS — nothing the tutorial asks for.
+
+Unlike everything else on this page, that is not a claim from a hand walk,
+and it is not chord-by-chord either. Browser automation drives the renderer
+directly and never invokes the OS input method, so it cannot compose a real
+Option keystroke; `../www/tests/keys.spec.js` stands in with synthetic
+events, and it covers the three *shapes* macOS delivers rather than the nine
+chords above — an Option-composed character (`Alt-s`), a letter dead key
+(`Alt-u`) and a punctuation dead key (`` Alt-` ``). Every chord on that list
+arrives as one of the three, which is why the list follows, but only the
+shapes are checked.

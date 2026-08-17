@@ -127,9 +127,9 @@ callEditor(() =>
 // sequence" explicitly instead.
 let dataIsFromKey = false;
 // xterm.js's own platform test, mirrored (@xterm/xterm 5.5
-// common/Platform.ts): the fallback below only makes sense for events xterm
-// resolved on its macOS path, so the two checks have to agree on what "mac"
-// means.
+// common/Platform.ts). Both Option paths below hang off it — one consumes
+// what xterm resolved on its macOS path, the other takes over where xterm's
+// macOS path gives up — so the checks have to agree on what "mac" means.
 const IS_MAC = ["Macintosh", "MacIntel", "MacPPC", "Mac68K"].includes(
   navigator.platform,
 );
@@ -150,9 +150,8 @@ const IS_MAC = ["Macintosh", "MacIntel", "MacPPC", "Mac68K"].includes(
 //   - named keys keep `domEvent.key`, because xterm encodes `A-Left` as
 //     `ESC b` on macOS and a looser rule would forward that as `A-b`.
 //
-// Not everything is recoverable here: xterm's dead-key branch only fires for
-// `code: "Key*"`, so a punctuation dead key (`` Option-` ``, i.e. `` A-` ``)
-// never reaches `onKey` at all — issue #81.
+// This handles only the chords xterm resolves. The ones it cannot are taken
+// over before `onKey` by the custom key handler below.
 //
 // This decode stays in the host page rather than moving to Rust the way #56
 // moved the SGR mouse decoding: its input is xterm.js's own `onKey` payload,
@@ -163,6 +162,106 @@ const IS_MAC = ["Macintosh", "MacIntel", "MacPPC", "Mac68K"].includes(
 const ALT_CHAR = /^\x1b(.)$/;
 const composed = (key) =>
   IS_MAC && (key === "Dead" || /^[^\x00-\x7f]$/.test(key));
+
+// xterm.js's `KEYCODE_KEY_MAPPINGS` (@xterm/xterm 5.5
+// common/input/Keyboard.ts:11-35) re-keyed by `KeyboardEvent.code`: the same
+// US layout, the same `[unshifted, shifted]` pairs — looked up by the field
+// composition leaves alone. Only the punctuation and digit rows are here;
+// the letters are xterm's to resolve (see the handler below).
+const CODE_KEY_MAPPINGS = {
+  Digit0: ["0", ")"],
+  Digit1: ["1", "!"],
+  Digit2: ["2", "@"],
+  Digit3: ["3", "#"],
+  Digit4: ["4", "$"],
+  Digit5: ["5", "%"],
+  Digit6: ["6", "^"],
+  Digit7: ["7", "&"],
+  Digit8: ["8", "*"],
+  Digit9: ["9", "("],
+  Semicolon: [";", ":"],
+  Equal: ["=", "+"],
+  Comma: [",", "<"],
+  Minus: ["-", "_"],
+  Period: [".", ">"],
+  Slash: ["/", "?"],
+  Backquote: ["`", "~"],
+  BracketLeft: ["[", "{"],
+  Backslash: ["\\", "|"],
+  BracketRight: ["]", "}"],
+  Quote: ["'", '"'],
+};
+
+// The half of macOS composition the fallback above cannot reach (issue #81).
+// A dead key is not merely composed, it *starts* a composition, and the
+// keydown announcing that carries `key: "Dead"`, `code` naming the physical
+// key, and `keyCode: 229` — the composition sentinel, not the key's own
+// legacy code. xterm's Alt branch is keyed on `keyCode` throughout, so 229
+// misses its US-layout table; the one branch that reads `code` instead only
+// fires for `code.startsWith("Key")` (Keyboard.ts:373-385, added for
+// xtermjs/xterm.js#3725). That covers the letter accent starters
+// (Option-e/i/n/u) and nothing else: for `` Option-` `` (`code:
+// "Backquote"`) no branch matches, `result.key` stays undefined, and
+// `_keyDown` returns at `if (!result.key)` (Terminal.ts:1046-1048) *before*
+// `_onKey.fire` — so `onKey` never runs and no forwarding logic downstream
+// of it can recover the chord. `` A-` `` is `switch_to_uppercase`, the chord
+// `:tutor` 10.3 asks for.
+//
+// `attachCustomKeyEventHandler` is the supported hook that runs earlier than
+// that early return — it is the first thing `_keyDown` does
+// (Terminal.ts:1004-1007) — so the chord is resolved and forwarded here, and
+// returning `false` stops xterm from processing the event a second time.
+// What keeps it narrow: xterm's own Alt-branch condition, restated below,
+// plus two gates of this page's own. macOS only, for the same reason
+// `composed()` is — nothing else composes Option, and a `code`-driven
+// US-layout guess would turn chords that are inert on a non-US layout into
+// live commands. And `code: "Key*"` is left alone: those are the ones xterm
+// resolves for itself, and one owner per shape is what keeps a chord from
+// being decoded twice by two US-layout tables that could drift apart. Where
+// this does step in, returning `false` is what keeps the chord from *also*
+// going out through `onKey` — forwarding without it would run the binding
+// twice off one keystroke.
+terminal.attachCustomKeyEventHandler((event) => {
+  // The handler is consulted for keypress and keyup too (Terminal.ts:1102,
+  // 1129); a composition only ever announces itself on keydown. The rest
+  // restates xterm's own Alt-branch condition — `(!isMac || macOptionIsMeta)
+  // && ev.altKey && !ev.metaKey` (Keyboard.ts:349) — because this is that
+  // branch's missing case, not a second policy about Alt chords. Reading
+  // `macOptionIsMeta` off the terminal rather than assuming it means the two
+  // cannot disagree if the option is ever turned off: Option would go back
+  // to composing characters, and every Alt chord (this one included) back to
+  // being dropped, together.
+  if (
+    event.type !== "keydown" ||
+    !IS_MAC ||
+    !terminal.options.macOptionIsMeta ||
+    !event.altKey ||
+    event.metaKey ||
+    event.key !== "Dead" ||
+    event.code.startsWith("Key")
+  ) {
+    return true;
+  }
+  const chord = CODE_KEY_MAPPINGS[event.code];
+  if (!chord) {
+    return true;
+  }
+  // xterm cancels the dead keys it resolves for itself (`result.cancel` in
+  // its own `Dead` branch), and this has to as well: without it the
+  // keystroke still begins its composition in xterm's helper textarea, and
+  // the `compositionend` that eventually lands would arrive as a paste.
+  event.preventDefault();
+  callEditor(() =>
+    key_event(
+      chord[event.shiftKey ? 1 : 0],
+      event.ctrlKey,
+      true,
+      event.shiftKey,
+      false,
+    ),
+  );
+  return false;
+});
 terminal.onKey(({ key, domEvent }) => {
   dataIsFromKey = true;
   let name = domEvent.key;
