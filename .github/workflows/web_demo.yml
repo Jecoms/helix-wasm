@@ -38,6 +38,11 @@ jobs:
         with:
           tool: wasm-pack
 
+      # Same pinned binaryen the PR check optimizes with, so what the check
+      # exercises and what this deploys are the same bytes.
+      - name: Install wasm-opt
+        uses: ./.github/actions/wasm-opt
+
       - name: Build the wasm package (full grammar catalog)
         run: wasm-pack build web --target web -- --locked
 

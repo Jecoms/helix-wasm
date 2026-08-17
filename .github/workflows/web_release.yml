@@ -70,8 +70,12 @@ jobs:
         with:
           tool: wasm-pack
 
+      - name: Install wasm-opt
+        uses: ./.github/actions/wasm-opt
+
       # Same build as the demo deploy (web_demo.yml): full grammar catalog,
-      # locked deps. What ships is exactly what the demo runs.
+      # locked deps, same pinned binaryen. What ships is exactly what the demo
+      # runs.
       - name: Build the wasm package (full grammar catalog)
         run: wasm-pack build web --target web -- --locked
 
