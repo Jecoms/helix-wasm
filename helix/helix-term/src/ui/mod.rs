@@ -15,6 +15,8 @@ mod text;
 mod text_decorations;
 
 use crate::compositor::Compositor;
+// Only the native file-picker walk filters `ignore::DirEntry`s.
+#[cfg(not(target_arch = "wasm32"))]
 use crate::filter_picker_entry;
 use crate::job::{self, Callback};
 pub use completion::Completion;
@@ -192,10 +194,136 @@ pub struct FilePickerData {
 }
 type FilePicker = Picker<PathBuf, FilePickerData>;
 
-pub fn file_picker(editor: &Editor, root: PathBuf) -> FilePicker {
-    #[cfg(not(target_arch = "wasm32"))]
+/// The file picker's candidate paths under `root`, honoring the
+/// `file-picker` config.
+#[cfg(not(target_arch = "wasm32"))]
+fn walk_files(editor: &Editor, root: &Path) -> impl Iterator<Item = PathBuf> {
     use ignore::{types::TypesBuilder, WalkBuilder};
+
+    let config = editor.config();
+    let dedup_symlinks = config.file_picker.deduplicate_links;
+    let absolute_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
+
+    let mut walk_builder = WalkBuilder::new(root);
+    walk_builder
+        .hidden(config.file_picker.hidden)
+        .parents(config.file_picker.parents)
+        .ignore(config.file_picker.ignore)
+        .follow_links(config.file_picker.follow_symlinks)
+        .git_ignore(config.file_picker.git_ignore)
+        .git_global(config.file_picker.git_global)
+        .git_exclude(config.file_picker.git_exclude)
+        .sort_by_file_name(|name1, name2| name1.cmp(name2))
+        .max_depth(config.file_picker.max_depth)
+        .filter_entry(move |entry| filter_picker_entry(entry, &absolute_root, dedup_symlinks));
+
+    walk_builder.add_custom_ignore_filename(helix_loader::config_dir().join("ignore"));
+    walk_builder.add_custom_ignore_filename(".helix/ignore");
+
+    // We want to exclude files that the editor can't handle yet
+    let mut type_builder = TypesBuilder::new();
+    type_builder
+        .add(
+            "compressed",
+            "*.{zip,gz,bz2,zst,lzo,sz,tgz,tbz2,lz,lz4,lzma,lzo,z,Z,xz,7z,rar,cab}",
+        )
+        .expect("Invalid type definition");
+    type_builder.negate("all");
+    let excluded_types = type_builder
+        .build()
+        .expect("failed to build excluded_types");
+    walk_builder.types(excluded_types);
+    walk_builder.build().filter_map(|entry| {
+        let entry = entry.ok()?;
+        if !entry.file_type()?.is_file() {
+            return None;
+        }
+        Some(entry.into_path())
+    })
+}
+
+/// The file picker's candidate paths under `root`: the virtual file system's
+/// keys, there being no directories to walk on wasm32.
+///
+/// `vfs::list` rather than `vfs::read_dir`: the picker wants every key below
+/// `root`, and `read_dir` answers about one level at a time, so reaching for
+/// it would mean walking a tree back out of a store that never had one.
+///
+/// Two of them are dropped. The files the port seeds at boot — the bundled
+/// themes and the tutor text, all under a runtime directory — are artifacts
+/// of the build rather than anything the reader put there, and a picker full
+/// of theme TOMLs is a picker with nothing worth selecting in it. They stay
+/// in the store and stay openable by name (`:tutor` and `:theme` read them
+/// from there), they are just not offered — except from inside the runtime
+/// directory itself, where a reader has named it and an empty picker would
+/// be a dead end. That is the concession `hidden` makes too: it hides dotted
+/// entries below the root, never the root you pointed it at.
+///
+/// And the `file-picker` options a flat key space can answer are answered:
+/// `hidden` against a leading `.` on any component below `root`, and
+/// `max_depth` against the number of components below it, both matching what
+/// `WalkBuilder` does with them natively. The rest cannot be honored here and
+/// are not: `parents` and `ignore` want ignore files scoped to directories,
+/// `git_ignore`/`git_global`/`git_exclude` want a repository, and
+/// `follow_symlinks`/`deduplicate_links` want symlinks. None of those three
+/// things exists here (see the README's limitations catalog).
+#[cfg(target_arch = "wasm32")]
+fn walk_files(editor: &Editor, root: &Path) -> impl Iterator<Item = PathBuf> {
+    let config = editor.config();
+    let hidden = config.file_picker.hidden;
+    let max_depth = config.file_picker.max_depth;
+    let root = root.to_path_buf();
+    let seeded: &[PathBuf] = if helix_loader::runtime_dirs()
+        .iter()
+        .any(|dir| root.starts_with(dir))
+    {
+        &[]
+    } else {
+        helix_loader::runtime_dirs()
+    };
+
+    helix_stdx::vfs::list().into_iter().filter(move |path| {
+        if seeded.iter().any(|dir| path.starts_with(dir)) {
+            return false;
+        }
+        let Ok(relative) = path.strip_prefix(&root) else {
+            return false;
+        };
+        // The root itself, where it is a key as well as a prefix (`/proj`
+        // beside `/proj/alpha.txt` — issue #96). It reached the picker as a
+        // directory, and a directory is not one of its own entries; the
+        // native walk cannot produce the case, so the column formatter below
+        // takes a file name for granted and panics on the empty relative
+        // path this leaves.
+        if relative.as_os_str().is_empty() {
+            return false;
+        }
+        if hidden
+            && relative
+                .components()
+                .any(|component| component.as_os_str().as_encoded_bytes().first() == Some(&b'.'))
+        {
+            return false;
+        }
+        // `WalkBuilder`'s depth is counted from the root, so `Some(1)` keeps
+        // the files directly in it and `Some(0)` keeps nothing at all.
+        max_depth.is_none_or(|max_depth| relative.components().count() <= max_depth)
+    })
+}
+
+pub fn file_picker(editor: &Editor, root: PathBuf) -> FilePicker {
     use web_time::Instant;
+
+    // Both things done with `root` below measure against store keys, which
+    // are normalized and absolute: `walk_files` filters on
+    // `strip_prefix(&root)` and the path column strips the same prefix for
+    // display. A relative root — `:o subdir/` reaches here with one — would
+    // match nothing and strip nothing. Native helix never has to resolve it
+    // explicitly, because `WalkBuilder` resolves it against the process
+    // working directory; the same call the store normalizes with resolves it
+    // against `helix_stdx::env::current_working_dir` here.
+    #[cfg(target_arch = "wasm32")]
+    let root = helix_stdx::path::canonicalize(root);
 
     let data = FilePickerData {
         root: root.clone(),
@@ -204,57 +332,7 @@ pub fn file_picker(editor: &Editor, root: PathBuf) -> FilePicker {
 
     let now = Instant::now();
 
-    #[cfg(not(target_arch = "wasm32"))]
-    let mut files = {
-        let config = editor.config();
-        let dedup_symlinks = config.file_picker.deduplicate_links;
-        let absolute_root = root.canonicalize().unwrap_or_else(|_| root.clone());
-
-        let mut walk_builder = WalkBuilder::new(&root);
-        walk_builder
-            .hidden(config.file_picker.hidden)
-            .parents(config.file_picker.parents)
-            .ignore(config.file_picker.ignore)
-            .follow_links(config.file_picker.follow_symlinks)
-            .git_ignore(config.file_picker.git_ignore)
-            .git_global(config.file_picker.git_global)
-            .git_exclude(config.file_picker.git_exclude)
-            .sort_by_file_name(|name1, name2| name1.cmp(name2))
-            .max_depth(config.file_picker.max_depth)
-            .filter_entry(move |entry| filter_picker_entry(entry, &absolute_root, dedup_symlinks));
-
-        walk_builder.add_custom_ignore_filename(helix_loader::config_dir().join("ignore"));
-        walk_builder.add_custom_ignore_filename(".helix/ignore");
-
-        // We want to exclude files that the editor can't handle yet
-        let mut type_builder = TypesBuilder::new();
-        type_builder
-            .add(
-                "compressed",
-                "*.{zip,gz,bz2,zst,lzo,sz,tgz,tbz2,lz,lz4,lzma,lzo,z,Z,xz,7z,rar,cab}",
-            )
-            .expect("Invalid type definition");
-        type_builder.negate("all");
-        let excluded_types = type_builder
-            .build()
-            .expect("failed to build excluded_types");
-        walk_builder.types(excluded_types);
-        walk_builder.build().filter_map(|entry| {
-            let entry = entry.ok()?;
-            if !entry.file_type()?.is_file() {
-                return None;
-            }
-            Some(entry.into_path())
-        })
-    };
-    // wasm32 has no directories to walk: list the virtual file system.
-    #[cfg(target_arch = "wasm32")]
-    let mut files = {
-        let root = root.clone();
-        helix_stdx::vfs::list()
-            .into_iter()
-            .filter(move |path| path.starts_with(&root))
-    };
+    let mut files = walk_files(editor, &root);
     log::debug!("file_picker init {:?}", Instant::now().duration_since(now));
 
     let columns = [PickerColumn::new(
@@ -372,6 +450,7 @@ pub fn file_explorer(root: PathBuf, editor: &Editor) -> Result<FileExplorer, std
     Ok(picker)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn directory_content(path: &Path) -> Result<Vec<(PathBuf, bool)>, std::io::Error> {
     let mut content: Vec<_> = std::fs::read_dir(path)?
         .flatten()
@@ -381,6 +460,40 @@ fn directory_content(path: &Path) -> Result<Vec<(PathBuf, bool)>, std::io::Error
                 entry.file_type().is_ok_and(|file_type| file_type.is_dir()),
             )
         })
+        .collect();
+
+    content.sort_by(|(path1, is_dir1), (path2, is_dir2)| (!is_dir1, path1).cmp(&(!is_dir2, path2)));
+    if path.parent().is_some() {
+        content.insert(0, (path.join(".."), true));
+    }
+    Ok(content)
+}
+
+/// The explorer's rows for `path` on wasm32: the virtual file system's
+/// entries there, ordered and `..`-prefixed exactly as the native arm above
+/// orders and prefixes a real directory's.
+///
+/// `vfs::read_dir` is the whole listing — a flat key space has no directory
+/// entries, so "the entries of `path`" means the distinct next components of
+/// the keys under it, and a name that keys continue past is the directory.
+/// Nothing is filtered. The file picker does drop the files boot seeds
+/// (issue #74), but it drops them from one flat list of everything below its
+/// root, where the bundled themes would crowd out whatever the reader put
+/// there; it puts them back the moment the root *is* the runtime directory,
+/// because asking for a directory by name and getting nothing is a dead end.
+/// Every level of the explorer is that second case — a directory the reader
+/// navigated to — so there is nothing here for that filter to be for.
+///
+/// The listing is never an error. A path no key lives under yields no rows,
+/// which is also all an empty directory would yield: the store cannot tell
+/// the two apart (see [`helix_stdx::vfs::read_dir`]), and the explorer is
+/// told which directory to show rather than asked to find one, so the empty
+/// listing is the honest answer for both.
+#[cfg(target_arch = "wasm32")]
+fn directory_content(path: &Path) -> Result<Vec<(PathBuf, bool)>, std::io::Error> {
+    let mut content: Vec<_> = helix_stdx::vfs::read_dir(path)
+        .into_iter()
+        .map(|(name, is_dir)| (path.join(name), is_dir))
         .collect();
 
     content.sort_by(|(path1, is_dir1), (path2, is_dir2)| (!is_dir1, path1).cmp(&(!is_dir2, path2)));

@@ -187,6 +187,100 @@ test(":move to a path the vfs cannot store fails without moving anything", async
   expect(await vfsRead(page, "/keep.txt")).toContain("untouched");
 });
 
+test(":w refuses to overwrite an embedder's write, and :w! forces it (issue #76)", async ({
+  page,
+}) => {
+  await bootEditor(page);
+
+  await page.keyboard.press("i");
+  await page.keyboard.type("editor version");
+  await page.keyboard.press("Escape");
+  await saveAs(page, "/guard.txt");
+
+  // The embedder writes through the vfs hooks after the buffer last saved.
+  // Before the fix the store held no times to compare, so the save below
+  // overwrote this with no warning and `:w!` did exactly what `:w` did.
+  await page.evaluate(() =>
+    window.helixVfs.write("/guard.txt", "embedder version"),
+  );
+
+  await page.keyboard.press("A");
+  await page.keyboard.type(" plus");
+  await page.keyboard.press("Escape");
+  await page.keyboard.type(":w");
+  await page.keyboard.press("Enter");
+
+  await expect
+    .poll(() => terminalText(page))
+    .toContain("file modified by an external process");
+  // Refused means nothing was written: the embedder's copy is still there.
+  expect(await vfsRead(page, "/guard.txt")).toBe("embedder version");
+
+  // `:w!` is the override the message names, and it lands.
+  await page.keyboard.type(":w!");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => vfsRead(page, "/guard.txt")).toContain("plus");
+  expect(await vfsRead(page, "/guard.txt")).not.toContain("embedder version");
+});
+
+test(":w straight after opening a seeded file is not an external change (issue #76)", async ({
+  page,
+}) => {
+  await bootEditor(page);
+
+  await page.evaluate(() => window.helixVfs.write("/seeded.txt", "seeded\n"));
+  await page.keyboard.type(":o /seeded.txt");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => getState(page).then((s) => s.path))
+    .toBe("/seeded.txt");
+
+  // A false "modified by an external process" here would be worse than the
+  // bug the guard fixes. It cannot happen because the buffer's last-saved
+  // time is that key's stored stamp rather than a reading of the clock taken
+  // at open — so this compares a time against itself.
+  await page.keyboard.press("i");
+  await page.keyboard.type("edited ");
+  await page.keyboard.press("Escape");
+  await page.keyboard.type(":w");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => vfsRead(page, "/seeded.txt")).toContain("edited ");
+  expect(await terminalText(page)).not.toContain("external process");
+
+  // And again straight after, which only works because that save picked its
+  // new last-saved time back up out of the store.
+  await page.keyboard.press("A");
+  await page.keyboard.type("more");
+  await page.keyboard.press("Escape");
+  await page.keyboard.type(":w");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => vfsRead(page, "/seeded.txt")).toContain("more");
+  expect(await terminalText(page)).not.toContain("external process");
+});
+
+test(":w onto a boot-seeded sample from the boot buffer is allowed (issue #76)", async ({
+  page,
+}) => {
+  await bootEditor(page);
+
+  // Boot order is load-bearing now and nothing else would catch it changing:
+  // `session.rs` seeds the themes, the tutor and `samples::seed()` before
+  // `Application::new`, so the boot buffer's last-saved time is taken after
+  // every seed's stamp and this save is not an external modification. Seed
+  // below the boot instead and the demo's first `:w` — the flow the seeded
+  // `/welcome.txt` invites — would start refusing.
+  await page.keyboard.press("i");
+  await page.keyboard.type("scratch content");
+  await page.keyboard.press("Escape");
+  await page.keyboard.type(":w /example.rs");
+  await page.keyboard.press("Enter");
+
+  await expect
+    .poll(() => vfsRead(page, "/example.rs"))
+    .toContain("scratch content");
+  expect(await terminalText(page)).not.toContain("external process");
+});
+
 // A directory in the store is a prefix its keys share, not an entry of its
 // own — so these seed keys and then ask the editor what it can see under
 // them.
@@ -309,4 +403,89 @@ test(":cd completes directories only", async ({ page }) => {
   // directory and `:cd` must not offer it.
   expect(await terminalText(page)).not.toContain("top.txt");
   await page.keyboard.press("Escape");
+});
+
+test(":read inserts a vfs file at the selection (issue #96)", async ({
+  page,
+}) => {
+  await bootEditor(page);
+  await page.evaluate(() => window.helixVfs.write("/insert.txt", "INSERTED"));
+
+  await page.keyboard.press("i");
+  await page.keyboard.type("AB");
+  await page.keyboard.press("Escape");
+  // `gg` leaves the cursor on `A`, so the selection head sits between the two
+  // characters: the contents land there and the text either side of the
+  // insertion point has to survive. Insertion is helix's own — only where the
+  // bytes come from is what wasm32 changes.
+  await page.keyboard.type("gg");
+
+  // The bug: `path.exists() && path.is_file()` asked the real filesystem
+  // about a vfs key, so the guard rejected every path — including this one,
+  // which the store definitely holds — before the open was even reached.
+  await page.keyboard.type(":r /insert.txt");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => getText(page)).toContain("AINSERTEDB");
+  expect(await terminalText(page)).not.toContain("path is not a file");
+
+  // Reading is not a modification of the file it read: the store still holds
+  // exactly what it did, and only the buffer grew.
+  expect(await vfsRead(page, "/insert.txt")).toBe("INSERTED");
+});
+
+test(":read resolves a relative path against the working directory", async ({
+  page,
+}) => {
+  await bootEditor(page);
+  await seedTree(page);
+
+  await page.keyboard.type(":cd /proj");
+  await page.keyboard.press("Enter");
+
+  await page.keyboard.type(":r beta.txt");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => getText(page)).toContain("beta");
+});
+
+test(":read refuses a key the vfs does not hold", async ({ page }) => {
+  await bootEditor(page);
+
+  await page.keyboard.press("i");
+  await page.keyboard.type("untouched");
+  await page.keyboard.press("Escape");
+  const before = await getText(page);
+
+  await page.keyboard.type(":r /nope.txt");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => terminalText(page))
+    .toContain('path is not a file: "/nope.txt"');
+  expect(await getText(page)).toBe(before);
+});
+
+test(":read refuses a directory-shaped path, unless a key sits there too", async ({
+  page,
+}) => {
+  await bootEditor(page);
+  await seedTree(page);
+
+  const before = await getText(page);
+
+  // `/proj` holds no key of its own — it is only a prefix the keys under it
+  // extend — so there is nothing to read, which is also the answer native
+  // helix's `is_file()` gives for a real directory.
+  await page.keyboard.type(":r /proj");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => terminalText(page))
+    .toContain('path is not a file: "/proj"');
+  expect(await getText(page)).toBe(before);
+
+  // A key that is *also* a prefix is a file and does read — the store can
+  // produce that pair (`vfs::read_dir` documents it) and a file system
+  // cannot, so this is the one place the two differ.
+  await page.evaluate(() => window.helixVfs.write("/proj", "prefix and key"));
+  await page.keyboard.type(":r /proj");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => getText(page)).toContain("prefix and key");
 });
