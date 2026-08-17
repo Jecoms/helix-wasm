@@ -134,9 +134,18 @@ above). What that changes:
   there is no way to create one first, so that is where a first `:w` lands.
   `:pwd` reports the working directory; nothing can delete a directory the
   store never held.
-- **The file picker lists the whole VFS**, seeded runtime files (the themes
-  and the tutor text) included, and every `file-picker.*` option — `hidden`,
-  `git-ignore`, `max-depth` — is inert.
+- **The file picker lists the VFS, minus the files boot seeds.** The bundled
+  themes and the tutor text live under `/.config/helix/runtime/` and are
+  artifacts of the build rather than anything you put there, so `<space>f`
+  does not offer them. They are still in the store and still open by name
+  (`:o /.config/helix/runtime/tutor`), which is how `:tutor` and `:theme`
+  reach them. Of the `file-picker.*` options, `hidden` and `max-depth` apply
+  — a leading `.` on any path component below the picker's root, and the
+  number of components below it, the same two things `WalkBuilder` counts
+  natively. The rest have nothing here to act on and are ignored: `parents`
+  and `ignore` want ignore files scoped to directories, `git-ignore`,
+  `git-global` and `git-exclude` want a repository, and `follow-symlinks`
+  and `deduplicate-links` want symlinks.
 - **Path completion reads the VFS.** `:o`, `:cd` and the other
   path-completing commands offer the keys under the directory you have typed,
   one level at a time. A name that other keys extend counts as a directory
