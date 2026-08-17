@@ -6,7 +6,12 @@
 # of the workspace stays cheap and green.
 [package]
 name = "helix-web"
-version = "0.1.0"
+# The version the `web-v<semver>` tags publish: `web_release.yml` refuses a
+# tag that is not `web-v` + this string, and it names the tarball. Nothing
+# has been published yet, so `0.0.1` is the first release rather than a step
+# down from anything — the `0.1.0` here was never more than the default
+# `cargo new` writes.
+version = "0.0.1"
 edition = "2021"
 license = "MPL-2.0"
 publish = false

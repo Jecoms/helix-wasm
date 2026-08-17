@@ -19,13 +19,13 @@ entry.
 
 ## [Unreleased]
 
-## [0.1.0] — 2026-08-17
+## [0.0.1] — 2026-08-17
 
 First tagged release: [Helix](https://github.com/helix-editor/helix) 25.07.1 compiled to
 `wasm32`, running in a browser tab against an xterm.js terminal, with the patch set that
 gets it there carried in-tree.
 
-**What `0.1.0` promises.** Not stability. The JS surface is unstable by design
+**What `0.0.1` promises.** Not stability. The JS surface is unstable by design
 (`web/src/session.rs`, `web/src/vfs.rs`) — the one exception is the read-only inspection
 surface (`editor_state()` / `editor_text()`, `web/src/inspect.rs`), which is meant to be
 kept stable. Pin a tarball rather than tracking `main`, and check the package's `.d.ts`
@@ -91,15 +91,27 @@ it is written from behavior reproduced by hand, not from what the source suggest
 - **A real monotonic clock on wasm32.** The `clock_gettime` shim reads the page's
   `performance.now()`, so helix's 500 ms tree-sitter parse timeout actually fires and an
   oversized file drops its highlighting instead of freezing the tab to parse to
-  completion. The bound is not airtight — see
-  [#92](https://github.com/Jecoms/helix-wasm/issues/92).
+  completion. The bound is not airtight — it covers the parse and not the injection and
+  local queries that run after it, see
+  [#120](https://github.com/Jecoms/helix-wasm/issues/120).
+- **Files with unbalanced delimiters open in milliseconds, not minutes.** The vendored
+  tree-sitter's tree cursor answered "does this node have a later sibling?" by rescanning
+  the rest of its parent's child list, which is quadratic over the single flat `ERROR`
+  node an unclosed delimiter produces. It now summarizes each child list once, so the
+  walk is linear: in headless Chromium a `.rs` file of 100 000 unclosed `(` went from
+  26.4 s to open to 153 ms, and 200 000 from ~102 s to 229 ms. Query output is unchanged
+  — verified by diffing 1,138,256 match lines across 309 files and seven grammars against
+  a pristine build.
 - **Background jobs run on the browser's executor** rather than trapping on a tokio
   runtime that is not there, so the commands that queue one behave as they do natively.
 - **`:q` ends the session instead of trapping.** The exit teardown runs, the main screen
   is restored, and the registered `on_exit` handler fires; the page reloads to start
   over.
-- **`NOTICE.md` rides in the tarball**, covering the tree-sitter parsers and runtime the
-  bundle statically links.
+- **`LICENSE` and `NOTICE.md` ride in the tarball.** The bundle is MPL-2.0 — helix's
+  files and this port's alike — and the `package.json` wasm-pack generates declared that
+  without shipping the text; the release now copies the license in beside the notice.
+  `NOTICE.md` covers the third-party components the wasm statically links, and the
+  deployed demo serves both at its root as `LICENSE.txt` and `NOTICE.txt`.
 - **A Playwright smoke suite** (`web/www/tests/`) that boots the built bundle in headless
   Chromium and asserts on editor behavior through `helixState` / `helixVfs` and the
   terminal buffer — the parity check when this port is replayed onto a new helix release.
@@ -124,7 +136,9 @@ truth and goes further than this list:
 - **Your browser claims some chords first** — `C-w`, helix's window prefix, closes the
   tab in most of them. Reach the window menu at `space w` instead.
 - **Picker matching and tree-sitter parsing run on the main thread**, so a large picker
-  or a big parse blocks input and rendering rather than streaming.
+  or a big parse blocks input and rendering rather than streaming. Helix's 500 ms parse
+  timeout does fire here, but it bounds the parse only: the injection and local queries
+  that run over the finished tree have no deadline at all.
 - **`languages.toml` and `.editorconfig` are unreachable**, and `.helix/` is never
   detected — the workspace is always the working directory.
 - **One editor per page**, and no shell command line — the page boots the module with
@@ -132,9 +146,9 @@ truth and goes further than this list:
   `:` prompt is unaffected). No kitty keyboard protocol, no suspend, and only the
   grammars and themes linked into the bundle.
 
-<!-- Both links below resolve once `web-v0.1.0` is pushed; until then they are
+<!-- Both links below resolve once `web-v0.0.1` is pushed; until then they are
      pending rather than broken. Publishing is a separate, deliberate step —
      see the README's "Embedding the editor" for the procedure. -->
 
-[Unreleased]: https://github.com/Jecoms/helix-wasm/compare/web-v0.1.0...main
-[0.1.0]: https://github.com/Jecoms/helix-wasm/releases/tag/web-v0.1.0
+[Unreleased]: https://github.com/Jecoms/helix-wasm/compare/web-v0.0.1...main
+[0.0.1]: https://github.com/Jecoms/helix-wasm/releases/tag/web-v0.0.1

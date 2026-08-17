@@ -377,17 +377,18 @@ instead of linking into the deployed demo, whose asset names are
 content-hashed and replaced on every push to `main`:
 
 ```sh
-curl -LO https://github.com/Jecoms/helix-wasm/releases/download/web-v0.1.0/helix-web-0.1.0.tar.gz
-tar xzf helix-web-0.1.0.tar.gz    # extracts helix-web-0.1.0/
+curl -LO https://github.com/Jecoms/helix-wasm/releases/download/web-v0.0.1/helix-web-0.0.1.tar.gz
+tar xzf helix-web-0.0.1.tar.gz    # extracts helix-web-0.0.1/
 ```
 
 The extracted directory is a standard wasm-pack `--target web` package (ES
-module + `.wasm` + `.d.ts`, plus the MPL-2.0 `LICENSE` the bundle is under and
+module + `.wasm` + `.d.ts`, plus the MPL-2.0 `LICENSE` the bundle is under,
 `NOTICE.md` with the license notices for the statically linked grammar
-parsers). Consume it the way the demo's `web/www/package.json` does:
+parsers, and `CHANGELOG.md` as of that version). Consume it the way
+the demo's `web/www/package.json` does:
 
 ```json
-"dependencies": { "helix-web": "file:../helix-web-0.1.0" }
+"dependencies": { "helix-web": "file:../helix-web-0.0.1" }
 ```
 
 `web/www/main.js` is the reference host wiring to replicate: call `init()`
@@ -608,7 +609,7 @@ license" says they are byte-identical.
   `git diff upstream/<version> main -- helix/`. Frozen by the
   `upstream-branches-frozen` ruleset (creation only, no bypass actors): a new
   base can be pushed, an existing one can never move or be deleted.
-- `web-v<semver>` (e.g. `web-v0.1.0`) — release tags for the embeddable web
+- `web-v<semver>` (e.g. `web-v0.0.1`) — release tags for the embeddable web
   bundle. Pushing one runs the `Publish web bundle` workflow
   (`.github/workflows/web_release.yml`), which checks the tag against
   `web/Cargo.toml`'s `version`, rebuilds the full-catalog `web/pkg`

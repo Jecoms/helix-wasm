@@ -86,7 +86,10 @@ jobs:
       # this port's alike — and the package.json wasm-pack generates declares
       # that without shipping the text. NOTICE.md rides along because the wasm
       # statically links the grammar parsers' C sources; their license notices
-      # belong with the artifact.
+      # belong with the artifact. CHANGELOG.md rides along because it is what
+      # this file versions, and an embedder who vendors the extracted tree has
+      # no other copy of it — the release-notes link only helps someone still
+      # standing on the release page.
       # The .gitignore wasm-pack emits (it ignores the whole pkg dir) would
       # only confuse an embedder vendoring the extracted tree, so drop it.
       - name: Assemble the tarball
@@ -94,6 +97,7 @@ jobs:
           version="${{ steps.version.outputs.version }}"
           cp LICENSE web/pkg/
           cp web/NOTICE.md web/pkg/
+          cp CHANGELOG.md web/pkg/
           rm -f web/pkg/.gitignore
           mkdir stage
           cp -r web/pkg "stage/helix-web-$version"
@@ -108,5 +112,5 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --verify-tag \
             --title "helix-web $version" \
-            --notes "The embeddable wasm bundle: the \`web/pkg\` wasm-pack output (\`--target web\`, full grammar catalog), with \`NOTICE.md\` covering the statically linked grammars. See the README's \"Embedding the editor\" section for the pinning and host-wiring recipe, and [CHANGELOG.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/CHANGELOG.md) for what changed in this version and what the port cannot do." \
+            --notes "The embeddable wasm bundle: the \`web/pkg\` wasm-pack output (\`--target web\`, full grammar catalog), with the MPL-2.0 \`LICENSE\` the bundle is under and \`NOTICE.md\` covering the third-party components it statically links. See the README's \"Embedding the editor\" section for the pinning and host-wiring recipe, and [CHANGELOG.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/CHANGELOG.md) for what changed in this version and what the port cannot do." \
             "helix-web-$version.tar.gz"
