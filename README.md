@@ -146,8 +146,9 @@ above). What that changes:
   here, so `hidden` and gitignore filtering do not apply. `:theme` completion
   reads the VFS too. In-buffer path completion is a separate surface and
   still offers nothing — see "No completion popup and no signature help".
-- `:config-open` opens the config the page booted with — a real, editable key
-  in the store (see "Configuration" below). `:log-open` opens an empty buffer
+- `:config-open` opens the config the page booted with, or an empty buffer to
+  write one in — either way a real, editable key in the store, which `:w`
+  saves back to (see "Configuration" below). `:log-open` opens an empty buffer
   at `/.cache/helix/helix.log`: that key is real too, but nothing ever writes
   it, because log output goes to the browser console instead.
 
