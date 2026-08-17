@@ -16,6 +16,8 @@ mod c_alloc;
 #[cfg(target_family = "wasm")]
 mod clock;
 #[cfg(target_family = "wasm")]
+mod download;
+#[cfg(target_family = "wasm")]
 mod grammars;
 #[cfg(target_family = "wasm")]
 mod inspect;
@@ -33,6 +35,8 @@ mod themes;
 #[cfg(target_family = "wasm")]
 mod vfs;
 
+#[cfg(target_family = "wasm")]
+pub use download::*;
 #[cfg(target_family = "wasm")]
 pub use inspect::*;
 #[cfg(target_family = "wasm")]

@@ -59,6 +59,14 @@ backends (localStorage/OPFS) can be layered on those hooks by the host
 page. Boot seeds a couple of sample files (`web/src/samples.rs`) so the
 picker opens on something selectable.
 
+`:download` is the way *out* that needs no script
+([#67](https://github.com/Jecoms/helix-wasm/issues/67)): it hands the file
+you are editing to the page, which saves it to your machine the way any
+other download arrives. `:download` alone uses the buffer's own name and
+`:download notes.txt` names it, which is also how you get an unnamed
+scratch buffer out. See "Files live in an in-memory VFS" below for what it
+does not do.
+
 ## Editor state inspection
 
 The wasm module also exports a read-only inspection surface
@@ -118,7 +126,24 @@ Documents are keys in `helix_stdx::vfs`, not files (see "Virtual file system"
 above). What that changes:
 
 - **Nothing survives a page reload.** Pull anything you care about out
-  through `helixVfs.read` / `helixVfs.list` first.
+  first: `:download` saves the current file to your machine, and
+  `helixVfs.read` / `helixVfs.list` hand the store to a page script.
+- **`:download` exports one file, as it stands in the buffer.** Unsaved
+  edits included — it is a copy of what you are looking at, not of what the
+  store last saw, and it changes neither. That means it also skips the
+  transforms `:w` applies on its way out (`insert-final-newline` and the two
+  trims edit the *document*, and an export has no business doing that), and
+  it writes UTF-8 whatever `:set-encoding` says. The name comes from the
+  argument or the buffer, minus any directories — a download lands wherever
+  your browser puts downloads. There is no whole-store export; a scratch
+  buffer with no name is refused rather than given one. Saving is the host
+  page's half (`on_download`, see "Embedding the editor"), so a page that
+  registers no handler gets "Could not download …: this host cannot save
+  files", and one whose handler throws reports what it threw. `Downloaded
+  <name>` means the file reached the page, not that it reached your disk:
+  the demo hands it to the browser and never hears back, so a save the
+  browser asks about and you cancel still reads as a success.
+  Native helix has no such command: there, `:w <path>` is this.
 - **`:w` is last-write-wins and never warns.** There are no mtimes, so the
   "file modified externally" guard can never fire — a `:w` silently
   overwrites whatever a `helixVfs.write` put there in the meantime. `:w!`
@@ -294,7 +319,18 @@ every later call, and a host that keeps forwarding into it silently
 swallows the user's input. Input calls made after a clean exit are inert
 (the module drops them rather than queueing for an event loop that is gone),
 but a page still forwarding is a page still pretending to have an editor —
-stop on the exit and tell the reader. Beyond the terminal loop, the module
+stop on the exit and tell the reader.
+
+`on_download(handler)` is the other callback worth registering: `:download`
+calls it with the file name to save under and a `Uint8Array` of the bytes,
+and the page decides what saving means — a `Blob` and an object URL (what
+`main.js` does, replaceable at `window.helixDownload` for a devtools
+session), a File System Access handle, a POST to a server. Throwing from it
+refuses the save and puts the message on the statusline; registering
+nothing leaves `:download` reporting that this host cannot save files, so
+wire it up or expect readers to have no way out of the page.
+
+Beyond the terminal loop, the module
 exports the file-injection hooks (`vfs_write` / `vfs_read` / `vfs_list`,
 see "Virtual file system" above) and the read-only inspection surface (`editor_state()`
 / `editor_text()`, see "Editor state inspection") — the intended surface

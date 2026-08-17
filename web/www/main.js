@@ -16,6 +16,7 @@ import init, {
   vfs_list,
   editor_state,
   editor_text,
+  on_download,
 } from "helix-web";
 
 // The one color every background surface derives from: xterm's default
@@ -116,6 +117,31 @@ on_exit((code) => {
   window.helixExit = { code };
   window.dispatchEvent(new CustomEvent("helix-exit", { detail: { code } }));
 });
+// The page's half of `:download` (issue #67): the wasm module hands over a
+// file name and its bytes, and saving them to the reader's machine is a
+// thing only a page can do. On `window` so it can be replaced from the
+// devtools console (or by a harness) without re-registering with the
+// module: `on_download` is the embedder's seam, this is the demo's.
+//
+// The anchor has to be in the document for Firefox to honor the click, and
+// the object URL outlives it — revoking in the same task cancels the save in
+// some browsers, so it goes out on a later one. Throwing from here refuses
+// the download and puts the message on the editor's statusline.
+window.helixDownload = (name, bytes) => {
+  const url = URL.createObjectURL(
+    new Blob([bytes], { type: "application/octet-stream" }),
+  );
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = name;
+  link.style.display = "none";
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+};
+on_download((name, bytes) => window.helixDownload(name, bytes));
+
 callEditor(() =>
   start((bytes) => terminal.write(bytes), terminal.cols, terminal.rows),
 );
