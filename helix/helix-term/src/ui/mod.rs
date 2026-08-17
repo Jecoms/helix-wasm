@@ -289,6 +289,15 @@ fn walk_files(editor: &Editor, root: &Path) -> impl Iterator<Item = PathBuf> {
         let Ok(relative) = path.strip_prefix(&root) else {
             return false;
         };
+        // The root itself, where it is a key as well as a prefix (`/proj`
+        // beside `/proj/alpha.txt` — issue #96). It reached the picker as a
+        // directory, and a directory is not one of its own entries; the
+        // native walk cannot produce the case, so the column formatter below
+        // takes a file name for granted and panics on the empty relative
+        // path this leaves.
+        if relative.as_os_str().is_empty() {
+            return false;
+        }
         if hidden
             && relative
                 .components()
@@ -430,6 +439,7 @@ pub fn file_explorer(root: PathBuf, editor: &Editor) -> Result<FileExplorer, std
     Ok(picker)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn directory_content(path: &Path) -> Result<Vec<(PathBuf, bool)>, std::io::Error> {
     let mut content: Vec<_> = std::fs::read_dir(path)?
         .flatten()
@@ -439,6 +449,40 @@ fn directory_content(path: &Path) -> Result<Vec<(PathBuf, bool)>, std::io::Error
                 entry.file_type().is_ok_and(|file_type| file_type.is_dir()),
             )
         })
+        .collect();
+
+    content.sort_by(|(path1, is_dir1), (path2, is_dir2)| (!is_dir1, path1).cmp(&(!is_dir2, path2)));
+    if path.parent().is_some() {
+        content.insert(0, (path.join(".."), true));
+    }
+    Ok(content)
+}
+
+/// The explorer's rows for `path` on wasm32: the virtual file system's
+/// entries there, ordered and `..`-prefixed exactly as the native arm above
+/// orders and prefixes a real directory's.
+///
+/// `vfs::read_dir` is the whole listing — a flat key space has no directory
+/// entries, so "the entries of `path`" means the distinct next components of
+/// the keys under it, and a name that keys continue past is the directory.
+/// Nothing is filtered. The file picker does drop the files boot seeds
+/// (issue #74), but it drops them from one flat list of everything below its
+/// root, where the bundled themes would crowd out whatever the reader put
+/// there; it puts them back the moment the root *is* the runtime directory,
+/// because asking for a directory by name and getting nothing is a dead end.
+/// Every level of the explorer is that second case — a directory the reader
+/// navigated to — so there is nothing here for that filter to be for.
+///
+/// The listing is never an error. A path no key lives under yields no rows,
+/// which is also all an empty directory would yield: the store cannot tell
+/// the two apart (see [`helix_stdx::vfs::read_dir`]), and the explorer is
+/// told which directory to show rather than asked to find one, so the empty
+/// listing is the honest answer for both.
+#[cfg(target_arch = "wasm32")]
+fn directory_content(path: &Path) -> Result<Vec<(PathBuf, bool)>, std::io::Error> {
+    let mut content: Vec<_> = helix_stdx::vfs::read_dir(path)
+        .into_iter()
+        .map(|(name, is_dir)| (path.join(name), is_dir))
         .collect();
 
     content.sort_by(|(path1, is_dir1), (path2, is_dir2)| (!is_dir1, path1).cmp(&(!is_dir2, path2)));

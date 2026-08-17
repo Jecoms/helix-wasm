@@ -609,36 +609,61 @@ impl<T: 'static + Send + Sync, D: 'static + Send + Sync> Picker<T, D> {
                 // there), everything else does not exist. The guards matter
                 // more here, not less: decoding and language detection run
                 // synchronously on the single browser thread.
+                //
+                // Directories are tested first, as the native arm below tests
+                // them: the file explorer previews every row it lists, and on
+                // wasm32 its directory rows are prefixes the keys extend
+                // rather than entries the store holds (issue #105). A name
+                // that is both a key and a prefix previews as the directory,
+                // which is how the explorer and `:o` read it too.
                 #[cfg(target_arch = "wasm32")]
-                let preview = match helix_stdx::vfs::read(&path) {
-                    Ok(bytes) if bytes.len() as u64 > MAX_FILE_SIZE_FOR_PREVIEW => {
-                        CachedPreview::LargeFile
-                    }
-                    Ok(bytes)
-                        if content_inspector::inspect(&bytes[..bytes.len().min(1024)])
-                            .is_binary() =>
-                    {
-                        CachedPreview::Binary
-                    }
-                    Ok(_) => Document::open(
-                        &path,
-                        None,
-                        false,
-                        editor.config.clone(),
-                        editor.syn_loader.clone(),
+                let entries = helix_stdx::vfs::read_dir(&path);
+                #[cfg(target_arch = "wasm32")]
+                let preview = if !entries.is_empty() {
+                    CachedPreview::Directory(
+                        entries
+                            .into_iter()
+                            .map(|(name, is_dir)| {
+                                let name = name.to_string_lossy().into_owned();
+                                if is_dir {
+                                    (format!("{}/", name), true)
+                                } else {
+                                    (name, false)
+                                }
+                            })
+                            .collect(),
                     )
-                    .map(|mut doc| {
-                        let loader = editor.syn_loader.load();
-                        if let Some(language_config) = doc.detect_language_config(&loader) {
-                            doc.language = Some(language_config);
-                            // No send to the highlight hook: without a tokio
-                            // runtime its worker never runs (see the cached
-                            // branch above), so the preview stays unhighlighted.
+                } else {
+                    match helix_stdx::vfs::read(&path) {
+                        Ok(bytes) if bytes.len() as u64 > MAX_FILE_SIZE_FOR_PREVIEW => {
+                            CachedPreview::LargeFile
                         }
-                        CachedPreview::Document(Box::new(doc))
-                    })
-                    .unwrap_or(CachedPreview::NotFound),
-                    Err(_) => CachedPreview::NotFound,
+                        Ok(bytes)
+                            if content_inspector::inspect(&bytes[..bytes.len().min(1024)])
+                                .is_binary() =>
+                        {
+                            CachedPreview::Binary
+                        }
+                        Ok(_) => Document::open(
+                            &path,
+                            None,
+                            false,
+                            editor.config.clone(),
+                            editor.syn_loader.clone(),
+                        )
+                        .map(|mut doc| {
+                            let loader = editor.syn_loader.load();
+                            if let Some(language_config) = doc.detect_language_config(&loader) {
+                                doc.language = Some(language_config);
+                                // No send to the highlight hook: without a tokio
+                                // runtime its worker never runs (see the cached
+                                // branch above), so the preview stays unhighlighted.
+                            }
+                            CachedPreview::Document(Box::new(doc))
+                        })
+                        .unwrap_or(CachedPreview::NotFound),
+                        Err(_) => CachedPreview::NotFound,
+                    }
                 };
                 #[cfg(not(target_arch = "wasm32"))]
                 let preview = std::fs::metadata(&path)
