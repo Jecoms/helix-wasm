@@ -16,11 +16,62 @@ use std::ffi::OsString;
 use std::io::{self, Cursor, Write};
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-static FILES: RwLock<BTreeMap<PathBuf, Vec<u8>>> = RwLock::new(BTreeMap::new());
+/// A stored file: its contents, and when they were last written.
+struct Entry {
+    contents: Vec<u8>,
+    modified: SystemTime,
+}
+
+static FILES: RwLock<BTreeMap<PathBuf, Entry>> = RwLock::new(BTreeMap::new());
 
 fn normalize(path: impl AsRef<Path>) -> PathBuf {
     crate::path::canonicalize(path)
+}
+
+/// The current wall-clock time.
+///
+/// A wall clock rather than a monotonic one because these stamps are
+/// compared against `SystemTime`s helix comes by without consulting the
+/// store — a buffer whose path holds no entry yet keeps the
+/// `SystemTime::now()` it was opened with — and an `Instant` has no ordering
+/// against those.
+///
+/// `std::time::SystemTime::now()` traps on wasm32-unknown-unknown, so the
+/// reading comes from `web-time` (the same crate, and so the same clock,
+/// helix-view's `SystemTime` is on wasm32) and is carried over via the unix
+/// epoch. On native targets `web_time::SystemTime` *is* `std::time`'s and
+/// this is a round trip through a duration.
+fn now() -> SystemTime {
+    UNIX_EPOCH
+        + web_time::SystemTime::now()
+            .duration_since(web_time::UNIX_EPOCH)
+            .unwrap_or_default()
+}
+
+/// The modification time to stamp a write with, given the entry's `previous`
+/// one where it had one.
+///
+/// Strictly after `previous`, which the clock alone does not guarantee:
+/// `web-time` reads `Date.now()` on wasm32, so it only advances every
+/// millisecond. Two writes inside one tick would otherwise share a stamp,
+/// and a file saved and then rewritten underneath would look untouched to
+/// the guard that compares them.
+fn stamp(previous: Option<SystemTime>) -> SystemTime {
+    let now = now();
+    match previous {
+        Some(previous) if previous >= now => previous + Duration::from_nanos(1),
+        _ => now,
+    }
+}
+
+/// Stores `contents` under the already-validated `key`, stamped with the
+/// time of the write.
+fn store(key: PathBuf, contents: Vec<u8>) {
+    let mut files = FILES.write().unwrap();
+    let modified = stamp(files.get(&key).map(|entry| entry.modified));
+    files.insert(key, Entry { contents, modified });
 }
 
 /// The normalized store key for `path`, or `InvalidInput` if `path` names no
@@ -61,7 +112,23 @@ pub fn read(path: impl AsRef<Path>) -> io::Result<Vec<u8>> {
         .read()
         .unwrap()
         .get(&normalize(path))
-        .cloned()
+        .map(|entry| entry.contents.clone())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no such virtual file"))
+}
+
+/// When the file at `path` was last written, or `NotFound`.
+///
+/// The store's answer to `fs::metadata(path)?.modified()`, down to the
+/// return type, so the wasm32 arms of helix's save path can run the same
+/// external-modification check the native ones do: a save compares the
+/// buffer's last-saved time against this and refuses to overwrite a file
+/// that moved on underneath it.
+pub fn modified(path: impl AsRef<Path>) -> io::Result<SystemTime> {
+    FILES
+        .read()
+        .unwrap()
+        .get(&normalize(path))
+        .map(|entry| entry.modified)
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no such virtual file"))
 }
 
@@ -70,11 +137,11 @@ pub fn reader(path: impl AsRef<Path>) -> io::Result<Cursor<Vec<u8>>> {
     read(path).map(Cursor::new)
 }
 
-/// Creates or replaces the file at `path`. Fails with `InvalidInput` if
-/// `path` names no file (e.g. `""`, `"."`, or `"/"`).
+/// Creates or replaces the file at `path`, stamping it with the time of the
+/// write. Fails with `InvalidInput` if `path` names no file (e.g. `""`,
+/// `"."`, or `"/"`).
 pub fn write(path: impl AsRef<Path>, contents: impl Into<Vec<u8>>) -> io::Result<()> {
-    let key = validated(path)?;
-    FILES.write().unwrap().insert(key, contents.into());
+    store(validated(path)?, contents.into());
     Ok(())
 }
 
@@ -86,14 +153,19 @@ pub fn write(path: impl AsRef<Path>, contents: impl Into<Vec<u8>>) -> io::Result
 /// contents. Fails with `NotFound` if `from` names no file and with
 /// `InvalidInput` if `to` names no file — the target is validated *before*
 /// the source is removed, so a rejected rename cannot lose the contents.
+///
+/// The entry's [`modified`] time rides along unchanged, which is the same
+/// reason: `fs::rename` moves a directory entry and never touches the
+/// inode's mtime. A rename can therefore move a key's time *backwards* (the
+/// source's replacing a newer target's), exactly as it does natively.
 pub fn rename(from: impl AsRef<Path>, to: impl AsRef<Path>) -> io::Result<()> {
     let to = validated(to)?;
     let from = normalize(from);
     let mut files = FILES.write().unwrap();
-    let contents = files
+    let entry = files
         .remove(&from)
         .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "no such virtual file"))?;
-    files.insert(to, contents);
+    files.insert(to, entry);
     Ok(())
 }
 
@@ -149,7 +221,8 @@ pub fn read_dir(path: impl AsRef<Path>) -> Vec<(OsString, bool)> {
 /// An `std::io::Write` that stages everything written to it in memory and
 /// commits the staged content as the file's new contents on `flush`. Saves
 /// are therefore atomic: a save abandoned before `flush` (e.g. on an
-/// encoding error) leaves the previously stored contents untouched.
+/// encoding error) leaves the previously stored contents — and their
+/// [`modified`] time — untouched.
 pub struct VfsWriter {
     path: PathBuf,
     staged: Vec<u8>,
@@ -175,7 +248,7 @@ impl Write for VfsWriter {
         // `writer` so an invalid path (e.g. `:w /`) surfaces as an ordinary
         // IO error on the save path.
         let key = validated(&self.path)?;
-        FILES.write().unwrap().insert(key, self.staged.clone());
+        store(key, self.staged.clone());
         Ok(())
     }
 }
@@ -251,6 +324,45 @@ mod tests {
         write("/vfs-test-truncate/a.txt", "old".as_bytes()).unwrap();
         writer("/vfs-test-truncate/a.txt").flush().unwrap();
         assert_eq!(read("/vfs-test-truncate/a.txt").unwrap(), b"");
+    }
+
+    #[test]
+    fn every_write_stamps_a_strictly_later_time() {
+        write("/vfs-test-mtime/a.txt", "one".as_bytes()).unwrap();
+        let first = modified("/vfs-test-mtime/a.txt").unwrap();
+
+        // Strictly later even back to back, which the clock alone does not
+        // give: `Date.now()` on wasm32 stands still for a millisecond.
+        write("/vfs-test-mtime/a.txt", "two".as_bytes()).unwrap();
+        let second = modified("/vfs-test-mtime/a.txt").unwrap();
+        assert!(second > first, "{second:?} should be after {first:?}");
+
+        let mut w = writer("/vfs-test-mtime/a.txt");
+        w.write_all(b"three").unwrap();
+        // Staged, not stored: the stamp only moves when the contents do.
+        assert_eq!(modified("/vfs-test-mtime/a.txt").unwrap(), second);
+        w.flush().unwrap();
+        assert!(modified("/vfs-test-mtime/a.txt").unwrap() > second);
+    }
+
+    #[test]
+    fn modified_of_a_missing_file_reports_not_found() {
+        let err = modified("/vfs-test-mtime-missing/a.txt").unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn rename_carries_the_modification_time() {
+        // `fs::rename` moves a directory entry; the inode's mtime is not a
+        // directory entry, so it does not move with it.
+        write("/vfs-test-mtime-rename/a.txt", "contents".as_bytes()).unwrap();
+        let before = modified("/vfs-test-mtime-rename/a.txt").unwrap();
+        rename(
+            "/vfs-test-mtime-rename/a.txt",
+            "/vfs-test-mtime-rename/b.txt",
+        )
+        .unwrap();
+        assert_eq!(modified("/vfs-test-mtime-rename/b.txt").unwrap(), before);
     }
 
     #[test]

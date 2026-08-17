@@ -187,6 +187,77 @@ test(":move to a path the vfs cannot store fails without moving anything", async
   expect(await vfsRead(page, "/keep.txt")).toContain("untouched");
 });
 
+test(":w refuses to overwrite an embedder's write, and :w! forces it (issue #76)", async ({
+  page,
+}) => {
+  await bootEditor(page);
+
+  await page.keyboard.press("i");
+  await page.keyboard.type("editor version");
+  await page.keyboard.press("Escape");
+  await saveAs(page, "/guard.txt");
+
+  // The embedder writes through the vfs hooks after the buffer last saved.
+  // Before the fix the store held no times to compare, so the save below
+  // overwrote this with no warning and `:w!` did exactly what `:w` did.
+  await page.evaluate(() =>
+    window.helixVfs.write("/guard.txt", "embedder version"),
+  );
+
+  await page.keyboard.press("A");
+  await page.keyboard.type(" plus");
+  await page.keyboard.press("Escape");
+  await page.keyboard.type(":w");
+  await page.keyboard.press("Enter");
+
+  await expect
+    .poll(() => terminalText(page))
+    .toContain("file modified by an external process");
+  // Refused means nothing was written: the embedder's copy is still there.
+  expect(await vfsRead(page, "/guard.txt")).toBe("embedder version");
+
+  // `:w!` is the override the message names, and it lands.
+  await page.keyboard.type(":w!");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => vfsRead(page, "/guard.txt")).toContain("plus");
+  expect(await vfsRead(page, "/guard.txt")).not.toContain("embedder version");
+});
+
+test(":w straight after opening a seeded file is not an external change (issue #76)", async ({
+  page,
+}) => {
+  await bootEditor(page);
+
+  await page.evaluate(() => window.helixVfs.write("/seeded.txt", "seeded\n"));
+  await page.keyboard.type(":o /seeded.txt");
+  await page.keyboard.press("Enter");
+  await expect
+    .poll(() => getState(page).then((s) => s.path))
+    .toBe("/seeded.txt");
+
+  // A false "modified by an external process" here would be worse than the
+  // bug the guard fixes. It cannot happen because the buffer's last-saved
+  // time is that key's stored stamp rather than a reading of the clock taken
+  // at open — so this compares a time against itself.
+  await page.keyboard.press("i");
+  await page.keyboard.type("edited ");
+  await page.keyboard.press("Escape");
+  await page.keyboard.type(":w");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => vfsRead(page, "/seeded.txt")).toContain("edited ");
+  expect(await terminalText(page)).not.toContain("external process");
+
+  // And again straight after, which only works because that save picked its
+  // new last-saved time back up out of the store.
+  await page.keyboard.press("A");
+  await page.keyboard.type("more");
+  await page.keyboard.press("Escape");
+  await page.keyboard.type(":w");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => vfsRead(page, "/seeded.txt")).toContain("more");
+  expect(await terminalText(page)).not.toContain("external process");
+});
+
 // A directory in the store is a prefix its keys share, not an entry of its
 // own — so these seed keys and then ask the editor what it can see under
 // them.
