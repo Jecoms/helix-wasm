@@ -97,7 +97,6 @@ helix already has for "not configured":
 | Shell commands — `:sh`, `:!`, `:run-shell-command`, the `!` and `\|` keys, `:pipe`, `:pipe-to`, `:insert-output`, `:append-output` | "Shell commands are not supported on this platform" |
 | Opening a URL — `gf` with the cursor on one | "Opening URLs in an external program is not supported on this platform" — there is no handoff to the browser either, so nothing here can open a URL. `gf` on a file path works normally |
 | Git — the diff gutter, `:reset-diff-change`, the `<space>g` changed-file picker | "Diff is not available in the current buffer" / "Current working directory does not exist" |
-| `<space>e` file explorer | "Workspace directory does not exist" |
 
 One language-server feature is not in that table because it fails some other
 way: completion goes quiet rather than saying anything at all (see "No
@@ -125,15 +124,28 @@ above). What that changes:
   changed since the buffer was opened or last saved is refused, and `:w!`
   overrides it exactly as it does natively. File permissions have no
   counterpart here, so nothing is ever read-only.
-- **There are no directories**, only keys with separators in them. `:o
-  /some/dir` opens an ordinary empty buffer named `/some/dir`, and `:move
-  /some/dir` renames the file *to* that key instead of moving it into the
-  directory — native helix appends the original file name when the target is
-  a directory, and there is none here to recognize. `:cd` works, does change
-  how relative paths resolve, and accepts a directory no key lives under —
-  there is no way to create one first, so that is where a first `:w` lands.
-  `:pwd` reports the working directory; nothing can delete a directory the
-  store never held.
+- **There are no directories**, only keys with separators in them. A
+  directory is therefore any prefix the keys extend, which is what `<space>e`
+  lists, what `:o /some/dir` opens a picker on, and what path completion
+  offers a trailing separator for. It is a way of looking at the key set, not
+  an entry the store holds, and two things follow. An empty directory and a
+  missing one are the same thing — `<space>e` on a prefix no key lives under
+  shows nothing but its `../` row rather than reporting the directory gone,
+  and `:o` on one opens the new buffer it opens natively for a path that does
+  not exist. And `:move /some/dir` renames the file *to* that key instead of
+  moving it into the directory: native helix appends the original file name
+  when the target is a directory, and there is none here to recognize. `:cd`
+  works, does change how relative paths resolve, and accepts a directory no
+  key lives under — there is no way to create one first, so that is where a
+  first `:w` lands. `:pwd` reports the working directory; nothing can delete a
+  directory the store never held. A key that is *also* a prefix (`/proj`
+  beside `/proj/alpha.txt`) reads as the directory everywhere a choice has to
+  be made — `<space>e` and `:o` descend into it rather than opening it, and it
+  previews as its listing rather than its contents even in `<space>f`, which
+  offers it as a file — since descending is the only one of the two things a
+  picker can do. Its contents are still readable by any command that takes a
+  file, `<space>f` included: selecting the row opens the file the preview did
+  not show.
 - **The file picker lists the VFS, minus the files boot seeds.** The bundled
   themes and the tutor text live under `/.config/helix/runtime/` and are
   artifacts of the build rather than anything you put there, so `<space>f`
@@ -149,6 +161,18 @@ above). What that changes:
   and `ignore` want ignore files scoped to directories, `git-ignore`,
   `git-global` and `git-exclude` want a repository, and `follow-symlinks`
   and `deduplicate-links` want symlinks.
+- **The file explorer reads the VFS, and filters nothing.** `<space>e` lists
+  one prefix at a time, with `../` below the root and no `../` at `/`, and
+  descending into a row re-reads the store — as does the preview pane, which
+  shows a directory row's entries. It does *not* drop the seeded runtime
+  files the way `<space>f` does: that filter exists because the picker lists
+  everything below its root at once, and it already lifts as soon as the root
+  *is* the runtime directory. Every explorer level is a directory you named,
+  so the exception is the whole of it — `.config/` is on the list at the root
+  and the bundled themes are there once you walk down to them. The parts of
+  it that want a file system are still gone: no `file-picker.*` option
+  applies (the explorer never consulted them natively either), and there is
+  nothing to hide, ignore, or follow.
 - **Path completion reads the VFS.** `:o`, `:cd` and the other
   path-completing commands offer the keys under the directory you have typed,
   one level at a time. A name that other keys extend counts as a directory
