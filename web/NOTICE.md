@@ -2,12 +2,14 @@
 
 The editor in this bundle is [helix](https://github.com/helix-editor/helix)
 plus the browser port at <https://github.com/Jecoms/helix-wasm>, both under
-the Mozilla Public License 2.0. Its text is that repository's top-level
-`LICENSE` (<https://github.com/Jecoms/helix-wasm/blob/main/LICENSE>), which
-ships beside this file, and that repository is where the corresponding source
-form lives. What follows covers the third-party code and content the bundle
-carries under other terms: the tree-sitter grammars and runtime it statically
-links, and the helix runtime files it embeds.
+the Mozilla Public License 2.0. Its text ships beside this file — `LICENSE` in
+the release tarball, `LICENSE.txt` at the root of the deployed demo — and is
+that repository's top-level `LICENSE`
+(<https://github.com/Jecoms/helix-wasm/blob/main/LICENSE>); the repository is
+also where the corresponding source form lives. What follows covers the
+third-party code and content the bundle carries under other terms: the
+tree-sitter grammars and runtime it statically links, and the helix runtime
+files it embeds.
 
 The distributed wasm artifact statically links the C parser sources of the
 tree-sitter grammars below (the `GRAMMARS` catalog in `build.rs`, fetched at
@@ -31,9 +33,8 @@ It further embeds three kinds of runtime files from the in-tree helix port at
 - the tutor text at `helix/runtime/tutor` — see `runtime/README.md`.
 
 Those are helix's own files and MPL-2.0 like the rest of the editor (the
-repository's top-level `LICENSE`, linked above) — with one exception:
-upstream carries
-per-theme licenses in `helix/runtime/themes/licenses/` for themes
+repository's top-level `LICENSE`, linked above) — with one exception: upstream
+carries per-theme licenses in `helix/runtime/themes/licenses/` for themes
 contributed under other terms, and one of the embedded themes has an entry
 there. It is in "[Themes](#themes)" below.
 

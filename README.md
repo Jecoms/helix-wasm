@@ -370,10 +370,9 @@ tar xzf helix-web-0.1.0.tar.gz    # extracts helix-web-0.1.0/
 ```
 
 The extracted directory is a standard wasm-pack `--target web` package (ES
-module + `.wasm` + `.d.ts`, plus the MPL-2.0 `LICENSE` the bundle is under
-and `NOTICE.md` with the license notices for the statically linked grammar
-parsers). Consume it the way the demo's
-`web/www/package.json` does:
+module + `.wasm` + `.d.ts`, plus the MPL-2.0 `LICENSE` the bundle is under and
+`NOTICE.md` with the license notices for the statically linked grammar
+parsers). Consume it the way the demo's `web/www/package.json` does:
 
 ```json
 "dependencies": { "helix-web": "file:../helix-web-0.1.0" }
@@ -578,6 +577,11 @@ continue — see "Patching helix" above for why that is always correct.
 Promote by moving `main` to the reviewed tip, keeping the outgoing line as a
 versioned branch.
 
+One wrapper file shadows a helix one and so replays clean whatever upstream did
+to it: the root `LICENSE` is a verbatim copy of `helix/LICENSE`. Diff the two
+after the replay and re-copy if the release moved them apart — "Credits and
+license" says they are byte-identical.
+
 ### Branch and tag map
 
 - `main` (this branch) — the current version line: `upstream/25.07.1` plus
@@ -620,7 +624,7 @@ those also carrying MIT tree-sitter C and Unicode-licensed ICU headers.
 Copyright stays with the respective authors: helix's files with the helix
 contributors, this port's with its own. The grammars, the tree-sitter runtime
 and the helix runtime files the wasm bundle ships carry their own notices, in
-`web/NOTICE.md`. That file travels with what is distributed — into the release
-tarball beside a copy of this `LICENSE`, and onto the deployed demo as
-`NOTICE.txt` — so it opens by naming both this license and where the source
-form lives.
+`web/NOTICE.md`. That file travels with what is distributed, and this one goes
+with it: into the release tarball as `LICENSE`, and onto the deployed demo as
+`LICENSE.txt` beside `NOTICE.txt`. The notice opens by naming this license and
+the repository the corresponding source form lives in.
