@@ -119,8 +119,8 @@ jobs:
       # The browser is a fixed binary keyed by Playwright's version, so a cache
       # hit changes nothing about what the tests run. Keyed on the resolved
       # version rather than a hash of the lockfile: an unrelated dependency
-      # bump must not throw away a ~100 MB entry, because this repo's Actions
-      # cache is already at its 10 GB quota and evicting LRU.
+      # bump must not throw away a 108 MB entry, because this repo's Actions
+      # cache is already at its 10 GB quota and evicting LRU (#118).
       - name: Resolve the Playwright version
         id: playwright
         run: |
@@ -134,14 +134,20 @@ jobs:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-shell
 
+      # Unconditional, not gated on the cache miss: against a restored
+      # directory this is a sub-second no-op, and it re-downloads a partial
+      # entry rather than leaving one wedged under its version key.
+      #
       # `--only-shell` installs just chrome-headless-shell, which is what a
       # headless `chromium` project with no channel launches — skipping the
       # full Chrome-for-Testing build halves what the cache has to hold.
-      # No `--with-deps`: every shared library Playwright wants is already on
-      # the ubuntu-latest image, and the only packages apt adds are the
-      # CJK/Cyrillic/Thai font sets this suite never renders.
+      # No `--with-deps`: on the ubuntu-latest image (ubuntu-24.04, image
+      # 20260810.271)
+      # every shared library Playwright wants is already installed, and the
+      # only packages apt adds are the CJK/Cyrillic/Thai font sets this suite
+      # never renders. If a future image drops one, the failure surfaces as a
+      # browser-launch error in the test step, not as a missing package here.
       - name: Install Playwright Chromium
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: |
           cd web/www
           npx playwright install --only-shell chromium
