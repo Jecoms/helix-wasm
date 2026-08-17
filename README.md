@@ -127,7 +127,11 @@ above). What that changes:
   /some/dir` opens an ordinary empty buffer named `/some/dir`, and `:move
   /some/dir` renames the file *to* that key instead of moving it into the
   directory — native helix appends the original file name when the target is
-  a directory, and there is none here to recognize. `:cd` works, does change
+  a directory, and there is none here to recognize. `:r /some/dir` is refused
+  with `path is not a file`, which is what native says about a real directory
+  — unless a key sits at `/some/dir` itself, beside the keys under it, and
+  then it reads that key: a name here can be both a file and a prefix, which
+  a file system cannot arrange. `:cd` works, does change
   how relative paths resolve, and accepts a directory no key lives under —
   there is no way to create one first, so that is where a first `:w` lands.
   `:pwd` reports the working directory; nothing can delete a directory the

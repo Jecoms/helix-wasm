@@ -2611,7 +2611,7 @@ fn read(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> anyhow:
     let path = helix_stdx::path::expand_tilde(PathBuf::from(filename.to_string()));
 
     #[cfg(not(target_arch = "wasm32"))]
-    let is_file = path.exists() && path.is_file();
+    let exists = path.exists() && path.is_file();
     // On wasm32 the argument names a `helix_stdx::vfs` key, not a file system
     // path, and `Path::exists` reaches for a file system that isn't there and
     // only ever says no — so this guard rejected every path, seeded ones
@@ -2620,9 +2620,9 @@ fn read(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> anyhow:
     // directory-shaped path (a prefix other keys extend) holds no key and is
     // still refused here. Same swap as `Document::reload`.
     #[cfg(target_arch = "wasm32")]
-    let is_file = helix_stdx::vfs::exists(&path);
+    let exists = helix_stdx::vfs::exists(&path);
 
-    ensure!(is_file, "path is not a file: {:?}", path);
+    ensure!(exists, "path is not a file: {:?}", path);
 
     #[cfg(not(target_arch = "wasm32"))]
     let file = std::fs::File::open(path).map_err(|err| anyhow!("error opening file: {}", err))?;

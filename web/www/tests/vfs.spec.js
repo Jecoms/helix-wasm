@@ -365,11 +365,11 @@ test(":read refuses a key the vfs does not hold", async ({ page }) => {
   await page.keyboard.press("Enter");
   await expect
     .poll(() => terminalText(page))
-    .toContain("path is not a file: \"/nope.txt\"");
+    .toContain('path is not a file: "/nope.txt"');
   expect(await getText(page)).toBe(before);
 });
 
-test(":read refuses a directory-shaped path, as native refuses a directory", async ({
+test(":read refuses a directory-shaped path, unless a key sits there too", async ({
   page,
 }) => {
   await bootEditor(page);
@@ -384,7 +384,7 @@ test(":read refuses a directory-shaped path, as native refuses a directory", asy
   await page.keyboard.press("Enter");
   await expect
     .poll(() => terminalText(page))
-    .toContain("path is not a file: \"/proj\"");
+    .toContain('path is not a file: "/proj"');
   expect(await getText(page)).toBe(before);
 
   // A key that is *also* a prefix is a file and does read — the store can
