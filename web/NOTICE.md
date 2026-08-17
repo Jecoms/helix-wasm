@@ -12,21 +12,28 @@ vendored in this repository under `stubs/tree-house-bindings/vendor/` and
 compiled by that crate's `build.rs`. Their notices are in
 "[tree-sitter runtime](#tree-sitter-runtime)" below.
 
-It further embeds three kinds of helix's own runtime files, read straight
-out of the in-tree port at `../helix/runtime/` (MPL-2.0, like helix itself;
-see the repository's top-level `LICENSE`) rather than copied into this
-crate:
+It further embeds three kinds of runtime files from the in-tree helix port at
+`../helix/runtime/`, read where they lie rather than copied into this crate:
 
 - the tree-sitter query files under `helix/runtime/queries/`, for the
   languages the grammar catalog selects — see `queries/README.md`;
 - the theme files under `helix/runtime/themes/`, for the curated set in
-  `build.rs`'s `THEMES` catalog — see `themes/README.md`;
+  `build.rs`'s `THEME_CATALOG` — see `themes/README.md`;
 - the tutor text at `helix/runtime/tutor` — see `runtime/README.md`.
 
+Those are helix's own files and MPL-2.0 like helix itself (see the
+repository's top-level `LICENSE`) — with one exception: upstream carries
+per-theme licenses in `helix/runtime/themes/licenses/` for themes
+contributed under other terms, and one of the embedded themes has an entry
+there. It is in "[Themes](#themes)" below.
+
 When bumping a grammar pin, re-check its `LICENSE` and update the matching
-entry here. The same applies when re-vendoring `stubs/tree-house-bindings`
-(its `Cargo.toml` header carries the refresh recipe): re-check
-`vendor/LICENSE` and `vendor/src/unicode/LICENSE` against the section below.
+entry here. When adding a theme to `THEME_CATALOG`, check
+`helix/runtime/themes/licenses/` for a file matching its name and add a row
+below if there is one. The same applies when re-vendoring
+`stubs/tree-house-bindings` (its `Cargo.toml` header carries the refresh
+recipe): re-check `vendor/LICENSE` and `vendor/src/unicode/LICENSE` against
+the section below.
 
 ## Grammars
 
@@ -40,6 +47,20 @@ entry here. The same applies when re-vendoring `stubs/tree-house-bindings`
 | regex | <https://github.com/tree-sitter/tree-sitter-regex> | `e1cfca3c79896ff79842f057ea13e529b66af636` | Copyright (c) 2014 Max Brunsfeld |
 | rust | <https://github.com/tree-sitter/tree-sitter-rust> | `1f63b33efee17e833e0ea29266dd3d713e27e321` | Copyright (c) 2017 Maxim Sokolov |
 | toml | <https://github.com/ikatyang/tree-sitter-toml> | `7cff70bbcbbc62001b465603ca1ea88edd668704` | Copyright (c) Ika \<ikatyang@gmail.com\> (<https://github.com/ikatyang>) |
+
+## Themes
+
+The themes in `build.rs`'s `THEME_CATALOG` are helix's own files under
+`helix/runtime/themes/`, MPL-2.0 like helix itself, except where upstream
+records other terms in `helix/runtime/themes/licenses/`. One embedded theme
+has such an entry:
+
+| Theme | Upstream license file | License |
+| --- | --- | --- |
+| `everforest_dark.toml` | `helix/runtime/themes/licenses/everforest.LICENSE` | MIT — Copyright (c) 2019 sainnhe |
+
+The MIT text is the one reproduced at the end of this file; the verbatim
+file is at the path above.
 
 ## tree-sitter runtime
 

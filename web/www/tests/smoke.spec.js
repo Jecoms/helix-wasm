@@ -242,7 +242,7 @@ test(":theme lists a bundled theme and applying it recolors the screen", async (
   await bootEditor(page);
 
   // The prompt's completion menu lists the runtime themes directory, which
-  // startup seeds with the bundled set (`THEMES` in web/build.rs).
+  // startup seeds with the bundled set (`THEME_CATALOG` in web/build.rs).
   await page.keyboard.type(":theme ");
   await expect.poll(() => terminalText(page)).toContain("gruvbox");
 

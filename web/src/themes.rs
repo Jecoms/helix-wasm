@@ -2,7 +2,7 @@
 //! script embedded and the virtual file system helix's wasm32 theme loader
 //! reads. The files are helix's own, read from the in-tree port's
 //! `helix/runtime/themes/`; build.rs turns the curated selection (its
-//! `THEMES` catalog, see `../themes/README.md`) into the `THEMES` table
+//! `THEME_CATALOG`, see `../themes/README.md`) into the `THEMES` table
 //! included here.
 
 include!(concat!(env!("OUT_DIR"), "/theme_seed.rs"));

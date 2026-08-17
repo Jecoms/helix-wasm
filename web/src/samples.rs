@@ -1,6 +1,6 @@
 //! The sample files seeded into the virtual file system at boot.
 //!
-//! Without them the vfs holds nothing but the vendored runtime files, all
+//! Without them the vfs holds nothing but the seeded runtime files, all
 //! under a dotted config path (`.config/helix/runtime/...`): the `space f`
 //! file picker opens on a list with nothing a reader would sensibly select,
 //! so the tutorial's 13.7 exercise — pick a file, open it in a split — has
