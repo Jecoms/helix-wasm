@@ -119,13 +119,12 @@ above). What that changes:
 
 - **Nothing survives a page reload.** Pull anything you care about out
   through `helixVfs.read` / `helixVfs.list` first.
-- **`:w` will not clobber an outside write, but nothing is read-only.**
+- **`:w` will not clobber an outside write, and nothing is read-only.**
   Store entries carry a modification time, so helix's "file modified by an
   external process" guard works: a `:w` over a key that a `helixVfs.write`
-  changed since the buffer last saved is refused, and `:w!` overrides it
-  exactly as it does natively. File permissions are the part that has no
-  counterpart here — nothing is ever read-only, so a save is never denied
-  for that reason.
+  changed since the buffer was opened or last saved is refused, and `:w!`
+  overrides it exactly as it does natively. File permissions have no
+  counterpart here, so nothing is ever read-only.
 - **There are no directories**, only keys with separators in them. `:o
   /some/dir` opens an ordinary empty buffer named `/some/dir`, and `:move
   /some/dir` renames the file *to* that key instead of moving it into the

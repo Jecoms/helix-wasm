@@ -258,6 +258,29 @@ test(":w straight after opening a seeded file is not an external change (issue #
   expect(await terminalText(page)).not.toContain("external process");
 });
 
+test(":w onto a boot-seeded sample from the boot buffer is allowed (issue #76)", async ({
+  page,
+}) => {
+  await bootEditor(page);
+
+  // Boot order is load-bearing now and nothing else would catch it changing:
+  // `session.rs` seeds the themes, the tutor and `samples::seed()` before
+  // `Application::new`, so the boot buffer's last-saved time is taken after
+  // every seed's stamp and this save is not an external modification. Seed
+  // below the boot instead and the demo's first `:w` — the flow the seeded
+  // `/welcome.txt` invites — would start refusing.
+  await page.keyboard.press("i");
+  await page.keyboard.type("scratch content");
+  await page.keyboard.press("Escape");
+  await page.keyboard.type(":w /example.rs");
+  await page.keyboard.press("Enter");
+
+  await expect
+    .poll(() => vfsRead(page, "/example.rs"))
+    .toContain("scratch content");
+  expect(await terminalText(page)).not.toContain("external process");
+});
+
 // A directory in the store is a prefix its keys share, not an entry of its
 // own — so these seed keys and then ask the editor what it can see under
 // them.

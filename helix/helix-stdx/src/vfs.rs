@@ -50,16 +50,18 @@ fn now() -> SystemTime {
             .unwrap_or_default()
 }
 
-/// The modification time to stamp a write with, given the entry's `previous`
-/// one where it had one.
+/// The modification time to stamp a write with, given the clock reading
+/// `now` and the entry's `previous` time where it had one.
 ///
 /// Strictly after `previous`, which the clock alone does not guarantee:
 /// `web-time` reads `Date.now()` on wasm32, so it only advances every
 /// millisecond. Two writes inside one tick would otherwise share a stamp,
 /// and a file saved and then rewritten underneath would look untouched to
 /// the guard that compares them.
-fn stamp(previous: Option<SystemTime>) -> SystemTime {
-    let now = now();
+///
+/// Takes the reading rather than calling [`now`] so that [`store`] can read
+/// the clock outside the lock, and so this is testable without one.
+fn stamp(now: SystemTime, previous: Option<SystemTime>) -> SystemTime {
     match previous {
         Some(previous) if previous >= now => previous + Duration::from_nanos(1),
         _ => now,
@@ -69,8 +71,10 @@ fn stamp(previous: Option<SystemTime>) -> SystemTime {
 /// Stores `contents` under the already-validated `key`, stamped with the
 /// time of the write.
 fn store(key: PathBuf, contents: Vec<u8>) {
+    // Read before taking the lock: on wasm32 this crosses into JS.
+    let now = now();
     let mut files = FILES.write().unwrap();
-    let modified = stamp(files.get(&key).map(|entry| entry.modified));
+    let modified = stamp(now, files.get(&key).map(|entry| entry.modified));
     files.insert(key, Entry { contents, modified });
 }
 
@@ -327,12 +331,28 @@ mod tests {
     }
 
     #[test]
-    fn every_write_stamps_a_strictly_later_time() {
+    fn a_stamp_is_strictly_after_the_time_it_replaces() {
+        // The clock alone does not give this, and on the host it hides the
+        // gap: `SystemTime::now()` here has nanosecond resolution, so a test
+        // that only writes twice would pass with the advance removed. On
+        // wasm32 `Date.now()` stands still for a millisecond at a time,
+        // which is the case below where `now` has not moved past `previous`.
+        let now = now();
+        assert_eq!(stamp(now, None), now);
+        assert_eq!(stamp(now, Some(now - Duration::from_secs(1))), now);
+        assert!(stamp(now, Some(now)) > now);
+
+        // And a stamp that is somehow ahead of the clock still advances,
+        // rather than letting a write land on a time already recorded.
+        let ahead = now + Duration::from_secs(1);
+        assert!(stamp(now, Some(ahead)) > ahead);
+    }
+
+    #[test]
+    fn every_write_stamps_a_new_time() {
         write("/vfs-test-mtime/a.txt", "one".as_bytes()).unwrap();
         let first = modified("/vfs-test-mtime/a.txt").unwrap();
 
-        // Strictly later even back to back, which the clock alone does not
-        // give: `Date.now()` on wasm32 stands still for a millisecond.
         write("/vfs-test-mtime/a.txt", "two".as_bytes()).unwrap();
         let second = modified("/vfs-test-mtime/a.txt").unwrap();
         assert!(second > first, "{second:?} should be after {first:?}");
