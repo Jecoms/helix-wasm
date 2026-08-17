@@ -12,6 +12,7 @@
 //! host. Native builds do not carry it.
 
 use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::io::{self, Cursor, Write};
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
@@ -109,6 +110,40 @@ pub fn remove(path: impl AsRef<Path>) -> io::Result<()> {
 /// All file paths, sorted.
 pub fn list() -> Vec<PathBuf> {
     FILES.read().unwrap().keys().cloned().collect()
+}
+
+/// The immediate children of the directory at `path`, sorted by name, as
+/// `(name, is_dir)` pairs.
+///
+/// The store is a flat key namespace, so a directory is never an entry of
+/// its own here: it is any path that some key extends. A child is therefore
+/// a file when a key ends at it and a directory when keys continue past it,
+/// and a name that is both — a key that is also the prefix of another key,
+/// e.g. `/dir` beside `/dir/inner` — is reported as a directory, that being
+/// the only one of the two a caller can descend into. A real file system
+/// cannot produce that case; this one can, because a key with separators in
+/// it is just a name.
+///
+/// A `path` no key lives under has no children, which is also all an empty
+/// directory would have: the two are indistinguishable, and neither is an
+/// error.
+pub fn read_dir(path: impl AsRef<Path>) -> Vec<(OsString, bool)> {
+    let dir = normalize(path);
+    let mut entries: BTreeMap<OsString, bool> = BTreeMap::new();
+    for key in FILES.read().unwrap().keys() {
+        let Ok(rest) = key.strip_prefix(&dir) else {
+            continue;
+        };
+        let mut components = rest.components();
+        let Some(name) = components.next() else {
+            continue; // `key` is the directory itself.
+        };
+        // `|=`, so a name that is both a key and a prefix stays a directory.
+        *entries
+            .entry(name.as_os_str().to_os_string())
+            .or_insert(false) |= components.next().is_some();
+    }
+    entries.into_iter().collect()
 }
 
 /// An `std::io::Write` that stages everything written to it in memory and
@@ -280,5 +315,45 @@ mod tests {
         remove("/vfs-test-list/a.txt").unwrap();
         assert!(!exists("/vfs-test-list/a.txt"));
         assert!(exists("/vfs-test-list/b.txt"));
+    }
+
+    #[test]
+    fn read_dir_lists_immediate_children_only() {
+        write("/vfs-test-readdir/a.txt", "a".as_bytes()).unwrap();
+        write("/vfs-test-readdir/sub/b.txt", "b".as_bytes()).unwrap();
+        write("/vfs-test-readdir/sub/deeper/c.txt", "c".as_bytes()).unwrap();
+
+        // `sub` is a directory because keys continue past it, and `deeper`
+        // does not surface until you descend.
+        assert_eq!(
+            read_dir("/vfs-test-readdir"),
+            vec![("a.txt".into(), false), ("sub".into(), true)]
+        );
+        assert_eq!(
+            read_dir("/vfs-test-readdir/sub"),
+            vec![("b.txt".into(), false), ("deeper".into(), true)]
+        );
+        assert_eq!(
+            read_dir("/vfs-test-readdir/sub/deeper"),
+            vec![("c.txt".into(), false)]
+        );
+    }
+
+    #[test]
+    fn read_dir_of_a_path_no_key_lives_under_is_empty() {
+        write("/vfs-test-readdir-empty/a.txt", "a".as_bytes()).unwrap();
+        assert!(read_dir("/vfs-test-readdir-empty/nope").is_empty());
+        // Not a prefix match: `/vfs-test-readdir-e` is a different directory.
+        assert!(read_dir("/vfs-test-readdir-e").is_empty());
+    }
+
+    #[test]
+    fn read_dir_reports_a_key_that_is_also_a_prefix_as_a_directory() {
+        write("/vfs-test-readdir-both/dir", "file".as_bytes()).unwrap();
+        write("/vfs-test-readdir-both/dir/inner.txt", "i".as_bytes()).unwrap();
+        assert_eq!(
+            read_dir("/vfs-test-readdir-both"),
+            vec![("dir".into(), true)]
+        );
     }
 }

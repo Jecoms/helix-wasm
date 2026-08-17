@@ -1233,7 +1233,19 @@ fn show_current_directory(
     let cwd = helix_stdx::env::current_working_dir();
     let message = format!("Current working directory is {}", cwd.display());
 
-    if cwd.exists() {
+    #[cfg(not(target_arch = "wasm32"))]
+    let exists = cwd.exists();
+    // The wasm32 working directory is a path the editor holds, not a
+    // directory the virtual file system could remove underneath it — it has
+    // no directory entries at all, only keys (see
+    // `helix_stdx::vfs::read_dir`), so nothing can delete one. `Path::exists`
+    // reaches for a file system that isn't there and only ever says no, which
+    // turns every `:pwd` into an error. Same call as the `!root.exists()`
+    // guard on `file_picker` in `commands.rs`.
+    #[cfg(target_arch = "wasm32")]
+    let exists = true;
+
+    if exists {
         cx.editor.set_status(message);
     } else {
         cx.editor.set_error(format!("{} (deleted)", message));
