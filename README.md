@@ -370,8 +370,9 @@ tar xzf helix-web-0.1.0.tar.gz    # extracts helix-web-0.1.0/
 ```
 
 The extracted directory is a standard wasm-pack `--target web` package (ES
-module + `.wasm` + `.d.ts`, plus `NOTICE.md` with the license notices for
-the statically linked grammar parsers). Consume it the way the demo's
+module + `.wasm` + `.d.ts`, plus the MPL-2.0 `LICENSE` the bundle is under
+and `NOTICE.md` with the license notices for the statically linked grammar
+parsers). Consume it the way the demo's
 `web/www/package.json` does:
 
 ```json
@@ -606,6 +607,20 @@ versioned branch.
 - [makemeunsee/helix](https://github.com/makemeunsee/helix), branch `wasm32` —
   the browser port this one grew out of.
 
-The port keeps upstream's MPL-2.0 (`helix/LICENSE`). The tree-sitter parsers
-and runtime the wasm bundle statically links carry their own notices, in
-`web/NOTICE.md`.
+The port keeps upstream's MPL-2.0, and the text is at the root in
+[`LICENSE`](LICENSE) — the unmodified license, byte-identical to the copy
+helix ships as `helix/LICENSE`. It covers helix's files here (modified
+MPL-2.0 source, which stays MPL-2.0) and this port's own code alike.
+
+It is not a claim over everything in the tree, though: MPL-2.0 is file-level
+copyleft, so each vendored dependency under `stubs/` keeps the license it
+arrived with, in its own license file beside the code — `crossterm` MIT, `url`
+MIT OR Apache-2.0, `nucleo` and `tree-house-bindings` MPL-2.0, the last of
+those also carrying MIT tree-sitter C and Unicode-licensed ICU headers.
+Copyright stays with the respective authors: helix's files with the helix
+contributors, this port's with its own. The grammars, the tree-sitter runtime
+and the helix runtime files the wasm bundle ships carry their own notices, in
+`web/NOTICE.md`. That file travels with what is distributed — into the release
+tarball beside a copy of this `LICENSE`, and onto the deployed demo as
+`NOTICE.txt` — so it opens by naming both this license and where the source
+form lives.
