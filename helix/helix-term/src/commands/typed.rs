@@ -667,7 +667,10 @@ fn download_all_impl(
     event: PromptEvent,
     force: bool,
 ) -> anyhow::Result<()> {
-    use helix_stdx::{archive::Zip, vfs};
+    use helix_stdx::{
+        archive::{self, Zip},
+        vfs,
+    };
 
     if event != PromptEvent::Validate {
         return Ok(());
@@ -681,8 +684,12 @@ fn download_all_impl(
             .map(|doc| doc.display_name().into_owned())
             .collect();
         if !unsaved.is_empty() {
+            // `:w <path>` spelled out because the list can name a scratch
+            // buffer, and a bare `:w` on one fails ("cannot save with no
+            // path set") — helix boots on a scratch buffer, so that is a
+            // common way into this message rather than a corner of it.
             bail!(
-                "Unsaved buffers ({}): :w first, or :download-all! for the store as it stands",
+                "Unsaved buffers ({}): :w (:w <path> for a scratch buffer), or :download-all! for the store as it stands",
                 unsaved.join(", ")
             );
         }
@@ -693,6 +700,18 @@ fn download_all_impl(
     // the export worked. Nothing having been written is worth saying.
     if paths.is_empty() {
         bail!("Nothing to export: this session has not saved a file");
+    }
+    // The end-of-central-directory record counts entries in a `u16`, and
+    // the zip64 records that lift that are ones `helix_stdx::archive` does
+    // not write. Past the limit it would build an archive that reads as
+    // truncated; a store with 65 536 keys in it is far-fetched, but a
+    // refusal is the difference between "cannot" and a corrupt download.
+    if paths.len() > archive::MAX_ENTRIES {
+        bail!(
+            "Too many files to archive ({}, limit {})",
+            paths.len(),
+            archive::MAX_ENTRIES
+        );
     }
 
     let mut zip = Zip::new();

@@ -22,6 +22,14 @@
 //! so a file or an archive large enough to need the 64-bit records cannot
 //! be assembled in the first place.
 //!
+//! That argument covers the sizes but not the **entry count**, which the
+//! end record holds in a `u16`: 65 536 empty files are a few MiB, well
+//! inside the memory bound, and without zip64 there is no encoding for
+//! them. So [`MAX_ENTRIES`] is a real limit rather than a theoretical one,
+//! and it belongs to the caller — [`Zip::add`] past it would write an end
+//! record whose count disagrees with the directory behind it, which reads
+//! as a truncated archive rather than as a failure.
+//!
 //! Gated to wasm32 and `test` exactly as [`crate::vfs`] and
 //! [`crate::download`] are: only wasm32 code paths have anything to pack,
 //! and the `test` arm is there so the unit tests below run on the host.
@@ -48,6 +56,12 @@ const STORED: u16 = 0;
 /// is visibly the edge of what the container holds.
 const DOS_YEAR_MIN: u64 = 1980;
 const DOS_YEAR_MAX: u64 = 2107;
+
+/// The most entries an archive can hold: the end-of-central-directory
+/// record counts them in a `u16`, and the 64-bit records that lift the
+/// limit are the zip64 ones this module does not write. Callers check
+/// against this before building — see the module docs.
+pub const MAX_ENTRIES: usize = u16::MAX as usize;
 
 /// A zip archive under construction.
 ///
@@ -88,7 +102,16 @@ impl Zip {
     /// Names are not deduplicated. Two entries under one name make an
     /// archive whose extractors disagree with each other, so callers pass
     /// keys from a set — the virtual file system's, in this tree.
+    ///
+    /// At most [`MAX_ENTRIES`] of them; a caller that adds more gets an
+    /// archive whose end record undercounts its own directory. Debug builds
+    /// catch that, release builds cannot, and the check that matters is the
+    /// caller's own — see the module docs.
     pub fn add(&mut self, name: &str, contents: &[u8], modified: SystemTime) {
+        debug_assert!(
+            (self.entries as usize) < MAX_ENTRIES,
+            "a zip without zip64 holds at most {MAX_ENTRIES} entries"
+        );
         let (time, date) = dos_timestamp(modified);
         let crc = crc32(contents);
         let offset = self.out.len() as u32;
@@ -197,12 +220,21 @@ fn dos_timestamp(time: SystemTime) -> (u16, u16) {
         .unwrap_or_default()
         .as_secs();
     let (year, month, day) = civil_from_days(secs / 86_400);
-    // Clamped, not wrapped: see DOS_YEAR_MIN/MAX. Below the floor the date
-    // becomes 1980-01-01, which is the zero of this field's calendar.
+    // Clamped to the ends of the range, not wrapped (see DOS_YEAR_MIN/MAX):
+    // a time outside it becomes the first or last instant the fields can
+    // express, rather than a plausible-looking date in some other century.
+    // Both ends collapse the whole stamp, not just its year, so that a
+    // clamped time reads as an edge in every field.
     if year < DOS_YEAR_MIN {
-        return (0, 1 << 5 | 1);
+        return (0, 1 << 5 | 1); // 1980-01-01 00:00:00
     }
-    let year = year.min(DOS_YEAR_MAX);
+    if year > DOS_YEAR_MAX {
+        // 2107-12-31 23:59:58 — the seconds field steps by two.
+        return (
+            (23 << 11) | (59 << 5) | 29,
+            (((DOS_YEAR_MAX - DOS_YEAR_MIN) << 9) | (12 << 5) | 31) as u16,
+        );
+    }
     let seconds_of_day = secs % 86_400;
     let time = (seconds_of_day / 3600) << 11
         | (seconds_of_day % 3600 / 60) << 5
@@ -309,10 +341,20 @@ mod tests {
     #[test]
     fn dos_timestamps_clamp_to_the_range_the_field_holds() {
         // The unix epoch predates the DOS one by a decade; it becomes the
-        // floor rather than wrapping to some year in the 2000s.
+        // floor rather than wrapping to some year in the 2000s. Both ends
+        // clamp the whole stamp, so neither keeps a month, day or time from
+        // the date it could not express.
         assert_eq!(dos_timestamp(UNIX_EPOCH), (0, (1 << 5) | 1));
-        let (_, date) = dos_timestamp(at(2200, 6, 3, 0, 0, 0));
-        assert_eq!(date >> 9, (2107 - 1980));
+        assert_eq!(
+            dos_timestamp(at(2200, 6, 3, 4, 5, 6)),
+            (
+                (23 << 11) | (59 << 5) | 29,
+                ((2107 - 1980) << 9) | (12 << 5) | 31
+            )
+        );
+        // And a stamp just inside the ceiling is left alone.
+        let (_, date) = dos_timestamp(at(2107, 6, 3, 0, 0, 0));
+        assert_eq!(date, ((2107 - 1980) << 9) | (6 << 5) | 3);
     }
 
     #[test]

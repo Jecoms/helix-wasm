@@ -218,7 +218,8 @@ pub fn list() -> Vec<PathBuf> {
 /// host calls it once, at the end of boot.
 pub fn mark_seeded() {
     // Two locks, never held together and always in this order, so this
-    // cannot deadlock against anything else here.
+    // cannot deadlock against anything else here. Not atomic across the
+    // two, either — see [`written`] for why that is nobody's problem.
     let keys: Vec<PathBuf> = FILES.read().unwrap().keys().cloned().collect();
     SEEDED.write().unwrap().extend(keys);
 }
@@ -229,6 +230,14 @@ pub fn mark_seeded() {
 /// With no host having called [`mark_seeded`] this is [`list`] — nothing
 /// has been declared the host's, so everything in the store got there by
 /// being written.
+///
+/// The two locks are taken one after the other rather than together, so
+/// this is not a single atomic observation of both. Nothing needs it to be:
+/// wasm32 is the only target that consults this module and it is
+/// single-threaded, and the `test` arm's parallel harness gives each test
+/// its own key prefix precisely because the store is shared. A key written
+/// between the two reads is reported by whichever half saw it, which is a
+/// consistent answer for *some* instant either way.
 pub fn written() -> Vec<PathBuf> {
     let keys = list();
     let seeded = SEEDED.read().unwrap();
