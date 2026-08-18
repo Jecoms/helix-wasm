@@ -1,6 +1,10 @@
 //! Extensions to the standard library. A collection of helper functions
 //! used throughout helix.
 
+// Packing several files into one so a wasm32 host can save them in one
+// download; gated like `vfs` below, and for the same reasons.
+#[cfg(any(target_arch = "wasm32", test))]
+pub mod archive;
 // The seam a wasm32 host saves a file through; gated like `vfs` below, and
 // for the same reasons.
 #[cfg(any(target_arch = "wasm32", test))]

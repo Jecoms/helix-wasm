@@ -601,6 +601,155 @@ fn download(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> any
     Ok(())
 }
 
+/// The name a whole-store export lands under when the command is given
+/// none. Not the reader's session in any identifying sense — the store has
+/// no name — just something that says what the archive is when it turns up
+/// among their downloads.
+#[cfg(target_arch = "wasm32")]
+const SESSION_ARCHIVE: &str = "helix-session.zip";
+
+/// Hands the whole virtual file system to the host as one zip — the
+/// browser-only counterpart of `:download`, for the case that command
+/// cannot serve: several buffers, one tab, and a reader who wants all of it
+/// rather than the file they happen to be looking at.
+///
+/// A zip because a download is one file and this is many, and because it is
+/// the only container the reader can open with nothing installed (see
+/// `helix_stdx::archive`, which also explains why the entries are stored
+/// rather than compressed).
+///
+/// **What goes in.** What the *session* wrote, which is not the same as
+/// what the store holds: boot seeds the bundled themes, the tutorial text,
+/// the sample files and any `config.toml` the page supplied, and an archive
+/// of those is an archive of the page, not of anyone's work. The store
+/// draws that line for itself (`vfs::written`) rather than this command
+/// guessing at prefixes.
+///
+/// **A seeded file stays out even after you edit it.** The mark is on the
+/// key and it is permanent (`vfs::mark_seeded`), so editing a bundled theme
+/// or `welcome.txt` and saving it does *not* put it in the archive. The
+/// trade is deliberate — the alternative rule floods an export with a
+/// whole copied theme over one changed color — but it is a trap if it goes
+/// unsaid, so it is said here, in the command's own `doc`, and in the
+/// README. `:download` still exports whatever buffer you are looking at,
+/// seeded or not, and a page script can read any key out of the store; save
+/// the file under a new name and it is in the archive like anything else.
+///
+/// **What stays out.** Unsaved buffers. `:download` exports the buffer and
+/// this exports the store, so for a modified buffer the two disagree, and
+/// silently shipping the older copy is the one outcome worth ruling out:
+/// this is the command a reader reaches for when the tab is about to die.
+/// So it refuses and names what is unsaved — `:w` is the fix, and it is a
+/// fix that makes the archive right rather than merely permitted — with
+/// `:download-all!` there for the reader who means "as it stands".
+#[cfg(target_arch = "wasm32")]
+fn download_all(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> anyhow::Result<()> {
+    download_all_impl(cx, args, event, false)
+}
+
+/// `:download-all`, exporting the store as it stands rather than refusing
+/// over unsaved buffers. It still exports the *store*: a modified buffer's
+/// unsaved text is not in the archive, it is simply no longer a reason not
+/// to build one.
+#[cfg(target_arch = "wasm32")]
+fn force_download_all(
+    cx: &mut compositor::Context,
+    args: Args,
+    event: PromptEvent,
+) -> anyhow::Result<()> {
+    download_all_impl(cx, args, event, true)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn download_all_impl(
+    cx: &mut compositor::Context,
+    args: Args,
+    event: PromptEvent,
+    force: bool,
+) -> anyhow::Result<()> {
+    use helix_stdx::{
+        archive::{self, Zip},
+        vfs,
+    };
+
+    if event != PromptEvent::Validate {
+        return Ok(());
+    }
+
+    if !force {
+        let unsaved: Vec<_> = cx
+            .editor
+            .documents()
+            .filter(|doc| doc.is_modified())
+            .map(|doc| doc.display_name().into_owned())
+            .collect();
+        if !unsaved.is_empty() {
+            // `:w <path>` spelled out because the list can name a scratch
+            // buffer, and a bare `:w` on one fails ("cannot save with no
+            // path set") — helix boots on a scratch buffer, so that is a
+            // common way into this message rather than a corner of it.
+            bail!(
+                "Unsaved buffers ({}): :w (:w <path> for a scratch buffer), or :download-all! for the store as it stands",
+                unsaved.join(", ")
+            );
+        }
+    }
+
+    let paths = vfs::written();
+    // An empty archive is a valid one, and handing it over would look like
+    // the export worked. Nothing having been written is worth saying.
+    if paths.is_empty() {
+        bail!("Nothing to export: this session has not saved a file");
+    }
+    // The end-of-central-directory record counts entries in a `u16`, and
+    // the zip64 records that lift that are ones `helix_stdx::archive` does
+    // not write. Past the limit it would build an archive that reads as
+    // truncated; a store with 65 536 keys in it is far-fetched, but a
+    // refusal is the difference between "cannot" and a corrupt download.
+    if paths.len() > archive::MAX_ENTRIES {
+        bail!(
+            "Too many files to archive ({}, limit {})",
+            paths.len(),
+            archive::MAX_ENTRIES
+        );
+    }
+
+    let mut zip = Zip::new();
+    for path in &paths {
+        // Store keys are absolute; archive members are relative, or every
+        // extractor refuses the archive. The keys came from `written()` a
+        // statement ago and wasm32 is single-threaded, so a read cannot
+        // miss — but a lost file would be worse than a smaller archive, so
+        // this reports rather than skipping.
+        let contents = vfs::read(path)
+            .map_err(|err| anyhow!("Could not read {} out of the store: {err}", path.display()))?;
+        let modified = vfs::modified(path).unwrap_or(std::time::UNIX_EPOCH);
+        let name = path.strip_prefix("/").unwrap_or(path);
+        zip.add(&name.to_string_lossy(), &contents, modified);
+    }
+
+    // Same rule as `:download`: the argument names the download and nothing
+    // else, and a download has no directories to land in.
+    let name = match args.first() {
+        Some(arg) => Path::new(arg)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .ok_or_else(|| anyhow!("'{arg}' names no file"))?
+            .to_string(),
+        None => SESSION_ARCHIVE.to_string(),
+    };
+    helix_stdx::download::send(&name, &zip.finish())
+        .map_err(|err| anyhow!("Could not download {name}: {err}"))?;
+
+    let count = paths.len();
+    cx.editor.set_status(format!(
+        "Downloading {name} ({count} file{})",
+        if count == 1 { "" } else { "s" }
+    ));
+
+    Ok(())
+}
+
 fn new_file(cx: &mut compositor::Context, _args: Args, event: PromptEvent) -> anyhow::Result<()> {
     if event != PromptEvent::Validate {
         return Ok(());
@@ -2954,6 +3103,35 @@ pub const TYPABLE_COMMAND_LIST: &[TypableCommand] = &[
         // Deliberately not `:write`'s filename completer: the argument names
         // the download, and completing store keys would advertise a choice
         // of *what* to download that this command does not offer.
+        completer: CommandCompleter::none(),
+        signature: Signature {
+            positionals: (0, Some(1)),
+            ..Signature::DEFAULT
+        },
+    },
+    // Browser-only for the same reason `:download` is, and next to it
+    // because it is the same command scaled up: one file out of the page
+    // versus everything this session wrote.
+    #[cfg(target_arch = "wasm32")]
+    TypableCommand {
+        name: "download-all",
+        aliases: &[],
+        doc: "Save everything this session wrote out of the browser, as a zip — never the bundled themes, tutor and samples, edited or not. Accepts an optional name for it (:download-all work.zip). Refuses while a buffer is unsaved.",
+        fun: download_all,
+        // As with `:download`: the argument names the download, and there
+        // is nothing to complete it against.
+        completer: CommandCompleter::none(),
+        signature: Signature {
+            positionals: (0, Some(1)),
+            ..Signature::DEFAULT
+        },
+    },
+    #[cfg(target_arch = "wasm32")]
+    TypableCommand {
+        name: "download-all!",
+        aliases: &[],
+        doc: "Force save everything this session wrote out of the browser, as a zip, with unsaved buffers left at their last saved state. Accepts an optional name for it (:download-all! work.zip).",
+        fun: force_download_all,
         completer: CommandCompleter::none(),
         signature: Signature {
             positionals: (0, Some(1)),

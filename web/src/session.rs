@@ -171,6 +171,19 @@ pub fn start(
     // selecting (see samples.rs).
     crate::samples::seed();
 
+    // Everything above — the themes, a config the page passed, the tutor
+    // text, the samples — came with the page rather than from the reader,
+    // and `:download-all` exports the reader's work. This draws the line
+    // between the two, once the seeding is done: the store records which
+    // keys were here at this moment and keeps them out of an export
+    // permanently, edits included (see `vfs::mark_seeded` for that trade,
+    // and the README for how a reader gets an edited theme out anyway).
+    // Files an embedder injected with `vfs_write` before this call sit on
+    // the page's side of the line for the same reason — the page has them
+    // already. An embedder that wants an injected file exportable should
+    // inject it after `start` instead.
+    helix_wasm::helix_stdx::vfs::mark_seeded();
+
     // Default args: no files, so helix opens a scratch buffer.
     let mut app = Application::new(Args::default(), config, lang_loader)
         .map_err(|err| JsValue::from_str(&format!("failed to initialize helix: {err}")))?;

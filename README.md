@@ -75,6 +75,16 @@ other download arrives. `:download` alone uses the buffer's own name and
 scratch buffer out. See "Files live in an in-memory VFS" below for what it
 does not do.
 
+`:download-all` is the same door for a whole session
+([#110](https://github.com/Jecoms/helix-wasm/issues/110)): it packs
+everything this session saved into one zip — `helix-session.zip` unless you
+name it, `:download-all work.zip` — and hands that to the page. The archive
+holds the *store*, so it refuses while a buffer is unsaved and names what to
+`:w`; `:download-all!` builds it anyway, with those buffers at their last
+saved state. What boot seeded is never in it, edited or not — see "Files
+live in an in-memory VFS" below, which is the section to read before you
+edit a bundled theme and expect it back.
+
 ## Editor state inspection
 
 The wasm module also exports a read-only inspection surface
@@ -133,8 +143,9 @@ Documents are keys in `helix_stdx::vfs`, not files (see "Virtual file system"
 above). What that changes:
 
 - **Nothing survives a page reload.** Pull anything you care about out
-  first: `:download` saves the current file to your machine, and
-  `helixVfs.read` / `helixVfs.list` hand the store to a page script.
+  first: `:download` saves the current file to your machine,
+  `:download-all` saves the session as a zip, and `helixVfs.read` /
+  `helixVfs.list` hand the store to a page script.
 - **`:download` exports one file, as it stands in the buffer.** Unsaved
   edits included — it is a copy of what you are looking at, not of what the
   store last saw, and it changes neither. That means it also skips the
@@ -143,8 +154,8 @@ above). What that changes:
   it writes UTF-8 whatever `:encoding` says: save a windows-1252 buffer and
   the store gets one byte for `é` where the download gets two. The name
   comes from the argument or the buffer, minus any directories — a download
-  lands wherever your browser puts downloads. There is no whole-store
-  export; a scratch buffer with no name is refused rather than given one.
+  lands wherever your browser puts downloads. A scratch buffer with no name
+  is refused rather than given one.
   Saving is the host page's half (`on_download`, see "Embedding the
   editor"), so a page whose handler throws reports what it threw, and one
   that registers no handler at all gets "Could not download …: this host
@@ -155,6 +166,23 @@ above). What that changes:
   hands it to the browser and never hears back, so a save you cancel in a
   browser that asks is not reported either. Native helix has no such
   command: there, `:w <path>` is this.
+- **`:download-all` exports the store, and only what this session wrote.**
+  It is one zip of every file you have saved, with the store's directories
+  kept as directories inside it; the entries are stored rather than
+  compressed, which no extractor minds. Because it is the *store* it
+  exports, it refuses while any buffer is modified and names them — `:w`
+  them and the archive is right, or run `:download-all!` and accept the last
+  saved copy of each. With nothing saved yet there is nothing to export, and
+  it says so rather than handing over an empty archive.
+  **Files boot seeded are never in it, even after you edit them.** The
+  bundled themes, the `:tutor` text, the sample files and a `config.toml`
+  the page supplied are the page's, not your session's, and the rule is on
+  the key permanently — so `:o` a bundled theme, change a color, `:w`, and
+  that edit is *not* in the archive. (The alternative rule would drag a
+  whole copied theme into every export over one changed color.) To keep such
+  an edit: `:w <new name>` and it is in the archive like anything else, or
+  `:download` it, which always exports the buffer you are looking at, or
+  read the key with `helixVfs.read` from a page script.
 - **`:w` will not clobber an outside write, and nothing is read-only.**
   Store entries carry a modification time, so helix's "file modified by an
   external process" guard works: a `:w` over a key that a `helixVfs.write`
@@ -419,13 +447,19 @@ but a page still forwarding is a page still pretending to have an editor —
 stop on the exit and tell the reader.
 
 `on_download(handler)` is the other callback worth registering: `:download`
-calls it with the file name to save under and a `Uint8Array` of the bytes,
-and the page decides what saving means — a `Blob` and an object URL (what
-`main.js` does, replaceable at `window.helixDownload` for a devtools
-session), a File System Access handle, a POST to a server. Throwing from it
-refuses the save and puts the message on the statusline; registering
-nothing leaves `:download` reporting that this host cannot save files, so
-wire it up or expect readers to have no way out of the page.
+and `:download-all` call it with the file name to save under and a
+`Uint8Array` of the bytes, and the page decides what saving means — a `Blob`
+and an object URL (what `main.js` does, replaceable at
+`window.helixDownload` for a devtools session), a File System Access handle,
+a POST to a server. One handler serves both commands; the archive arrives as
+one more file, so a handler that does not care can stay unaware there are
+two. Throwing from it refuses the save and puts the message on the
+statusline; registering nothing leaves both commands reporting that this
+host cannot save files, so wire it up or expect readers to have no way out
+of the page. If your page seeds files with `vfs_write` *before* `start`,
+note that `:download-all` treats those as the page's rather than the
+reader's and leaves them out — seed after `start` for files a reader should
+get back.
 
 Beyond the terminal loop, the module
 exports the file-injection hooks (`vfs_write` / `vfs_read` / `vfs_list`,
