@@ -61,6 +61,36 @@ jobs:
       - name: Check helix-term for wasm32
         run: cargo check -p helix-term --target wasm32-unknown-unknown --locked
 
+  # web/NOTICE.md ships with both distributed forms (the release tarball and
+  # the deployed page), so its crate table is a published claim about what the
+  # wasm links. The table is generated from the dependency graph, and this job
+  # is what keeps it from drifting: any Cargo.lock change that adds, drops or
+  # bumps a linked crate fails here until the table is regenerated. It also
+  # fails on a license identifier the notice has no disposition for, which is
+  # the case that needs a human — a new dependency may have brought terms
+  # whose text has to be reproduced alongside the artifact.
+  notice-crates:
+    name: check web/NOTICE.md covers the linked crates
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      # No wasm32 target needed: the generator only resolves the graph for it
+      # (`cargo tree --target`), it does not compile anything.
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      # The generator reads each crate's own license files out of the .crate
+      # archives in the registry cache, and `cargo fetch` is what populates it.
+      - name: Fetch the dependency archives
+        run: cargo fetch --locked
+
+      - name: Check the generated crate table
+        run: python3 web/notice-crates.py --check
+
   web-bundle:
     name: build web bundle (wasm-pack + vite)
     runs-on: ubuntu-latest
