@@ -432,8 +432,21 @@ pub struct Syntax {
 
 const PARSE_TIMEOUT: Duration = Duration::from_millis(500); // half a second is pretty generous
 
+// tree-house spends that budget on the parse alone. Once a parse succeeds it
+// walks the finished tree twice more — the injection query and the local query
+// — on query cursors it builds itself, and those carried no deadline at all,
+// so what a syntax update costs was bounded by the size of the tree rather
+// than by the timeout (issue #120). Arming the same budget as a default puts a
+// ceiling on those two walks too. It bounds one walk rather than the whole
+// update, which is the granularity the parse timeout already has: a document
+// with many injection layers spends the budget once per layer either way.
+fn arm_query_timeout() {
+    InactiveQueryCursor::set_default_timeout(PARSE_TIMEOUT);
+}
+
 impl Syntax {
     pub fn new(source: RopeSlice, language: Language, loader: &Loader) -> Result<Self, Error> {
+        arm_query_timeout();
         let inner = tree_house::Syntax::new(source, language, PARSE_TIMEOUT, loader)?;
         Ok(Self { inner })
     }
@@ -449,6 +462,7 @@ impl Syntax {
         if edits.is_empty() {
             Ok(())
         } else {
+            arm_query_timeout();
             self.inner.update(source, PARSE_TIMEOUT, &edits, loader)
         }
     }

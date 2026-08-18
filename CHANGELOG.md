@@ -21,6 +21,19 @@ absolute — the copy in an embedder's extracted tree has no README next to it.
 
 ## [Unreleased]
 
+### Fixed
+
+- **The parse timeout now covers the injection and local queries too.** Helix gives
+  tree-sitter 500 ms to parse a layer; tree-house then walks the finished tree twice more
+  — the injection query and the local query — on query cursors that carried no deadline
+  at all, so how long opening or editing a buffer could freeze the tab for was set by the
+  size of its tree rather than by the timeout. The vendored bindings now arm the same
+  500 ms on every query cursor, so a walk that runs long stops early and the buffer loses
+  some injected highlighting instead of the tab locking up. As with the parse timeout it
+  is a ceiling per walk rather than per keystroke: a document with many injection layers
+  can spend the budget once per layer.
+  ([#120](https://github.com/Jecoms/helix-wasm/issues/120))
+
 ## [0.0.1] — 2026-08-18
 
 First tagged release: [Helix](https://github.com/helix-editor/helix) 25.07.1 compiled to

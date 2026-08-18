@@ -288,13 +288,18 @@ loop either does not happen or happens inline:
   does fire here: the `clock_gettime` shim (`sysroot/shims.c`) reads the
   page's `performance.now()` through the web crate's `clock` module, so
   elapsed time is real and an oversized file drops its highlighting instead
-  of parsing to completion. That budget covers the parse and nothing else:
-  once a parse succeeds, tree-house runs the language's injection and local
-  queries over the finished tree with no deadline at all, so the freeze is
-  bounded by how big the tree is rather than by the timeout — see
-  [#120](https://github.com/Jecoms/helix-wasm/issues/120). Those queries are
-  linear in the size of the tree, which they were not before
-  [#92](https://github.com/Jecoms/helix-wasm/issues/92): a quadratic in
+  of parsing to completion. Upstream that budget covers the parse and nothing
+  else — once a parse succeeds, tree-house walks the finished tree twice more
+  per layer, running the language's injection and local queries on cursors it
+  builds itself and threads no deadline into. Those walks are bounded here
+  too: the vendored bindings arm the same 500 ms on every query cursor, so a
+  walk that runs long stops yielding matches and the buffer loses some
+  injected highlighting rather than the tab locking up — see delta 3 in
+  `stubs/tree-house-bindings/Cargo.toml`. It is a ceiling per walk, not per
+  keystroke, which is the granularity the parse timeout already had: a
+  document with many injection layers can spend the budget once per layer.
+  The queries are also linear in the size of the tree, which they were not
+  before [#92](https://github.com/Jecoms/helix-wasm/issues/92): a quadratic in
   tree-sitter's tree cursor made a 100 kB file of unbalanced delimiters take
   26 s to open in Chromium, where it now takes ~150 ms. The vendored copy
   carries that fix — see delta 2 in `stubs/tree-house-bindings/Cargo.toml`.
@@ -450,7 +455,7 @@ checkout of `main` is the whole build input.
 | --- | --- |
 | `helix/` | The patched Helix source: upstream's `25.07.1` release tree plus this port's patches. Its own cargo workspace — upstream's, left pristine — excluded from the root one and consumed as path dependencies |
 | `Cargo.toml` | Wrapper workspace: the helix crates as path dependencies on `helix/`, plus `[patch.crates-io]` stub swaps |
-| `stubs/` | Stand-ins for third-party dependencies with no wasm32 support: transitive crates (`home`, `which`, `libloading`, and `url` with a wasm cfg), a vendored `crossterm` whose OS terminal layer is replaced by a browser bridge, and a vendored `nucleo` that runs picker matching inline instead of on a threadpool. A vendored `tree-house-bindings` rides here too — not a missing-support stand-in but an ABI fix, without which every syntax-highlighted buffer traps on wasm32, plus a fix for a quadratic in the tree-sitter it vendors that froze the page on malformed input — the only stub shipping third-party C (a vendored tree-sitter; see `web/NOTICE.md`) |
+| `stubs/` | Stand-ins for third-party dependencies with no wasm32 support: transitive crates (`home`, `which`, `libloading`, and `url` with a wasm cfg), a vendored `crossterm` whose OS terminal layer is replaced by a browser bridge, and a vendored `nucleo` that runs picker matching inline instead of on a threadpool. A vendored `tree-house-bindings` rides here too — not a missing-support stand-in but an ABI fix, without which every syntax-highlighted buffer traps on wasm32, plus two fixes for freezing the page on syntax work: a quadratic removed from the tree-sitter it vendors, and a wall-clock budget on query cursors — the only stub shipping third-party C (a vendored tree-sitter; see `web/NOTICE.md`) |
 | `sysroot/` | Stub libc headers, the `wasm-cc` clang shim that lets tree-sitter's stock build script compile its C for wasm32, and the libc shim implementations (`shims.c`, `wctype.c`) the final wasm link needs |
 | `web/` | The browser frontend: a wasm-bindgen cdylib that boots helix-term against the crossterm bridge, plus the xterm.js host page in `web/www/` |
 | `.cargo/config.toml` | Wires `wasm-cc` up as the C compiler for the wasm32 target |
