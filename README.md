@@ -383,9 +383,9 @@ tar xzf helix-web-0.0.1.tar.gz    # extracts helix-web-0.0.1/
 
 The extracted directory is a standard wasm-pack `--target web` package (ES
 module + `.wasm` + `.d.ts`, plus the MPL-2.0 `LICENSE` the bundle is under,
-`NOTICE.md` with the license notices for the statically linked grammar
-parsers, and `CHANGELOG.md` as of that version). Consume it the way the
-demo's `web/www/package.json` does:
+`NOTICE.md` with the license notices for the Rust crates the wasm links and
+the C it statically links, and `CHANGELOG.md` as of that version). Consume it
+the way the demo's `web/www/package.json` does:
 
 ```json
 "dependencies": { "helix-web": "file:../helix-web-0.0.1" }
@@ -637,9 +637,13 @@ arrived with, in its own license file beside the code — `crossterm` MIT, `url`
 MIT OR Apache-2.0, `nucleo` and `tree-house-bindings` MPL-2.0, the last of
 those also carrying MIT tree-sitter C and Unicode-licensed ICU headers.
 Copyright stays with the respective authors: helix's files with the helix
-contributors, this port's with its own. The grammars, the tree-sitter runtime
-and the helix runtime files the wasm bundle ships carry their own notices, in
-`web/NOTICE.md`. That file travels with what is distributed, and this one goes
+contributors, this port's with its own. The crates.io dependency tree the wasm
+links — mostly MIT or Apache-2.0, and far larger than this repository's own
+code — carries its own terms too. The Rust crates, the grammars, the
+tree-sitter runtime and the helix runtime files the wasm bundle ships all have
+their notices in `web/NOTICE.md`, whose crate table is generated from the
+dependency graph by `web/notice-crates.py` and re-checked by the `wasm32 check`
+workflow. That file travels with what is distributed, and this one goes
 with it: into the release tarball as `LICENSE`, and onto the deployed demo as
 `LICENSE.txt` beside `NOTICE.txt`. The notice opens by naming this license and
 the repository the corresponding source form lives in.
