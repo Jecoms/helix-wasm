@@ -21,7 +21,7 @@ absolute — the copy in an embedder's extracted tree has no README next to it.
 
 ## [Unreleased]
 
-## [0.0.1] — 2026-08-17
+## [0.0.1] — 2026-08-18
 
 First tagged release: [Helix](https://github.com/helix-editor/helix) 25.07.1 compiled to
 `wasm32`, running in a browser tab against an xterm.js terminal, with the patch set that
