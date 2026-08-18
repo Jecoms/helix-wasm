@@ -293,11 +293,17 @@ loop either does not happen or happens inline:
   per layer, running the language's injection and local queries on cursors it
   builds itself and threads no deadline into. Those walks are bounded here
   too: the vendored bindings arm the same 500 ms on every query cursor, so a
-  walk that runs long stops yielding matches and the buffer loses some
-  injected highlighting rather than the tab locking up — see delta 3 in
+  walk that runs long stops yielding matches — an injected language goes
+  unhighlighted, or local variables lose the highlight the locals query would
+  have refined for them — rather than the tab locking up. See delta 3 in
   `stubs/tree-house-bindings/Cargo.toml`. It is a ceiling per walk, not per
   keystroke, which is the granularity the parse timeout already had: a
   document with many injection layers can spend the budget once per layer.
+  It is also a ceiling on *every* query cursor, not only the two walks a
+  syntax update makes — highlighting a viewport and matching a textobject run
+  under it too, so an expensive textobject on a huge buffer can come back
+  empty instead of slow. Deliberate: no query cursor is interruptible, and
+  none of them run anywhere but the thread the page is drawn on.
   The queries are also linear in the size of the tree, which they were not
   before [#92](https://github.com/Jecoms/helix-wasm/issues/92): a quadratic in
   tree-sitter's tree cursor made a 100 kB file of unbalanced delimiters take
@@ -471,6 +477,11 @@ cargo check -p helix-core --target wasm32-unknown-unknown
 cargo check -p helix-view --target wasm32-unknown-unknown
 cargo check -p helix-term --target wasm32-unknown-unknown
 ```
+
+CI runs no Rust tests, so the one covering a stub's delta is a local command:
+`cargo test -p tree-house-bindings --lib` exercises the wall-clock budget the
+vendored query cursor arms (delta 3). It builds for the host — the vendored
+tree-sitter C compiles there without the `wasm-cc` shim.
 
 ### Patching helix
 

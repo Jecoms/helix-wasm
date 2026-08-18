@@ -152,6 +152,11 @@ impl InactiveQueryCursor {
     /// because the cursors that most need bounding are built inside
     /// `tree-house`, which threads no timeout down to them. See delta 3 in
     /// this crate's Cargo.toml.
+    ///
+    /// A budget past `u64::MAX` microseconds — roughly 584 000 years —
+    /// saturates there rather than wrapping. `Duration::ZERO` remains the way
+    /// to say unbounded; a very large budget is not a synonym for it, it is a
+    /// deadline that will not be reached.
     pub fn set_default_timeout(timeout: Duration) {
         let micros = u64::try_from(timeout.as_micros()).unwrap_or(u64::MAX);
         DEFAULT_TIMEOUT_MICROS.store(micros, Ordering::Relaxed);
