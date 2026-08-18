@@ -11,7 +11,7 @@
 //! it, and the `test` arm exists solely so the unit tests below run on the
 //! host. Native builds do not carry it.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
 use std::io::{self, Cursor, Write};
 use std::path::{Path, PathBuf};
@@ -25,6 +25,11 @@ struct Entry {
 }
 
 static FILES: RwLock<BTreeMap<PathBuf, Entry>> = RwLock::new(BTreeMap::new());
+
+/// The keys [`mark_seeded`] has declared to belong to the host rather than
+/// to the session. Membership is permanent and independent of [`FILES`]:
+/// see [`mark_seeded`] for why.
+static SEEDED: RwLock<BTreeSet<PathBuf>> = RwLock::new(BTreeSet::new());
 
 fn normalize(path: impl AsRef<Path>) -> PathBuf {
     crate::path::canonicalize(path)
@@ -186,6 +191,48 @@ pub fn remove(path: impl AsRef<Path>) -> io::Result<()> {
 /// All file paths, sorted.
 pub fn list() -> Vec<PathBuf> {
     FILES.read().unwrap().keys().cloned().collect()
+}
+
+/// Marks every key currently stored as the host's rather than the
+/// session's, so [`written`] leaves it out from here on.
+///
+/// A wasm32 host seeds the store before handing it over — bundled themes, a
+/// tutorial text, sample files, a `config.toml` the page supplied — and
+/// none of that is the reader's work: it came with the page and is still on
+/// it. Calling this once the seeding is done is what draws that line.
+/// Anything a host injects before it calls this is on the host's side of
+/// the line for the same reason.
+///
+/// The mark is on the **key**, and it is **permanent**: writing to a marked
+/// key, removing it, or writing it again leaves it marked, so a bundled
+/// theme edited in the editor stays out of [`written`]. That is a
+/// deliberate trade — the alternative rule ("yours once you have saved it")
+/// puts an entire copied theme back in a reader's export the moment they
+/// change one color, and the set boot seeds is large enough that it is
+/// worth being able to say what an export contains without qualification.
+/// A key the mark was never on is unaffected, so saving the same content
+/// under a new name is the way out; a host that wants an edit exportable
+/// should not seed the key it lands on.
+///
+/// Idempotent, and a later call adds whatever is in the store by then; a
+/// host calls it once, at the end of boot.
+pub fn mark_seeded() {
+    // Two locks, never held together and always in this order, so this
+    // cannot deadlock against anything else here.
+    let keys: Vec<PathBuf> = FILES.read().unwrap().keys().cloned().collect();
+    SEEDED.write().unwrap().extend(keys);
+}
+
+/// Every path the session itself wrote, sorted: [`list`] minus every key
+/// [`mark_seeded`] has marked.
+///
+/// With no host having called [`mark_seeded`] this is [`list`] — nothing
+/// has been declared the host's, so everything in the store got there by
+/// being written.
+pub fn written() -> Vec<PathBuf> {
+    let keys = list();
+    let seeded = SEEDED.read().unwrap();
+    keys.into_iter().filter(|key| !seeded.contains(key)).collect()
 }
 
 /// The immediate children of the directory at `path`, sorted by name, as
@@ -447,6 +494,46 @@ mod tests {
         remove("/vfs-test-list/a.txt").unwrap();
         assert!(!exists("/vfs-test-list/a.txt"));
         assert!(exists("/vfs-test-list/b.txt"));
+    }
+
+    #[test]
+    fn written_never_reports_a_seeded_key() {
+        // `mark_seeded` marks the whole store, which is process-wide, so
+        // this is the only test that calls it: a second one would race this
+        // one's mark. Nothing else here reads the mark, so marking their
+        // files as a side effect is harmless.
+        write("/vfs-test-seeded/untouched.txt", "seeded".as_bytes()).unwrap();
+        write("/vfs-test-seeded/edited.txt", "seeded".as_bytes()).unwrap();
+        write("/vfs-test-seeded/removed.txt", "seeded".as_bytes()).unwrap();
+        write("/vfs-test-seeded/moved.txt", "seeded".as_bytes()).unwrap();
+        mark_seeded();
+
+        // The mark is on the key and it is permanent: editing a seeded key,
+        // or removing it and writing it again, leaves it the host's.
+        write("/vfs-test-seeded/edited.txt", "edited".as_bytes()).unwrap();
+        remove("/vfs-test-seeded/removed.txt").unwrap();
+        write("/vfs-test-seeded/removed.txt", "rewritten".as_bytes()).unwrap();
+        // A key the mark was never on is the session's, however it got
+        // there — written fresh, or renamed out from under a seeded key,
+        // which is the way to get a seeded file's contents exported.
+        write("/vfs-test-seeded/mine.txt", "mine".as_bytes()).unwrap();
+        rename("/vfs-test-seeded/moved.txt", "/vfs-test-seeded/renamed.txt").unwrap();
+
+        let dir = normalize("/vfs-test-seeded");
+        let mine: Vec<_> = written()
+            .into_iter()
+            .filter(|path| path.starts_with(&dir))
+            .collect();
+        assert_eq!(
+            mine,
+            vec![
+                normalize("/vfs-test-seeded/mine.txt"),
+                normalize("/vfs-test-seeded/renamed.txt"),
+            ]
+        );
+        // The seeded keys are still files, just not the session's.
+        assert!(exists("/vfs-test-seeded/untouched.txt"));
+        assert!(list().contains(&normalize("/vfs-test-seeded/edited.txt")));
     }
 
     #[test]

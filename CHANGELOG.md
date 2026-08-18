@@ -21,6 +21,25 @@ absolute — the copy in an embedder's extracted tree has no README next to it.
 
 ## [Unreleased]
 
+### Added
+
+- **`:download-all`** — the whole session out of the page as one zip, where `:download`
+  gets one file ([#110](https://github.com/Jecoms/helix-wasm/issues/110)). It packs every
+  file this session saved into `helix-session.zip` (or the name you give it) and hands
+  that to the host page's existing `on_download` handler, so a page that already wired
+  `:download` up gets the new command for free — the archive is just another file to save.
+  Entries are stored rather than deflated and the zip writer is in-tree
+  (`helix_stdx::archive`), so this adds no dependency to the bundle.
+  Two behaviors to know before relying on it. It exports the *store*, so it refuses while
+  any buffer is modified and names what to `:w`, with `:download-all!` for "export it as it
+  stands". And **what boot seeded is never in the archive, edited or not** — the bundled
+  themes, the `:tutor` text, the sample files and a page-supplied `config.toml` belong to
+  the page, and that stays true after you edit one; save such a file under a new name, or
+  `:download` it, to keep the edit. A page that seeds its own files with `vfs_write` before
+  `start` puts them on the same side of that line. The README's
+  [Files live in an in-memory VFS](https://github.com/Jecoms/helix-wasm/blob/main/README.md#files-live-in-an-in-memory-vfs)
+  is the full statement of both.
+
 ### Fixed
 
 - **The parse timeout now covers the injection and local queries too.** Helix gives
