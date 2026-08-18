@@ -1,0 +1,51 @@
+name: Prune the Actions cache
+
+# The 10 GB Actions cache is one pool for the whole repo and `Swatinem/rust-cache`
+# only ever adds to it — a new key per dependency-graph hash, with the previous key
+# left in place. Without a sweep the pool sits at its limit and evicts LRU, which
+# throws out live entries belonging to quiet branches while dead ones stay.
+# `.github/scripts/prune-caches.sh` holds the rules and the reasoning for them.
+#
+# Daily, because the cost of a stale entry is bounded (GitHub drops anything untouched
+# for 7 days) but the cost of a full pool is paid by every run in the meantime.
+
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      dry-run:
+        description: "List what would be pruned without deleting it"
+        type: boolean
+        default: false
+
+# Deleting a cache entry needs `actions: write`, which this repo does not grant by
+# default. Listing open pull requests for the closed-PR rule needs `pull-requests: read`.
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+# Two sweeps at once would race on the same entries and log spurious delete failures.
+concurrency:
+  group: cache-prune
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    name: prune superseded and closed-PR cache entries
+    runs-on: ubuntu-latest
+    steps:
+      # Only the script is needed, but it lives in the repo so that the rules are
+      # reviewable as code and runnable by hand against a `GH_REPO`.
+      - name: Checkout sources
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+
+      - name: Prune
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: .github/scripts/prune-caches.sh
