@@ -1,7 +1,7 @@
 {
   "name": "helix-web-demo",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "Host page for the helix wasm port (alpha)",
   "type": "module",
   "scripts": {

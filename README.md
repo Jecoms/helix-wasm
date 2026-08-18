@@ -377,18 +377,18 @@ instead of linking into the deployed demo, whose asset names are
 content-hashed and replaced on every push to `main`:
 
 ```sh
-curl -LO https://github.com/Jecoms/helix-wasm/releases/download/web-v0.1.0/helix-web-0.1.0.tar.gz
-tar xzf helix-web-0.1.0.tar.gz    # extracts helix-web-0.1.0/
+curl -LO https://github.com/Jecoms/helix-wasm/releases/download/web-v0.0.1/helix-web-0.0.1.tar.gz
+tar xzf helix-web-0.0.1.tar.gz    # extracts helix-web-0.0.1/
 ```
 
 The extracted directory is a standard wasm-pack `--target web` package (ES
-module + `.wasm` + `.d.ts`, plus the MPL-2.0 `LICENSE` the bundle is under and
+module + `.wasm` + `.d.ts`, plus the MPL-2.0 `LICENSE` the bundle is under,
 `NOTICE.md` with the license notices for the Rust crates the wasm links and
-the C it statically links). Consume it the way the demo's
-`web/www/package.json` does:
+the C it statically links, and `CHANGELOG.md` as of that version). Consume it
+the way the demo's `web/www/package.json` does:
 
 ```json
-"dependencies": { "helix-web": "file:../helix-web-0.1.0" }
+"dependencies": { "helix-web": "file:../helix-web-0.0.1" }
 ```
 
 `web/www/main.js` is the reference host wiring to replicate: call `init()`
@@ -426,9 +426,11 @@ than scrape the rendered terminal. The JS surface is unstable by design
 read-only inspection surface (`web/src/inspect.rs`,
 [#18](https://github.com/Jecoms/helix-wasm/issues/18)) is meant to be
 kept stable. Either way, pin a tagged tarball and check its `.d.ts` when
-upgrading.
+upgrading — [`CHANGELOG.md`](CHANGELOG.md) is what changed between two of
+them, and its scope note says which changes reach the bundle at all.
 
-To cut a release: bump `version` in `web/Cargo.toml`, merge, then tag that
+To cut a release: bump `version` in `web/Cargo.toml` and turn the changelog's
+`[Unreleased]` section into the new version's entry, merge, then tag that
 commit `web-v<version>` and push the tag. The workflow verifies the tag
 against the crate version, rebuilds the bundle with `--locked`, and
 attaches the tarball to a release on the tag.
@@ -607,13 +609,13 @@ license" says they are byte-identical.
   `git diff upstream/<version> main -- helix/`. Frozen by the
   `upstream-branches-frozen` ruleset (creation only, no bypass actors): a new
   base can be pushed, an existing one can never move or be deleted.
-- `web-v<semver>` (e.g. `web-v0.1.0`) — release tags for the embeddable web
+- `web-v<semver>` (e.g. `web-v0.0.1`) — release tags for the embeddable web
   bundle. Pushing one runs the `Publish web bundle` workflow
   (`.github/workflows/web_release.yml`), which checks the tag against
   `web/Cargo.toml`'s `version`, rebuilds the full-catalog `web/pkg`
   wasm-pack output, and attaches it to a GitHub release as
   `helix-web-<version>.tar.gz` — the artifact "Embedding the editor" above
-  pins.
+  pins, and the thing [`CHANGELOG.md`](CHANGELOG.md) versions.
 
 ## Credits and license
 

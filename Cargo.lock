@@ -695,7 +695,7 @@ dependencies = [
 
 [[package]]
 name = "helix-wasm"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "helix-core",
  "helix-loader",
@@ -706,7 +706,7 @@ dependencies = [
 
 [[package]]
 name = "helix-web"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "cc",
  "console_error_panic_hook",
