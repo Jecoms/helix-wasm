@@ -41,9 +41,13 @@ url = { path = "stubs/url" }
 # The exception: not a wasm32 gap — an ABI fix. This crate builds for wasm32
 # unpatched. The vendored copy declares `ts_query_cursor_set_byte_range` with
 # the C function's `bool` return; without it wasm32 traps with
-# signature_mismatch the moment a query cursor runs. It also carries the only
-# third-party C in stubs/ (a vendored tree-sitter, see web/NOTICE.md). See
-# stubs/tree-house-bindings/Cargo.toml for the exact delta.
+# signature_mismatch the moment a query cursor runs. Two further deltas ride
+# along, both about not freezing the browser's main thread: a quadratic
+# removed from the tree cursor, and a wall-clock budget on query cursors so
+# that the walks helix's parse timeout does not reach are bounded too. It also
+# carries the only third-party C in stubs/ (a vendored tree-sitter, see
+# web/NOTICE.md). See stubs/tree-house-bindings/Cargo.toml for the exact
+# deltas.
 tree-house-bindings = { path = "stubs/tree-house-bindings" }
 
 # helix/ is its own workspace (upstream's, left pristine) and stays excluded

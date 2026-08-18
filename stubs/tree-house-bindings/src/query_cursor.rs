@@ -4,6 +4,8 @@ use std::marker::PhantomData;
 use std::mem;
 use std::ops::Range;
 use std::ptr::{self, NonNull};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
 
 use crate::node::NodeRaw;
 use crate::query::{Capture, Pattern, Query, QueryData};
@@ -14,6 +16,12 @@ enum QueryCursorData {}
 thread_local! {
     static CURSOR_CACHE: UnsafeCell<Vec<InactiveQueryCursor>> = UnsafeCell::new(Vec::with_capacity(8));
 }
+
+/// The budget `InactiveQueryCursor::set_default_timeout` installs, in
+/// microseconds. Zero — the value this crate starts at — leaves every cursor
+/// unbounded, which is upstream's only behavior. See delta 3 in this crate's
+/// Cargo.toml.
+static DEFAULT_TIMEOUT_MICROS: AtomicU64 = AtomicU64::new(0);
 
 /// SAFETY: must not call itself recursively
 unsafe fn with_cache<T>(f: impl FnOnce(&mut Vec<InactiveQueryCursor>) -> T) -> T {
@@ -133,6 +141,27 @@ pub struct InactiveQueryCursor {
 }
 
 impl InactiveQueryCursor {
+    /// Set the wall clock budget a single execution of every query cursor
+    /// built after this call runs under. `Duration::ZERO` — the value this
+    /// crate starts at — means unbounded.
+    ///
+    /// A cursor that exhausts its budget stops yielding matches, so a caller
+    /// iterating it sees a query that ended early rather than one that was
+    /// interrupted; the results it did yield are complete and in order. The
+    /// budget is a process-wide default rather than a per-cursor argument
+    /// because the cursors that most need bounding are built inside
+    /// `tree-house`, which threads no timeout down to them. See delta 3 in
+    /// this crate's Cargo.toml.
+    ///
+    /// A budget past `u64::MAX` microseconds — roughly 584 000 years —
+    /// saturates there rather than wrapping. `Duration::ZERO` remains the way
+    /// to say unbounded; a very large budget is not a synonym for it, it is a
+    /// deadline that will not be reached.
+    pub fn set_default_timeout(timeout: Duration) {
+        let micros = u64::try_from(timeout.as_micros()).unwrap_or(u64::MAX);
+        DEFAULT_TIMEOUT_MICROS.store(micros, Ordering::Relaxed);
+    }
+
     #[must_use]
     pub fn new(range: Range<u32>, limit: u32) -> Self {
         let mut this = unsafe {
@@ -144,7 +173,16 @@ impl InactiveQueryCursor {
         };
         this.set_byte_range(range);
         this.set_match_limit(limit);
+        // Cursors come out of a reuse pool, so this has to be re-armed per
+        // handout rather than once at allocation.
+        this.set_timeout_micros(DEFAULT_TIMEOUT_MICROS.load(Ordering::Relaxed));
         this
+    }
+
+    fn set_timeout_micros(&mut self, micros: u64) {
+        unsafe {
+            ts_query_cursor_set_timeout_micros(self.ptr.as_ptr(), micros);
+        }
     }
 
     /// Return the maximum number of in-progress matches for this cursor.
@@ -356,4 +394,46 @@ extern "C" {
         end_byte: u32,
     ) -> bool;
 
+    /// Set the wall clock budget one execution of this cursor may spend, in
+    /// microseconds; zero disables it. The deadline is armed from `clock_now()`
+    /// when the query is executed and sampled once per 100 cursor operations
+    /// (`vendor/src/query.c`), so it uses the same clock as the parser's own
+    /// timeout — which on wasm32 is the `clock_gettime` shim over the page's
+    /// `performance.now()`.
+    ///
+    /// Deprecated upstream in favor of the progress callback that
+    /// `ts_query_cursor_exec_with_options` takes, and slated for removal in
+    /// tree-sitter 0.26. See delta 3 in this crate's Cargo.toml.
+    fn ts_query_cursor_set_timeout_micros(self_: *mut QueryCursorData, timeout_micros: u64);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    extern "C" {
+        fn ts_query_cursor_timeout_micros(self_: *const QueryCursorData) -> u64;
+    }
+
+    fn armed_micros(cursor: &InactiveQueryCursor) -> u64 {
+        unsafe { ts_query_cursor_timeout_micros(cursor.ptr.as_ptr()) }
+    }
+
+    /// Delta 3: what the default is set to is what a cursor is armed with,
+    /// including back to unbounded. One test rather than three, because the
+    /// default is process-wide and tests in a binary share a process — split
+    /// these up and they race each other.
+    #[test]
+    fn the_default_timeout_arms_every_cursor_built_after_it_is_set() {
+        assert_eq!(armed_micros(&InactiveQueryCursor::default()), 0);
+
+        InactiveQueryCursor::set_default_timeout(Duration::from_millis(500));
+        assert_eq!(
+            armed_micros(&InactiveQueryCursor::new(0..u32::MAX, 64)),
+            500_000
+        );
+
+        InactiveQueryCursor::set_default_timeout(Duration::ZERO);
+        assert_eq!(armed_micros(&InactiveQueryCursor::default()), 0);
+    }
 }
