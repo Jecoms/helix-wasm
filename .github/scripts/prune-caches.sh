@@ -18,9 +18,10 @@
 #       entry behind it is unreachable by construction. Keep the newest, drop the rest.
 #
 #   (b) Caches owned by a closed pull request. A `refs/pull/N/merge` ref is only ever
-#       built by runs on PR N, so once that PR is not open nothing will read them again.
-#       Restores never cross from one PR ref to another; PR runs fall back to the
-#       default branch's entries, which rule (a) preserves.
+#       built by runs on PR N, and restores never cross from one PR ref to another, so
+#       once that PR is closed nothing is left to read them. Reopening one is the
+#       exception this trades away: its next run cold-compiles off the default branch's
+#       entries, which rule (a) keeps. One slow run against a standing few GB.
 #
 # Deliberately not pruned: keys that are not `rust-cache`'s (the Playwright browser
 # entry is keyed on the resolved browser version rather than a deps hash, so it has no
@@ -37,6 +38,8 @@ repo=${GH_REPO:-${GITHUB_REPOSITORY:?set GH_REPO or GITHUB_REPOSITORY}}
 dry_run=${DRY_RUN:-false}
 summary=${GITHUB_STEP_SUMMARY:-/dev/stdout}
 
+# Decimal GB. GitHub documents the quota as "10 GB" without naming the base, so the two
+# readings are ~7% apart and a pool within that of the limit is at the limit either way.
 gb() { awk -v b="$1" 'BEGIN { printf "%.2f GB", b / 1e9 }'; }
 
 caches=$(gh api --paginate "repos/$repo/actions/caches?per_page=100" \
@@ -72,13 +75,35 @@ failed=0
 if [[ $dry_run != true ]]; then
   while read -r id; do
     [[ -n $id ]] || continue
-    # A cache GitHub evicted between the listing and now 404s; that is the outcome we
-    # wanted anyway, so note it and keep going rather than failing the run.
-    if ! gh api -X DELETE "repos/$repo/actions/caches/$id" --silent 2>/dev/null; then
-      echo "could not delete cache $id (already gone?)" >&2
+    if err=$(gh api -X DELETE "repos/$repo/actions/caches/$id" --silent 2>&1); then
+      continue
+    fi
+    # A cache GitHub evicted between the listing and now 404s, which is the outcome
+    # this run wanted anyway. Anything else — a 403 because the token never got
+    # `actions: write`, say — is a real failure and has to reach the exit code: on a
+    # schedule nobody reads the log, so a run that pruned nothing must not be able to
+    # look like a run that swept the pool clean.
+    if [[ $err == *"HTTP 404"* ]]; then
+      echo "cache $id was already gone" >&2
+    else
+      echo "failed to delete cache $id: $err" >&2
       failed=$((failed + 1))
     fi
   done < <(jq -r '.[].id' <<<"$doomed")
+fi
+
+# Measured, not `before - pruned`: the subtraction restates the intent, while this
+# states the outcome, including deletes that failed and entries a concurrent run added.
+if [[ $dry_run == true ]]; then
+  after_label="after (projected)"
+  after_n=$((before_n - doomed_n))
+  after_b=$((before_b - doomed_b))
+else
+  after_label="after (measured)"
+  after=$(gh api --paginate "repos/$repo/actions/caches?per_page=100" \
+    --jq '.actions_caches[]' | jq -sc .)
+  after_n=$(jq 'length' <<<"$after")
+  after_b=$(jq '[.[].size_in_bytes] | add // 0' <<<"$after")
 fi
 
 {
@@ -92,10 +117,10 @@ fi
   echo "| --- | ---: | ---: |"
   echo "| before | $before_n | $(gb "$before_b") |"
   echo "| pruned | $doomed_n | $(gb "$doomed_b") |"
-  echo "| after | $((before_n - doomed_n)) | $(gb "$((before_b - doomed_b))") |"
+  echo "| $after_label | $after_n | $(gb "$after_b") |"
   echo
   if ((failed > 0)); then
-    echo "$failed entr(ies) could not be deleted; see the step log."
+    echo "**$failed entr(ies) could not be deleted** — see the step log; this run failed."
     echo
   fi
   if ((doomed_n > 0)); then
@@ -110,3 +135,8 @@ fi
     echo "Nothing to prune."
   fi
 } >>"$summary"
+
+# After the summary is written, so a failed run still shows what it did manage.
+if ((failed > 0)); then
+  exit 1
+fi
