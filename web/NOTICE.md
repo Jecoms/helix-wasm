@@ -91,8 +91,8 @@ What the table is and is not:
   crates. Four of the stubs are vendored third-party code and declare their
   upstream license; `stubs/home`, `stubs/libloading` and `stubs/which` are
   from-scratch API-compatible shims written for this port, containing no
-  upstream code, and are marked `MPL-2.0 (repository)` — their manifests
-  declare no license and the repository's `LICENSE` governs.
+  upstream code, and declare the `MPL-2.0` of the repository's own `LICENSE`,
+  which is what governs them.
 
 One row is worth calling out because it is easy to assume otherwise:
 `helix-lsp-types` sits inside the `helix/` tree but is **MIT**, not MPL-2.0 —
@@ -159,7 +159,7 @@ it is upstream helix's fork of `lsp-types`, and it keeps that crate's license
 | `helix-view` | 25.7.1 | MPL-2.0 | — | `helix/helix-view` |
 | `helix-wasm` | 0.0.1 | MPL-2.0 | — | repository root |
 | `helix-web` | 0.0.1 | MPL-2.0 | — | `web` |
-| `home` | 0.5.9 | MPL-2.0 (repository) | — | `stubs/home` |
+| `home` | 0.5.9 | MPL-2.0 | — | `stubs/home` |
 | `icu_collections` | 2.3.0 | Unicode-3.0 | Copyright © 2020-2024 Unicode, Inc | [crates.io](https://crates.io/crates/icu_collections/2.3.0) |
 | `icu_locale_core` | 2.3.0 | Unicode-3.0 | Copyright © 2020-2024 Unicode, Inc | [crates.io](https://crates.io/crates/icu_locale_core/2.3.0) |
 | `icu_normalizer` | 2.3.0 | Unicode-3.0 | Copyright © 2020-2024 Unicode, Inc | [crates.io](https://crates.io/crates/icu_normalizer/2.3.0) |
@@ -176,7 +176,7 @@ it is upstream helix's fork of `lsp-types`, and it keeps that crate's license
 | `js-sys` | 0.3.104 | MIT OR Apache-2.0 | Copyright (c) 2014 Alex Crichton | [crates.io](https://crates.io/crates/js-sys/0.3.104) |
 | `kstring` | 2.0.4 | MIT OR Apache-2.0 | Copyright (c) Individual contributors | [crates.io](https://crates.io/crates/kstring/2.0.4) |
 | `libc` | 0.2.189 | MIT OR Apache-2.0 | Copyright (c) The Rust Project Developers | [crates.io](https://crates.io/crates/libc/0.2.189) |
-| `libloading` | 0.8.7 | MPL-2.0 (repository) | — | `stubs/libloading` |
+| `libloading` | 0.8.7 | MPL-2.0 | — | `stubs/libloading` |
 | `litemap` | 0.8.3 | Unicode-3.0 | Copyright © 2020-2024 Unicode, Inc | [crates.io](https://crates.io/crates/litemap/0.8.3) |
 | `lock_api` | 0.4.14 | MIT OR Apache-2.0 | Copyright (c) 2016 The Rust Project Developers | [crates.io](https://crates.io/crates/lock_api/0.4.14) |
 | `log` | 0.4.33 | MIT OR Apache-2.0 | Copyright (c) 2014 The Rust Project Developers | [crates.io](https://crates.io/crates/log/0.4.33) |
@@ -244,7 +244,7 @@ it is upstream helix's fork of `lsp-types`, and it keeps that crate's license
 | `wasm-bindgen-shared` | 0.2.127 | MIT OR Apache-2.0 | Copyright (c) 2014 Alex Crichton | [crates.io](https://crates.io/crates/wasm-bindgen-shared/0.2.127) |
 | `web-sys` | 0.3.104 | MIT OR Apache-2.0 | Copyright (c) 2014 Alex Crichton | [crates.io](https://crates.io/crates/web-sys/0.3.104) |
 | `web-time` | 1.1.0 | MIT OR Apache-2.0 | Copyright (c) 2023 dAxpeDDa | [crates.io](https://crates.io/crates/web-time/1.1.0) |
-| `which` | 8.0.0 | MPL-2.0 (repository) | — | `stubs/which` |
+| `which` | 8.0.0 | MPL-2.0 | — | `stubs/which` |
 | `winnow` | 0.7.15 | MIT | — | [crates.io](https://crates.io/crates/winnow/0.7.15) |
 | `writeable` | 0.6.4 | Unicode-3.0 | Copyright © 2020-2024 Unicode, Inc | [crates.io](https://crates.io/crates/writeable/0.6.4) |
 | `yoke` | 0.8.3 | Unicode-3.0 | Copyright © 2020-2024 Unicode, Inc | [crates.io](https://crates.io/crates/yoke/0.8.3) |

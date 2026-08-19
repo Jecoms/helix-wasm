@@ -2,3 +2,4 @@
 name = "libloading"
 version = "0.8.7"
 edition = "2021"
+license = "MPL-2.0"
