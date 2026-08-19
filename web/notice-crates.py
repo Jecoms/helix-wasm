@@ -40,8 +40,12 @@ License and copyright are read from the package itself, never guessed:
 The path packages under `stubs/` are the interesting ones: four are vendored
 third-party code and declare their upstream license, while `stubs/home`,
 `stubs/libloading` and `stubs/which` are this repository's own from-scratch
-shims — they contain no upstream code and their manifests declare no license,
-so they show as `MPL-2.0 (repository)`.
+shims — they contain no upstream code and declare the repository's `MPL-2.0`.
+
+Every path package therefore declares a license today, and the
+`MPL-2.0 (repository)` rendering below is the fallback for one that does not:
+a new stub added without a `license` field still gets the repository's terms
+rather than a blank cell.
 
 Usage (from anywhere; paths are resolved relative to this file):
 

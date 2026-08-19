@@ -91,8 +91,8 @@ What the table is and is not:
   crates. Four of the stubs are vendored third-party code and declare their
   upstream license; `stubs/home`, `stubs/libloading` and `stubs/which` are
   from-scratch API-compatible shims written for this port, containing no
-  upstream code, and are marked `MPL-2.0 (repository)` — their manifests
-  declare no license and the repository's `LICENSE` governs.
+  upstream code, and declare the `MPL-2.0` of the repository's own `LICENSE`,
+  which is what governs them.
 
 One row is worth calling out because it is easy to assume otherwise:
 `helix-lsp-types` sits inside the `helix/` tree but is **MIT**, not MPL-2.0 —
