@@ -21,6 +21,8 @@ absolute — the copy in an embedder's extracted tree has no README next to it.
 
 ## [Unreleased]
 
+## [0.0.2] — 2026-08-20
+
 ### Added
 
 - **`<space>/` global search** — the search picker that opened and never answered now
@@ -191,9 +193,10 @@ which is the source of truth and goes further than this list:
   `:` prompt is unaffected). No kitty keyboard protocol, no suspend, and only the
   grammars and themes linked into the bundle.
 
-<!-- Both links below resolve once `web-v0.0.1` is pushed; until then they are
-     pending rather than broken. Publishing is a separate, deliberate step —
-     see the README's "Embedding the editor" for the procedure. -->
+<!-- The `0.0.2` links below resolve once `web-v0.0.2` is pushed; until then
+     they are pending rather than broken. Publishing is a separate, deliberate
+     step — see the README's "Embedding the editor" for the procedure. -->
 
-[Unreleased]: https://github.com/Jecoms/helix-wasm/compare/web-v0.0.1...main
+[Unreleased]: https://github.com/Jecoms/helix-wasm/compare/web-v0.0.2...main
+[0.0.2]: https://github.com/Jecoms/helix-wasm/releases/tag/web-v0.0.2
 [0.0.1]: https://github.com/Jecoms/helix-wasm/releases/tag/web-v0.0.1
