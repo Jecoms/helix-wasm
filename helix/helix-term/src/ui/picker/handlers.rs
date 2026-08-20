@@ -178,12 +178,23 @@ impl<T: 'static + Send + Sync, D: 'static + Send + Sync> AsyncHook for DynamicQu
             picker.matcher.restart(false);
             let injector = picker.injector();
             let get_options = (callback)(&query, editor, picker.editor_data.clone(), &injector);
+            #[cfg(not(target_arch = "wasm32"))]
             tokio::spawn(async move {
                 if let Err(err) = get_options.await {
                     log::info!("Dynamic request failed: {err}");
                 }
                 // NOTE: the Drop implementation of Injector will request a redraw when the
                 // injector falls out of scope here, clearing the "running" indicator.
+            });
+            // wasm32 has no runtime to spawn onto; the browser's microtask
+            // queue is where every detached job runs (see
+            // `job::spawn_detached`). The Injector's Drop requests the
+            // redraw here exactly as it does natively.
+            #[cfg(target_arch = "wasm32")]
+            wasm_bindgen_futures::spawn_local(async move {
+                if let Err(err) = get_options.await {
+                    log::info!("Dynamic request failed: {err}");
+                }
             });
         })
     }

@@ -54,8 +54,8 @@ queries and themes the bundle embeds are read out of the in-tree port at
 
 Documents live in an in-memory virtual file system (`helix_stdx::vfs`, part
 of the wasm patch set): `:w /notes.txt` saves there, `:o` (with path
-completion) and the `<space>f` file picker (with preview) read from it, and
-`:reload` picks up outside changes. Nothing survives a page reload, and a few
+completion) and the `<space>f` file picker (with preview) read from it,
+`<space>/` global search greps it, and `:reload` picks up outside changes. Nothing survives a page reload, and a few
 document commands behave differently against it — see "Files live in an
 in-memory VFS" below.
 The wasm module exports `vfs_write` / `vfs_read` / `vfs_list` so an
@@ -128,10 +128,8 @@ One language-server feature is not in that table because it fails some other
 way: completion goes quiet rather than saying anything at all (see "No
 background work").
 
-`<space>/` (global search) opens its picker, but the query handler it needs
-is never spawned, so typing never returns a match. Dynamic grammar loading is
-out as well (`libloading` is stubbed), so the grammar set is whatever was
-linked at build time.
+Dynamic grammar loading is out as well (`libloading` is stubbed), so the
+grammar set is whatever was linked at build time.
 
 There is no command line either: the host page boots the module with default
 arguments, so `hx <file>`, `-c` and `--tutor` have no equivalent. `:tutor`
@@ -231,6 +229,19 @@ above). What that changes:
   Not every seeded file is hidden this way: the sample buffers, and a
   `config.toml` the page booted with, sit outside `/.config/helix/runtime/`
   and are ordinary keys, so `<space>f` offers them like anything you wrote.
+- **`<space>/` (global search) greps the VFS.** Its candidate set is exactly
+  the file picker's (the entry above): the store minus the boot-seeded
+  runtime files, with `hidden` and `max-depth` honored and the rest of the
+  `file-picker.*` options ignored for the same reasons. Open buffers are
+  searched as they stand, so unsaved edits match — what native helix does —
+  and everything else is searched by its last saved bytes. Two things are
+  different, both because there is no runtime to hand the work to: the
+  debounce native helix runs between keystrokes needs a timer wasm32 cannot
+  build, so every keystroke dispatches its search immediately; and the
+  search runs inline on the main thread, like picker matching (see "No
+  background work"), so a store big enough to grep slowly is a page frozen
+  for that long. Regex syntax, smart-case and the picker's preview behave
+  as they do natively.
 - **The file explorer reads the VFS, and filters nothing.** `<space>e` lists
   one prefix at a time, with `../` below the root and no `../` at `/`, and
   descending into a row re-reads the store — as does the preview pane, which

@@ -12,11 +12,14 @@ pub mod job;
 pub mod keymap;
 pub mod ui;
 
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::Path;
 
 use futures_util::Future;
 mod handlers;
 
+// Only the native file-picker walks filter `ignore::DirEntry`s.
+#[cfg(not(target_arch = "wasm32"))]
 use ignore::DirEntry;
 use url::Url;
 
@@ -58,6 +61,7 @@ fn true_color() -> bool {
 }
 
 /// Function used for filtering dir entries in the various file pickers.
+#[cfg(not(target_arch = "wasm32"))]
 fn filter_picker_entry(entry: &DirEntry, root: &Path, dedup_symlinks: bool) -> bool {
     // We always want to ignore popular VCS directories, otherwise if
     // `ignore` is turned off, we end up with a lot of noise
