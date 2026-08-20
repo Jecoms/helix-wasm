@@ -3,17 +3,24 @@
 // greps it with real file IO; the wasm32 arm greps the store — the same
 // candidate set `<space>f` offers — and dispatches the query synchronously
 // per keystroke, there being no runtime to debounce on. These assert the
-// three things that arm has to get right: store contents match and
+// four things that arm has to get right: store contents match and
 // selecting a row opens the file at the matching line, unsaved edits in an
-// open buffer match (the rope branch), and the boot-seeded runtime files
-// stay out of the results the way they stay out of the picker.
+// open buffer match (the rope branch), the boot-seeded runtime files
+// stay out of the results the way they stay out of the picker, and a
+// half-typed pattern that does not parse leaves the editor alive.
 //
 // The result rows and the preview are compositor layers with no
 // `helixState` surface, so the picker assertions read the rendered
 // terminal (see the note on `terminalText` in ./helpers.js); everything
 // after a selection reads editor state.
 import { test, expect } from "@playwright/test";
-import { bootEditor, getState, terminalText, vfsRead } from "./helpers.js";
+import {
+  bootEditor,
+  getState,
+  getText,
+  terminalText,
+  vfsRead,
+} from "./helpers.js";
 
 // Save the current buffer under `path` and wait for the async save queue.
 async function saveAs(page, path) {
@@ -98,4 +105,50 @@ test("global search does not read the boot-seeded runtime files", async ({
   // path column would render with this substring (truncated from the left
   // on the longest of them — see picker.spec.js).
   expect(await terminalText(page)).not.toContain("runtime/");
+});
+
+test("an invalid mid-typing pattern leaves the editor alive", async ({
+  page,
+}) => {
+  await bootEditor(page);
+
+  // Something for the search to find once the pattern parses again.
+  await page.keyboard.press("i");
+  await page.keyboard.type("bracket_token");
+  await page.keyboard.press("Escape");
+  await saveAs(page, "/probe.txt");
+
+  // An unterminated `[` is what every character-class query looks like
+  // mid-typing, and with the query dispatched synchronously per keystroke
+  // it reaches the regex Err branch on this very keystroke — the branch
+  // jobs.spec.js pins for the `/` prompt, pinned here for `<space>/`.
+  await page.keyboard.press(" ");
+  await page.keyboard.press("/");
+  await page.keyboard.type("[");
+
+  // Finishing the class makes the pattern valid again; the results
+  // arriving proves the Err branch neither trapped nor wedged the picker.
+  await page.keyboard.type("b]racket_token");
+  await expect
+    .poll(() => terminalText(page), {
+      message: "global search never recovered from the invalid pattern",
+    })
+    .toContain("probe.txt:1");
+  await page.keyboard.press("Escape");
+
+  // The proof of life jobs.spec.js ends on: the editor takes a keystroke,
+  // changes state because of it, and paints the result.
+  const before = await terminalText(page);
+  await page.keyboard.press("i");
+  await expect.poll(() => getState(page).then((s) => s.mode)).toBe("insert");
+  await page.keyboard.type("after bad regex");
+  await expect.poll(() => getText(page)).toContain("after bad regex");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => getState(page).then((s) => s.mode)).toBe("normal");
+  await expect.poll(() => terminalText(page)).not.toBe(before);
+  // The host page's crash gate never fired (web/www/main.js): a trap would
+  // have replaced the screen with this notice.
+  expect(await terminalText(page)).not.toContain(
+    "Helix has stopped responding",
+  );
 });
