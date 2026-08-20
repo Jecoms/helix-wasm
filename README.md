@@ -55,9 +55,10 @@ queries and themes the bundle embeds are read out of the in-tree port at
 Documents live in an in-memory virtual file system (`helix_stdx::vfs`, part
 of the wasm patch set): `:w /notes.txt` saves there, `:o` (with path
 completion) and the `<space>f` file picker (with preview) read from it,
-`<space>/` global search greps it, and `:reload` picks up outside changes. Nothing survives a page reload, and a few
-document commands behave differently against it — see "Files live in an
-in-memory VFS" below.
+`<space>/` global search greps it, and `:reload` picks up outside
+changes. Nothing survives a page reload, and a few document commands
+behave differently against it — see "Files live in an in-memory VFS"
+below.
 The wasm module exports `vfs_write` / `vfs_read` / `vfs_list` so an
 embedding page can inject and extract files; the demo page exposes them
 as `window.helixVfs` — try `helixVfs.write("hello.rs", "fn main() {}")`
@@ -427,8 +428,8 @@ instead of linking into the deployed demo, whose asset names are
 content-hashed and replaced on every push to `main`:
 
 ```sh
-curl -LO https://github.com/Jecoms/helix-wasm/releases/download/web-v0.0.1/helix-web-0.0.1.tar.gz
-tar xzf helix-web-0.0.1.tar.gz    # extracts helix-web-0.0.1/
+curl -LO https://github.com/Jecoms/helix-wasm/releases/download/web-v0.0.2/helix-web-0.0.2.tar.gz
+tar xzf helix-web-0.0.2.tar.gz    # extracts helix-web-0.0.2/
 ```
 
 The extracted directory is a standard wasm-pack `--target web` package (ES
@@ -438,7 +439,7 @@ the C it statically links, and `CHANGELOG.md` as of that version). Consume it
 the way the demo's `web/www/package.json` does:
 
 ```json
-"dependencies": { "helix-web": "file:../helix-web-0.0.1" }
+"dependencies": { "helix-web": "file:../helix-web-0.0.2" }
 ```
 
 `web/www/main.js` is the reference host wiring to replicate: call `init()`
