@@ -10,7 +10,7 @@ name = "helix-web"
 # refuses a tag that is not `web-v` + this string, and it names the tarball.
 # Bumping it is step one of cutting a release — see the README's "Embedding
 # the editor".
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 license = "MPL-2.0"
 publish = false

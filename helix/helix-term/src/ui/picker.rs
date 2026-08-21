@@ -267,7 +267,17 @@ pub struct Picker<T: 'static + Send + Sync, D: 'static> {
     file_fn: Option<FileCallback<T>>,
     /// An event handler for syntax highlighting the currently previewed file.
     preview_highlight_handler: Sender<Arc<Path>>,
+    #[cfg(not(target_arch = "wasm32"))]
     dynamic_query_handler: Option<Sender<DynamicQueryChange>>,
+    // On wasm32 there is no worker behind a channel: `AsyncHook::spawn`
+    // only starts one inside a tokio runtime, and its debounce loop waits
+    // with `tokio::time::timeout_at`, which traps here. The handler is
+    // held in the picker instead and driven synchronously per keystroke
+    // (see `handle_prompt_change`), boxed as a plain `FnMut` because
+    // `DynamicQueryHandler<T, D>` wants `D: Send + Sync` and this struct
+    // does not.
+    #[cfg(target_arch = "wasm32")]
+    dynamic_query_handler: Option<Box<dyn FnMut(DynamicQueryChange)>>,
 }
 
 impl<T: 'static + Send + Sync, D: 'static + Send + Sync> Picker<T, D> {
@@ -424,6 +434,7 @@ impl<T: 'static + Send + Sync, D: 'static + Send + Sync> Picker<T, D> {
         self
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn with_dynamic_query(
         mut self,
         callback: DynQueryCallback<T, D>,
@@ -437,6 +448,30 @@ impl<T: 'static + Send + Sync, D: 'static + Send + Sync> Picker<T, D> {
         };
         helix_event::send_blocking(&handler, event);
         self.dynamic_query_handler = Some(handler);
+        self
+    }
+
+    // The wasm32 arm holds the handler instead of spawning it (see the
+    // field). Every event goes through the paste path — `handle_event`
+    // dispatches a paste immediately, where a keystroke arms a debounce
+    // deadline, and building one calls `tokio::time::Instant::now()`,
+    // which traps on wasm32. The debounce is the price: each event
+    // dispatches its query as it arrives.
+    #[cfg(target_arch = "wasm32")]
+    pub fn with_dynamic_query(
+        mut self,
+        callback: DynQueryCallback<T, D>,
+        debounce_ms: Option<u64>,
+    ) -> Self {
+        let mut handler = DynamicQueryHandler::new(callback, debounce_ms);
+        let event = DynamicQueryChange {
+            query: self.primary_query(),
+            is_paste: true,
+        };
+        handler.handle_event(event, None);
+        self.dynamic_query_handler = Some(Box::new(move |event| {
+            handler.handle_event(event, None);
+        }));
         self
     }
 
@@ -556,12 +591,29 @@ impl<T: 'static + Send + Sync, D: 'static + Send + Sync> Picker<T, D> {
         }
         // If this is a dynamic picker, notify the query hook that the primary
         // query might have been updated.
+        #[cfg(not(target_arch = "wasm32"))]
         if let Some(handler) = &self.dynamic_query_handler {
             let event = DynamicQueryChange {
                 query: self.primary_query(),
                 is_paste,
             };
             helix_event::send_blocking(handler, event);
+        }
+        // The wasm32 handler is driven right here rather than through a
+        // channel, and every change is a paste to it — the debounce
+        // deadline a keystroke would arm cannot be built on wasm32 (see
+        // `with_dynamic_query`). The handler still deduplicates: a query
+        // that reverts to the last one dispatched sends nothing.
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = is_paste;
+            let event = DynamicQueryChange {
+                query: self.primary_query(),
+                is_paste: true,
+            };
+            if let Some(handler) = &mut self.dynamic_query_handler {
+                handler(event);
+            }
         }
     }
 

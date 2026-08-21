@@ -21,8 +21,22 @@ absolute — the copy in an embedder's extracted tree has no README next to it.
 
 ## [Unreleased]
 
+## [0.0.2] — 2026-08-20
+
 ### Added
 
+- **`<space>/` global search** — the search picker that opened and never answered now
+  greps the virtual file system
+  ([#130](https://github.com/Jecoms/helix-wasm/issues/130)). The candidate set is
+  exactly what `<space>f` offers — the store, minus the boot-seeded runtime files, with
+  `hidden` and `max-depth` honored — searched with helix's own smart-case regex engine:
+  open buffers as they stand, so unsaved edits match, everything else by its last saved
+  bytes, with the preview and line-jump behaving as they do natively. Two trades against
+  native, both from the missing runtime: no debounce (every keystroke dispatches its
+  search immediately) and the search runs inline on the main thread, like picker
+  matching. The README's
+  [Files live in an in-memory VFS](https://github.com/Jecoms/helix-wasm/blob/main/README.md#files-live-in-an-in-memory-vfs)
+  carries the full entry.
 - **`:download-all`** — the whole session out of the page as one zip, where `:download`
   gets one file ([#110](https://github.com/Jecoms/helix-wasm/issues/110)). It packs every
   file this session saved into `helix-session.zip` (or the name you give it) and hands
@@ -179,9 +193,10 @@ which is the source of truth and goes further than this list:
   `:` prompt is unaffected). No kitty keyboard protocol, no suspend, and only the
   grammars and themes linked into the bundle.
 
-<!-- Both links below resolve once `web-v0.0.1` is pushed; until then they are
-     pending rather than broken. Publishing is a separate, deliberate step —
-     see the README's "Embedding the editor" for the procedure. -->
+<!-- The `0.0.2` links below resolve once `web-v0.0.2` is pushed; until then
+     they are pending rather than broken. Publishing is a separate, deliberate
+     step — see the README's "Embedding the editor" for the procedure. -->
 
-[Unreleased]: https://github.com/Jecoms/helix-wasm/compare/web-v0.0.1...main
+[Unreleased]: https://github.com/Jecoms/helix-wasm/compare/web-v0.0.2...main
+[0.0.2]: https://github.com/Jecoms/helix-wasm/releases/tag/web-v0.0.2
 [0.0.1]: https://github.com/Jecoms/helix-wasm/releases/tag/web-v0.0.1

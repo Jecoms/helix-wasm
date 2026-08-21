@@ -197,7 +197,7 @@ type FilePicker = Picker<PathBuf, FilePickerData>;
 /// The file picker's candidate paths under `root`, honoring the
 /// `file-picker` config.
 #[cfg(not(target_arch = "wasm32"))]
-fn walk_files(editor: &Editor, root: &Path) -> impl Iterator<Item = PathBuf> {
+pub(crate) fn walk_files(editor: &Editor, root: &Path) -> impl Iterator<Item = PathBuf> {
     use ignore::{types::TypesBuilder, WalkBuilder};
 
     let config = editor.config();
@@ -243,7 +243,9 @@ fn walk_files(editor: &Editor, root: &Path) -> impl Iterator<Item = PathBuf> {
 }
 
 /// The file picker's candidate paths under `root`: the virtual file system's
-/// keys, there being no directories to walk on wasm32.
+/// keys, there being no directories to walk on wasm32. Global search
+/// (`<space>/`, `commands::global_search`) draws its candidates from here
+/// too, so the two surfaces always agree on what the store offers.
 ///
 /// `vfs::list` rather than `vfs::read_dir`: the picker wants every key below
 /// `root`, and `read_dir` answers about one level at a time, so reaching for
@@ -268,7 +270,7 @@ fn walk_files(editor: &Editor, root: &Path) -> impl Iterator<Item = PathBuf> {
 /// `follow_symlinks`/`deduplicate_links` want symlinks. None of those three
 /// things exists here (see the README's limitations catalog).
 #[cfg(target_arch = "wasm32")]
-fn walk_files(editor: &Editor, root: &Path) -> impl Iterator<Item = PathBuf> {
+pub(crate) fn walk_files(editor: &Editor, root: &Path) -> impl Iterator<Item = PathBuf> {
     let config = editor.config();
     let hidden = config.file_picker.hidden;
     let max_depth = config.file_picker.max_depth;

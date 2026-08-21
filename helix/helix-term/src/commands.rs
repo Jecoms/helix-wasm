@@ -59,10 +59,15 @@ use movement::Movement;
 
 use crate::{
     compositor::{self, Component, Compositor},
-    filter_picker_entry,
     job::Callback,
     ui::{self, overlay::overlaid, Picker, PickerColumn, Popup, Prompt, PromptEvent},
 };
+
+// Only the native global-search walk filters `ignore::DirEntry`s; the wasm32
+// arm's candidate set comes from `ui::walk_files` over the virtual file
+// system.
+#[cfg(not(target_arch = "wasm32"))]
+use crate::filter_picker_entry;
 
 use crate::job::{self, Jobs};
 use std::{
@@ -87,6 +92,7 @@ use url::Url;
 
 use grep_regex::RegexMatcherBuilder;
 use grep_searcher::{sinks, BinaryDetection, SearcherBuilder};
+#[cfg(not(target_arch = "wasm32"))]
 use ignore::{DirEntry, WalkBuilder, WalkState};
 
 pub type OnKeyCallback = Box<dyn FnOnce(&mut Context, KeyEvent)>;
@@ -2457,6 +2463,10 @@ fn global_search(cx: &mut Context) {
 
     struct GlobalSearchConfig {
         smart_case: bool,
+        // Read by the native query only: the wasm32 arm's candidate set
+        // comes from `ui::walk_files`, which consults the live editor
+        // config itself.
+        #[cfg_attr(target_arch = "wasm32", allow(dead_code))]
         file_picker_config: helix_view::editor::FilePickerConfig,
         directory_style: Style,
         number_style: Style,
@@ -2498,6 +2508,7 @@ fn global_search(cx: &mut Context) {
         PickerColumn::hidden("contents"),
     ];
 
+    #[cfg(not(target_arch = "wasm32"))]
     let get_files = |query: &str,
                      editor: &mut Editor,
                      config: std::sync::Arc<GlobalSearchConfig>,
@@ -2618,6 +2629,102 @@ fn global_search(cx: &mut Context) {
                         }
                     })
                 });
+            Ok(())
+        }
+        .boxed()
+    };
+
+    // The wasm32 query: grep the virtual file system instead of walking a
+    // real one. The candidate set is exactly what `<space>f` offers —
+    // `ui::walk_files` (issue #74), which lists the store and drops the
+    // boot-seeded runtime files — and each candidate is searched the way
+    // the native arm searches it: open buffers by rope, so unsaved edits
+    // match, everything else by the store's bytes (`vfs::reader`). The
+    // grep engine (`grep-regex` / `grep-searcher`) is pure Rust and works
+    // unchanged; what the native arm has that cannot work here is the
+    // parallel walker (threads) and `Searcher::search_path` (real file
+    // IO). One sequential pass replaces the walker's `WalkState` protocol,
+    // and the future runs on the microtask queue like every other job.
+    // Native's "working directory does not exist" guard has no
+    // counterpart: store keys are what exists here, and `walk_files`
+    // answers for a root nothing lives under with the empty set.
+    #[cfg(target_arch = "wasm32")]
+    let get_files = |query: &str,
+                     editor: &mut Editor,
+                     config: std::sync::Arc<GlobalSearchConfig>,
+                     injector: &ui::picker::Injector<_, _>| {
+        if query.is_empty() {
+            return async { Ok(()) }.boxed();
+        }
+
+        let search_root = helix_stdx::env::current_working_dir();
+
+        let documents: Vec<_> = editor
+            .documents()
+            .map(|doc| (doc.path().cloned(), doc.text().to_owned()))
+            .collect();
+
+        let matcher = match RegexMatcherBuilder::new()
+            .case_smart(config.smart_case)
+            .build(query)
+        {
+            Ok(matcher) => {
+                // Clear any "Failed to compile regex" errors out of the statusline.
+                editor.clear_status();
+                matcher
+            }
+            Err(err) => {
+                log::info!("Failed to compile search pattern in global search: {}", err);
+                return async { Err(anyhow::anyhow!("Failed to compile regex")) }.boxed();
+            }
+        };
+
+        let files: Vec<PathBuf> = ui::walk_files(editor, &search_root).collect();
+
+        let injector = injector.clone();
+        async move {
+            let mut searcher = SearcherBuilder::new()
+                .binary_detection(BinaryDetection::quit(b'\x00'))
+                .build();
+            for path in files {
+                let mut stop = false;
+                let sink = sinks::UTF8(|line_num, _line_content| {
+                    stop = injector
+                        .push(FileResult::new(&path, line_num as usize - 1))
+                        .is_err();
+
+                    Ok(!stop)
+                });
+                let doc = documents.iter().find(|&(doc_path, _)| {
+                    doc_path.as_ref().is_some_and(|doc_path| doc_path == &path)
+                });
+
+                let result = if let Some((_, doc)) = doc {
+                    // there is already a buffer for this file
+                    // search the buffer instead of the file because it's faster
+                    // and captures new edits without requiring a save
+                    if searcher.multi_line_with_matcher(&matcher) {
+                        // in this case a continuous buffer is required
+                        // convert the rope to a string
+                        let text = doc.to_string();
+                        searcher.search_slice(&matcher, text.as_bytes(), sink)
+                    } else {
+                        searcher.search_reader(&matcher, RopeReader::new(doc.slice(..)), sink)
+                    }
+                } else {
+                    match helix_stdx::vfs::reader(&path) {
+                        Ok(reader) => searcher.search_reader(&matcher, reader, sink),
+                        Err(err) => Err(err),
+                    }
+                };
+
+                if let Err(err) = result {
+                    log::error!("Global search error: {}, {}", path.display(), err);
+                }
+                if stop {
+                    break;
+                }
+            }
             Ok(())
         }
         .boxed()
