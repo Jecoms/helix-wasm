@@ -34,8 +34,9 @@ thread_local! {
 /// — absolute, the same string `vfs_list` reports — *before* the key goes
 /// and before the buffer on it closes. Throwing from it refuses the
 /// removal with the store untouched, and the error's message is what the
-/// editor shows the user, so say why. It is not called for a buffer that
-/// was never saved (no key, nothing to mirror); that buffer just closes.
+/// editor shows the user, so say why. It is not called for a path with no
+/// key in the store (never saved, or deleted by the page since — nothing to
+/// mirror); a buffer on such a path just closes.
 /// Nor is it called by [`crate::vfs_delete`] — a page calling that is
 /// already the one doing the deleting.
 ///

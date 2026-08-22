@@ -202,11 +202,12 @@ above). What that changes:
   threw; a page that registers no handler gets "Could not remove: this host
   cannot remove files" for every `:remove`, so a page either offers deletion
   or does not — that message read from `helix_stdx::remove` rather than run,
-  as the demo page always registers one. A buffer that was never `:w`'d has
-  no key: `:remove` closes it, says `Closed <path> (never saved; nothing to
-  remove)`, and does *not* call the handler, whose contract is "this key is
-  leaving the store" — a page mirroring the store was never told about that
-  key and should not be told it is gone. `helixVfs.delete` is the page's own
+  as the demo page always registers one. A buffer whose path has no key in
+  the store — never `:w`'d, or `helixVfs.delete`'d since — is closed, with
+  `Closed <path> (not in the store; nothing to remove)`, and the handler is
+  *not* called, its contract being "this key is leaving the store": a page
+  mirroring the store was either never told about that key or did the
+  deleting itself. `helixVfs.delete` is the page's own
   deletion and bypasses the handler entirely (the page is the one deleting);
   it also leaves any buffer open on the key alone, the way `helixVfs.write`
   does.
@@ -508,10 +509,11 @@ with the store untouched and the message on the statusline. Register it
 where a page should offer deletion — it is also where a page that mirrors
 the store prunes its mirror — and register nothing where it should not (a
 read-only lesson, say): unregistered, `:remove` reports that this host
-cannot remove files. It is not called for a buffer that was never saved
-(no key, nothing to mirror; the buffer just closes), nor by `vfs_delete`,
-which is the page deleting on its own behalf. The demo's handler is a no-op
-at `window.helixRemove`, replaceable for a devtools session.
+cannot remove files. It is not called for a path with no key in the store
+(never saved, or `vfs_delete`'d since — the buffer just closes), nor by
+`vfs_delete` itself, which is the page deleting on its own behalf. The demo's
+handler is a no-op at `window.helixRemove`, replaceable for a devtools
+session.
 
 Beyond the terminal loop, the module
 exports the file-injection hooks (`vfs_write` / `vfs_read` / `vfs_list` /

@@ -864,7 +864,7 @@ fn remove_impl(
     cx.editor.set_status(if stored {
         format!("Removed {name}")
     } else {
-        format!("Closed {name} (never saved; nothing to remove)")
+        format!("Closed {name} (not in the store; nothing to remove)")
     });
 
     Ok(())
@@ -3266,7 +3266,7 @@ pub const TYPABLE_COMMAND_LIST: &[TypableCommand] = &[
     TypableCommand {
         name: "remove",
         aliases: &["rm"],
-        doc: "Delete a file from the virtual file system and close its buffer. Defaults to the current file (:remove, or :remove notes.txt for another). Refuses while the buffer has unsaved changes, and on a host page that offers no deletion; a buffer never saved just closes.",
+        doc: "Delete a file from the virtual file system and close its buffer. Defaults to the current file (:remove, or :remove notes.txt for another). Refuses while the buffer has unsaved changes, and on a host page that offers no deletion; a buffer with no key in the store just closes.",
         fun: remove,
         // Unlike `:download`, the argument picks a store key, so store keys
         // are the right thing to offer.

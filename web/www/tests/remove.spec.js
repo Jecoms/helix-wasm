@@ -109,7 +109,7 @@ test("a never-saved buffer just closes; the host is not told", async ({
   expect(await removed(page)).toEqual([]);
   await expect
     .poll(() => terminalText(page))
-    .toContain("Closed /never.txt (never saved; nothing to remove)");
+    .toContain("Closed /never.txt (not in the store; nothing to remove)");
 });
 
 test("a host page that refuses the removal keeps the file", async ({

@@ -33,8 +33,8 @@ absolute — the copy in an embedder's extracted tree has no README next to it.
   registered the new **`on_remove(handler)`** export, which is called with the store key
   before it goes and may throw to refuse (the message lands on the statusline);
   unregistered, `:remove` reports that this host cannot remove files, so deletion is a
-  per-page capability. A buffer never `:w`'d has no key and just closes, without the
-  handler. **`vfs_delete(path)`** completes the `vfs_write` / `vfs_read` / `vfs_list` set
+  per-page capability. A buffer whose path has no key in the store (never `:w`'d, or
+  deleted by the page since) just closes, without the handler. **`vfs_delete(path)`** completes the `vfs_write` / `vfs_read` / `vfs_list` set
   for the page's own deletions; it bypasses the handler. The README's
   [Files live in an in-memory VFS](https://github.com/Jecoms/helix-wasm/blob/main/README.md#files-live-in-an-in-memory-vfs)
   carries the full entry.

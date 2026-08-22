@@ -26,8 +26,9 @@ use std::sync::Mutex;
 /// runs *before* the key is dropped, and returning an error refuses the
 /// removal with the store untouched; the message reaches the user, so it
 /// should say why. The editor only calls this for a key the store actually
-/// holds: a buffer that was never saved has no key, and closing one is not
-/// a removal the host was ever told the other half of.
+/// holds: a buffer whose path has no key (never saved, or deleted by the
+/// host since) just closes, and that is not a removal the host was ever
+/// told the other half of.
 pub type Handler = fn(path: &str) -> io::Result<()>;
 
 static HANDLER: Mutex<Option<Handler>> = Mutex::new(None);
