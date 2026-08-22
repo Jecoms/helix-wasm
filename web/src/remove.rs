@@ -34,7 +34,10 @@ thread_local! {
 /// — absolute, the same string `vfs_list` reports — *before* the key goes
 /// and before the buffer on it closes. Throwing from it refuses the
 /// removal with the store untouched, and the error's message is what the
-/// editor shows the user, so say why. It is not called for a path with no
+/// editor shows the user, so say why. A handler that prunes a mirror may
+/// drop the key itself with [`crate::vfs_delete`] and return normally: the
+/// editor treats a key already gone after consent as removed, and closes
+/// the buffer as usual. It is not called for a path with no
 /// key in the store (never saved, or deleted by the page since — nothing to
 /// mirror); a buffer on such a path just closes.
 /// Nor is it called by [`crate::vfs_delete`] — a page calling that is

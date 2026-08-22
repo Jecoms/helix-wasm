@@ -848,10 +848,15 @@ fn remove_impl(
 
     if stored {
         remove::send(&name).map_err(|err| anyhow!("Could not remove {name}: {err}"))?;
-        // The host consented a statement ago and wasm32 is single-threaded,
-        // so the key is still there; a miss would be a bug worth hearing
-        // about rather than papering over.
-        vfs::remove(&path).map_err(|err| anyhow!("Could not remove {name}: {err}"))?;
+        // The host consented a statement ago. A key that is already gone
+        // is that consent acted on: a host pruning its mirror may well
+        // drop the store key itself from inside the handler, and that is
+        // the deletion that was asked for, not a failure of it.
+        match vfs::remove(&path) {
+            Ok(()) => {}
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => {}
+            Err(err) => bail!("Could not remove {name}: {err}"),
+        }
     }
 
     if let Some(id) = doc_id {

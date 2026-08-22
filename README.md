@@ -507,9 +507,10 @@ store key about to go (absolute, as `vfs_list` reports it) *before* the key
 is dropped and the buffer on it closed, and throwing refuses the deletion
 with the store untouched and the message on the statusline. Register it
 where a page should offer deletion — it is also where a page that mirrors
-the store prunes its mirror — and register nothing where it should not (a
-read-only lesson, say): unregistered, `:remove` reports that this host
-cannot remove files. It is not called for a path with no key in the store
+the store prunes its mirror, and it may `vfs_delete` the key itself while
+it is at it; a key already gone after consent counts as removed — and
+register nothing where it should not (a read-only lesson, say):
+unregistered, `:remove` reports that this host cannot remove files. It is not called for a path with no key in the store
 (never saved, or `vfs_delete`'d since — the buffer just closes), nor by
 `vfs_delete` itself, which is the page deleting on its own behalf. The demo's
 handler is a no-op at `window.helixRemove`, replaceable for a devtools

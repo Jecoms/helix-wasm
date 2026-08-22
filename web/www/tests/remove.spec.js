@@ -164,6 +164,31 @@ test(":remove <path> deletes a key that is not open, and only that", async ({
   expect(await removed(page)).toEqual(["/other.txt"]);
 });
 
+test("a host whose handler deletes the key itself still gets a clean removal", async ({
+  page,
+}) => {
+  await bootEditor(page);
+  // A page that mirrors the store and prunes both halves in one act, from
+  // inside the handler — the key is gone before the editor gets to it.
+  await page.evaluate(() => {
+    window.helixRemove = (path) => {
+      window.helixVfs.delete(path);
+    };
+  });
+
+  await typeText(page, "pruned by the page");
+  await run(page, ":w /mirrored.txt");
+  await expect.poll(() => currentPath(page)).toBe("/mirrored.txt");
+
+  await run(page, ":rm");
+  await expect.poll(() => vfsList(page)).not.toContain("/mirrored.txt");
+  // Consent acted on, not a miss: the buffer closes and the status is the
+  // ordinary one, not "no such virtual file".
+  expect(await currentPath(page)).toBeUndefined();
+  await expect.poll(() => terminalText(page)).toContain("Removed /mirrored.txt");
+  expect(await terminalText(page)).not.toContain("no such virtual file");
+});
+
 test("helixVfs.delete drops a key without consulting the handler", async ({
   page,
 }) => {
