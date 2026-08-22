@@ -176,8 +176,9 @@ const IS_MAC = ["Macintosh", "MacIntel", "MacPPC", "Mac68K"].includes(
 //   - named keys keep `domEvent.key`, because xterm encodes `A-Left` as
 //     `ESC b` on macOS and a looser rule would forward that as `A-b`.
 //
-// This handles only the chords xterm resolves. The ones it cannot are taken
-// over before `onKey` by the custom key handler below.
+// This handles only the letter chords xterm resolves (`code: "Key*"`). The
+// punctuation and digit rows never arrive here: the custom key handler
+// below takes those over before `onKey`, on every platform.
 //
 // This decode stays in the host page rather than moving to Rust the way #56
 // moved the SGR mouse decoding: its input is xterm.js's own `onKey` payload,
@@ -218,52 +219,69 @@ const CODE_KEY_MAPPINGS = {
   Quote: ["'", '"'],
 };
 
-// The half of macOS composition the fallback above cannot reach (issue #81).
-// A dead key is not merely composed, it *starts* a composition, and the
-// keydown announcing that carries `key: "Dead"`, `code` naming the physical
-// key, and `keyCode: 229` — the composition sentinel, not the key's own
-// legacy code. xterm's Alt branch is keyed on `keyCode` throughout, so 229
-// misses its US-layout table; the one branch that reads `code` instead only
-// fires for `code.startsWith("Key")` (Keyboard.ts:373-385, added for
-// xtermjs/xterm.js#3725). That covers the letter accent starters
-// (Option-e/i/n/u) and nothing else: for `` Option-` `` (`code:
-// "Backquote"`) no branch matches, `result.key` stays undefined, and
-// `_keyDown` returns at `if (!result.key)` (Terminal.ts:1046-1048) *before*
-// `_onKey.fire` — so `onKey` never runs and no forwarding logic downstream
-// of it can recover the chord. `` A-` `` is `switch_to_uppercase`, the chord
-// `:tutor` 10.3 asks for.
+// The Alt chords xterm.js cannot resolve for itself, taken over before it
+// tries (issues #81 and #137). Two shapes land here, and both come down to
+// xterm's Alt branch being keyed on legacy `keyCode` throughout
+// (Keyboard.ts:349-390, `KEYCODE_KEY_MAPPINGS`):
 //
-// `attachCustomKeyEventHandler` is the supported hook that runs earlier than
-// that early return — it is the first thing `_keyDown` does
-// (Terminal.ts:1004-1007) — so the chord is resolved and forwarded here, and
+//   - A macOS dead key (issue #81). A dead key does not merely compose, it
+//     *starts* a composition, and the keydown announcing that carries
+//     `key: "Dead"`, `code` naming the physical key, and `keyCode: 229` —
+//     the composition sentinel, not the key's own legacy code. The one
+//     branch that reads `code` instead only fires for
+//     `code.startsWith("Key")` (Keyboard.ts:373-385, added for
+//     xtermjs/xterm.js#3725), which covers the letter accent starters
+//     (Option-e/i/n/u) and nothing else: for `` Option-` `` (`code:
+//     "Backquote"`) no branch matches, `result.key` stays undefined, and
+//     `_keyDown` returns at `if (!result.key)` (Terminal.ts:1046-1048)
+//     *before* `_onKey.fire` — so `onKey` never runs and nothing downstream
+//     of it can recover the chord. `` A-` `` is `switch_to_uppercase`, the
+//     chord `:tutor` 10.3 asks for.
+//   - Firefox on any platform (issue #137). xterm's `keyCode` table holds
+//     the WebKit/Blink numbers, and Gecko still reports its own `DOM_VK_*`
+//     values for part of the punctuation row: `;` is 59 not 186, `=` is 61
+//     not 187, `-` is 173 not 189. The lookup misses, xterm emits nothing,
+//     and `A-;` (`flip_selections`), `A-=` and `A--` are dropped in Firefox
+//     while `A-,` `A-.` `A-/` — whose codes agree — work.
+//
+// `attachCustomKeyEventHandler` is the supported hook that runs earlier
+// than xterm's own resolution — it is the first thing `_keyDown` does
+// (Terminal.ts:1004-1007) — so every Alt chord on the punctuation and
+// digit rows is resolved and forwarded here, on every platform, and
 // returning `false` stops xterm from processing the event a second time.
-// What keeps it narrow: xterm's own Alt-branch condition, restated below,
-// plus two gates of this page's own. macOS only, for the same reason
-// `composed()` is — nothing else composes Option, and a `code`-driven
-// US-layout guess would turn chords that are inert on a non-US layout into
-// live commands. And `code: "Key*"` is left alone: those are the ones xterm
-// resolves for itself, and one owner per shape is what keeps a chord from
-// being decoded twice by two US-layout tables that could drift apart. Where
-// this does step in, returning `false` is what keeps the chord from *also*
-// going out through `onKey` — forwarding without it would run the binding
-// twice off one keystroke.
+// The name comes from the DOM rather than any legacy-code table wherever
+// the DOM has one: a single plain character in `event.key` is the layout's
+// own answer, so Gecko's numbering stops mattering and a non-US layout
+// keeps forwarding what it composes (a German `A-ö` stays `A-ö`, not
+// `A-;` — the same stance the `onKey` fallback above takes for letters).
+// Only where macOS has composed the name away (`"Dead"`, `"…"`) does the
+// `code`-keyed US table stand in, and only on macOS, for the same reason
+// `composed()` is gated: nothing else composes Option, and a `code`-driven
+// US-layout guess elsewhere would turn chords that are inert on a non-US
+// layout into live commands.
+//
+// `code: "Key*"` is left alone: letters are the ones xterm resolves for
+// itself — its `keyCode` path for A–Z agrees across browsers — and one
+// owner per shape is what keeps a chord from being decoded twice by two
+// US-layout tables that could drift apart. Where this does step in,
+// returning `false` is what keeps the chord from *also* going out through
+// `onKey` — forwarding without it would run the binding twice off one
+// keystroke.
 terminal.attachCustomKeyEventHandler((event) => {
   // The handler is consulted for keypress and keyup too (Terminal.ts:1102,
-  // 1129); a composition only ever announces itself on keydown. The rest
-  // restates xterm's own Alt-branch condition — `(!isMac || macOptionIsMeta)
-  // && ev.altKey && !ev.metaKey` (Keyboard.ts:349) — because this is that
-  // branch's missing case, not a second policy about Alt chords. Reading
-  // `macOptionIsMeta` off the terminal rather than assuming it means the two
-  // cannot disagree if the option is ever turned off: Option would go back
-  // to composing characters, and every Alt chord (this one included) back to
-  // being dropped, together.
+  // 1129); a chord is only ever announced on keydown. The rest restates
+  // xterm's own Alt-branch condition — `(!isMac || macOptionIsMeta) &&
+  // ev.altKey && !ev.metaKey` (Keyboard.ts:349) — because this is that
+  // branch's missing cases, not a second policy about Alt chords. Reading
+  // `macOptionIsMeta` off the terminal rather than assuming it means the
+  // two cannot disagree if the option is ever turned off: Option would go
+  // back to composing characters, and every Alt chord (these included)
+  // back to being dropped, together.
   if (
     event.type !== "keydown" ||
-    !IS_MAC ||
-    !terminal.options.macOptionIsMeta ||
+    (IS_MAC && !terminal.options.macOptionIsMeta) ||
     !event.altKey ||
     event.metaKey ||
-    event.key !== "Dead" ||
     event.code.startsWith("Key")
   ) {
     return true;
@@ -272,20 +290,20 @@ terminal.attachCustomKeyEventHandler((event) => {
   if (!chord) {
     return true;
   }
+  let name;
+  if (event.key.length === 1 && !composed(event.key)) {
+    name = event.key;
+  } else if (composed(event.key)) {
+    name = chord[event.shiftKey ? 1 : 0];
+  } else {
+    return true;
+  }
   // xterm cancels the dead keys it resolves for itself (`result.cancel` in
   // its own `Dead` branch), and this has to as well: without it the
   // keystroke still begins its composition in xterm's helper textarea, and
   // the `compositionend` that eventually lands would arrive as a paste.
   event.preventDefault();
-  callEditor(() =>
-    key_event(
-      chord[event.shiftKey ? 1 : 0],
-      event.ctrlKey,
-      true,
-      event.shiftKey,
-      false,
-    ),
-  );
+  callEditor(() => key_event(name, event.ctrlKey, true, event.shiftKey, false));
   return false;
 });
 terminal.onKey(({ key, domEvent }) => {
