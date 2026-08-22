@@ -73,15 +73,16 @@ fn forward_download(name: &str, contents: &[u8]) -> io::Result<()> {
             &Uint8Array::from(contents).into(),
         )
         .map(|_| ())
-        .map_err(|err| io::Error::other(describe(err)))
+        .map_err(|err| io::Error::other(describe(err, "the page's download handler failed")))
 }
 
-/// The message out of whatever the handler threw. JS can throw anything, so
-/// take an `Error`'s message, then a bare string, and fall back to saying
-/// which side failed.
-fn describe(err: JsValue) -> String {
+/// The message out of whatever a handler threw. JS can throw anything, so
+/// take an `Error`'s message, then a bare string, and fall back to
+/// `fallback`, which should say which side failed. Shared with
+/// [`crate::remove`], whose handler is called the same way.
+pub(crate) fn describe(err: JsValue, fallback: &str) -> String {
     err.dyn_ref::<js_sys::Error>()
         .map(|err| String::from(err.message()))
         .or_else(|| err.as_string())
-        .unwrap_or_else(|| "the page's download handler failed".to_string())
+        .unwrap_or_else(|| fallback.to_string())
 }

@@ -59,8 +59,8 @@ completion) and the `<space>f` file picker (with preview) read from it,
 changes. Nothing survives a page reload, and a few document commands
 behave differently against it — see "Files live in an in-memory VFS"
 below.
-The wasm module exports `vfs_write` / `vfs_read` / `vfs_list` so an
-embedding page can inject and extract files; the demo page exposes them
+The wasm module exports `vfs_write` / `vfs_read` / `vfs_list` /
+`vfs_delete` so an embedding page can inject, extract and drop files; the demo page exposes them
 as `window.helixVfs` — try `helixVfs.write("hello.rs", "fn main() {}")`
 in the devtools console, then `:o hello.rs` in the editor. Persistent
 backends (localStorage/OPFS) can be layered on those hooks by the host
@@ -85,6 +85,15 @@ holds the *store*, so it refuses while a buffer is unsaved and names what to
 saved state. What boot seeded is never in it, edited or not — see "Files
 live in an in-memory VFS" below, which is the section to read before you
 edit a bundled theme and expect it back.
+
+`:remove` (`:rm`) is the way a file leaves the store
+([#132](https://github.com/Jecoms/helix-wasm/issues/132)): native helix has
+no delete command because `:sh rm` is always there, and here it never is.
+`:remove` deletes the current file and closes its buffer in one act,
+`:remove notes.txt` names another key, and `:remove!` goes ahead over unsaved
+changes. It only works on a page that registered `on_remove` — deletion is a
+per-page capability, like `:download` — and the demo page does. See "Files
+live in an in-memory VFS" below for the edges.
 
 ## Editor state inspection
 
@@ -182,6 +191,25 @@ above). What that changes:
   an edit: `:w <new name>` and it is in the archive like anything else, or
   `:download` it, which always exports the buffer you are looking at, or
   read the key with `helixVfs.read` from a page script.
+- **`:remove` is the only delete, and only where the page allows it.** There
+  is no shell to `:sh rm` from, so `:remove` (`:rm`) drops the store key and
+  closes the buffer on it — the current buffer's, or `:remove <path>` for
+  another key, open or not; a scratch buffer is refused for want of a path.
+  A buffer with unsaved changes is refused until `:remove!`. Keys only: there
+  are no directories (see below), so nothing recursive. The host page is
+  asked first (`on_remove`, see "Embedding the editor") and a handler that
+  throws refuses the deletion with the store untouched, reporting what it
+  threw; a page that registers no handler gets "Could not remove: this host
+  cannot remove files" for every `:remove`, so a page either offers deletion
+  or does not — that message read from `helix_stdx::remove` rather than run,
+  as the demo page always registers one. A buffer that was never `:w`'d has
+  no key: `:remove` closes it, says `Closed <path> (never saved; nothing to
+  remove)`, and does *not* call the handler, whose contract is "this key is
+  leaving the store" — a page mirroring the store was never told about that
+  key and should not be told it is gone. `helixVfs.delete` is the page's own
+  deletion and bypasses the handler entirely (the page is the one deleting);
+  it also leaves any buffer open on the key alone, the way `helixVfs.write`
+  does.
 - **`:w` will not clobber an outside write, and nothing is read-only.**
   Store entries carry a modification time, so helix's "file modified by an
   external process" guard works: a `:w` over a key that a `helixVfs.write`
@@ -473,9 +501,21 @@ note that `:download-all` treats those as the page's rather than the
 reader's and leaves them out — seed after `start` for files a reader should
 get back.
 
+`on_remove(handler)` is what turns `:remove` on: `:remove` calls it with the
+store key about to go (absolute, as `vfs_list` reports it) *before* the key
+is dropped and the buffer on it closed, and throwing refuses the deletion
+with the store untouched and the message on the statusline. Register it
+where a page should offer deletion — it is also where a page that mirrors
+the store prunes its mirror — and register nothing where it should not (a
+read-only lesson, say): unregistered, `:remove` reports that this host
+cannot remove files. It is not called for a buffer that was never saved
+(no key, nothing to mirror; the buffer just closes), nor by `vfs_delete`,
+which is the page deleting on its own behalf. The demo's handler is a no-op
+at `window.helixRemove`, replaceable for a devtools session.
+
 Beyond the terminal loop, the module
-exports the file-injection hooks (`vfs_write` / `vfs_read` / `vfs_list`,
-see "Virtual file system" above) and the read-only inspection surface (`editor_state()`
+exports the file-injection hooks (`vfs_write` / `vfs_read` / `vfs_list` /
+`vfs_delete`, see "Virtual file system" above) and the read-only inspection surface (`editor_state()`
 / `editor_text()`, see "Editor state inspection") — the intended surface
 for tutorial-style embedders that drive and assert on the editor rather
 than scrape the rendered terminal. The JS surface is unstable by design

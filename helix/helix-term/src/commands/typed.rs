@@ -750,6 +750,126 @@ fn download_all_impl(
     Ok(())
 }
 
+/// Deletes a file out of the virtual file system and closes its buffer, in
+/// one act — the browser-only counterpart of `:sh rm`, which this build has
+/// no shell for. Without it a key written into the store is there for the
+/// life of the page: native helix has no delete command of its own because
+/// the shell is always an `:sh` away, and here it never is.
+///
+/// **Host-gated, like `:download`.** Nothing happens unless the host page
+/// has registered a removal handler (`helix_stdx::remove`); without one the
+/// command refuses on the statusline. That makes deletion a per-page
+/// capability rather than a given — a page that mirrors the store somewhere
+/// durable prunes its mirror from the handler, and a page that must not
+/// offer deletion at all simply registers nothing. The handler is asked
+/// *before* the key goes: a refusal (the handler throwing) leaves the store
+/// as it was.
+///
+/// **What the target is.** The argument, or the current buffer's path —
+/// the same default `:move` takes, and a scratch buffer is refused for the
+/// same reason. Keys only: the store has no directories, so there is no
+/// recursive form. A buffer open on the key closes along with it, whether
+/// or not it is the one the reader is looking at, and a modified one is
+/// refused unless the command is `:remove!` — the standard `!` for "over
+/// unsaved changes".
+///
+/// **A never-saved buffer.** A buffer with a path but no `:w` behind it has
+/// no key, so there is nothing for the store to drop and nothing for the
+/// host to mirror; it closes, and the handler is *not* called — its
+/// contract is "this key is leaving the store", and firing it for a key the
+/// host never saw would make every mirroring host tolerate phantom
+/// deletions. The gate still applies, so a page either has `:remove` or
+/// does not, never "only once the file is saved". The same guard `:move`
+/// uses (`vfs::exists` before `vfs::rename`).
+#[cfg(target_arch = "wasm32")]
+fn remove(cx: &mut compositor::Context, args: Args, event: PromptEvent) -> anyhow::Result<()> {
+    remove_impl(cx, args, event, false)
+}
+
+/// `:remove`, deleting over unsaved changes: the buffer closes with its
+/// edits unsaved rather than the command refusing.
+#[cfg(target_arch = "wasm32")]
+fn force_remove(
+    cx: &mut compositor::Context,
+    args: Args,
+    event: PromptEvent,
+) -> anyhow::Result<()> {
+    remove_impl(cx, args, event, true)
+}
+
+#[cfg(target_arch = "wasm32")]
+fn remove_impl(
+    cx: &mut compositor::Context,
+    args: Args,
+    event: PromptEvent,
+    force: bool,
+) -> anyhow::Result<()> {
+    use helix_stdx::{remove, vfs};
+
+    if event != PromptEvent::Validate {
+        return Ok(());
+    }
+
+    cx.block_try_flush_writes()?;
+
+    // The gate first, before the target is even resolved: an unregistered
+    // host gets the same refusal whatever was asked, so a page either has
+    // this command or does not.
+    if !remove::is_registered() {
+        bail!("Could not remove: this host cannot remove files");
+    }
+
+    // Canonicalized the way `:w` and `:o` canonicalize a document's path,
+    // which is also the form the store keys on, so the argument, the open
+    // buffer and the key all agree on what is being named.
+    let path = match args.first() {
+        Some(arg) => helix_stdx::path::canonicalize(arg),
+        None => doc!(cx.editor)
+            .path()
+            .cloned()
+            .ok_or_else(|| anyhow!("Scratch buffer has no file to remove: :remove <path>"))?,
+    };
+    let name = path.to_string_lossy().into_owned();
+
+    let stored = vfs::exists(&path);
+    let doc_id = cx.editor.document_by_path(&path).map(|doc| doc.id());
+    if !stored && doc_id.is_none() {
+        bail!("Could not remove {name}: no such file");
+    }
+    if let Some(id) = doc_id {
+        let doc = &cx.editor.documents[&id];
+        if doc.is_modified() && !force {
+            bail!(
+                "{} has unsaved changes: :remove! to delete anyway",
+                doc.display_name()
+            );
+        }
+    }
+
+    if stored {
+        remove::send(&name).map_err(|err| anyhow!("Could not remove {name}: {err}"))?;
+        // The host consented a statement ago and wasm32 is single-threaded,
+        // so the key is still there; a miss would be a bug worth hearing
+        // about rather than papering over.
+        vfs::remove(&path).map_err(|err| anyhow!("Could not remove {name}: {err}"))?;
+    }
+
+    if let Some(id) = doc_id {
+        // `force` here means "the unsaved-changes check already happened
+        // above": the only other way to fail is the document not existing,
+        // and it was looked up a moment ago, so there is nothing to report.
+        let _ = cx.editor.close_document(id, true);
+    }
+
+    cx.editor.set_status(if stored {
+        format!("Removed {name}")
+    } else {
+        format!("Closed {name} (never saved; nothing to remove)")
+    });
+
+    Ok(())
+}
+
 fn new_file(cx: &mut compositor::Context, _args: Args, event: PromptEvent) -> anyhow::Result<()> {
     if event != PromptEvent::Validate {
         return Ok(());
@@ -3133,6 +3253,36 @@ pub const TYPABLE_COMMAND_LIST: &[TypableCommand] = &[
         doc: "Force save everything this session wrote out of the browser, as a zip, with unsaved buffers left at their last saved state. Accepts an optional name for it (:download-all! work.zip).",
         fun: force_download_all,
         completer: CommandCompleter::none(),
+        signature: Signature {
+            positionals: (0, Some(1)),
+            ..Signature::DEFAULT
+        },
+    },
+    // Browser-only, and gated on the host page the way `:download` is:
+    // natively `:sh rm` deletes a file, and this build has no shell. Next
+    // to the download commands because it completes the same set — files
+    // go out of the page, or they go away.
+    #[cfg(target_arch = "wasm32")]
+    TypableCommand {
+        name: "remove",
+        aliases: &["rm"],
+        doc: "Delete a file from the virtual file system and close its buffer. Defaults to the current file (:remove, or :remove notes.txt for another). Refuses while the buffer has unsaved changes, and on a host page that offers no deletion; a buffer never saved just closes.",
+        fun: remove,
+        // Unlike `:download`, the argument picks a store key, so store keys
+        // are the right thing to offer.
+        completer: CommandCompleter::positional(&[completers::filename]),
+        signature: Signature {
+            positionals: (0, Some(1)),
+            ..Signature::DEFAULT
+        },
+    },
+    #[cfg(target_arch = "wasm32")]
+    TypableCommand {
+        name: "remove!",
+        aliases: &["rm!"],
+        doc: "Delete a file from the virtual file system and close its buffer, discarding unsaved changes.",
+        fun: force_remove,
+        completer: CommandCompleter::positional(&[completers::filename]),
         signature: Signature {
             positionals: (0, Some(1)),
             ..Signature::DEFAULT

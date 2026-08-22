@@ -14,9 +14,11 @@ import init, {
   vfs_write,
   vfs_read,
   vfs_list,
+  vfs_delete,
   editor_state,
   editor_text,
   on_download,
+  on_remove,
 } from "helix-web";
 
 // The one color every background surface derives from: xterm's default
@@ -359,7 +361,12 @@ window.__helixTerminal = terminal;
 // Like `__helixTerminal` above, also a natural assertion surface for a
 // browser-automation harness. Note `write` throws on paths that name no
 // file (`""`, `"."`, `"/"`, ...).
-window.helixVfs = { write: vfs_write, read: vfs_read, list: vfs_list };
+window.helixVfs = {
+  write: vfs_write,
+  read: vfs_read,
+  list: vfs_list,
+  delete: vfs_delete,
+};
 
 // Read-only editor state inspection (issue #18): `state()` returns
 // { mode, path, cursor: { row, col }, selections: [{ anchor, head }] },
@@ -397,3 +404,14 @@ window.helixDownload = (name, bytes) => {
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 };
 on_download((name, bytes) => window.helixDownload(name, bytes));
+
+// The page's half of `:remove` (issue #132): the wasm module says which
+// store key is about to go, before it goes. Registering is what enables the
+// command — a page that must not offer deletion registers nothing — and
+// the handler is where a page that mirrors the store prunes its mirror.
+// The demo mirrors nothing, so this only has to exist; it is on `window`
+// for the same reason `helixDownload` is, so a harness can swap it for one
+// that records the path or throws. Throwing refuses the removal and puts
+// the message on the editor's statusline.
+window.helixRemove = (path) => {};
+on_remove((path) => window.helixRemove(path));
