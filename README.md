@@ -201,8 +201,9 @@ above). What that changes:
   throws refuses the deletion with the store untouched, reporting what it
   threw; a page that registers no handler gets "Could not remove: this host
   cannot remove files" for every `:remove`, so a page either offers deletion
-  or does not — that message read from `helix_stdx::remove` rather than run,
-  as the demo page always registers one. A buffer whose path has no key in
+  or does not — that message read from the `is_registered` gate in
+  `helix-term/src/commands/typed.rs` rather than run, as the demo page
+  always registers one. A buffer whose path has no key in
   the store — never `:w`'d, or `helixVfs.delete`'d since — is closed, with
   `Closed <path> (not in the store; nothing to remove)`, and the handler is
   *not* called, its contract being "this key is leaving the store": a page

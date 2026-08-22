@@ -50,6 +50,11 @@ pub fn is_registered() -> bool {
 /// Tells the host the file at `path` is about to leave the store, or fails
 /// with `Unsupported` if no host has registered a [`Handler`].
 ///
+/// `:remove` never sees that `Unsupported`: it asks [`is_registered`] first,
+/// and the two consult the same static, so the arm is here for shape
+/// parity with [`crate::download::send`] — the message the user reads for
+/// an unregistered host is the command's own, in `helix-term`.
+///
 /// `Ok` is the host's consent: the caller drops the key after it, never
 /// before, so a refusing host sees a store it can still read the file out
 /// of.
@@ -86,10 +91,11 @@ mod tests {
     // One test for the whole lifecycle, for the reason `download`'s is: the
     // handler is a process-wide static and tests run in parallel.
     //
-    // Local-only coverage, and the only coverage of the unregistered arm
-    // anywhere: CI never runs helix's host unit tests, and the browser
-    // suite cannot reach this state because the demo page registers a
-    // handler at boot.
+    // Local-only coverage: CI never runs helix's host unit tests, and the
+    // browser suite cannot reach the unregistered state because the demo
+    // page registers a handler at boot. What it covers is the seam —
+    // `is_registered` false, `send` Unsupported — not the command, which
+    // gates on `is_registered` and builds its own refusal.
     #[test]
     fn consults_the_registered_handler() {
         assert!(!is_registered());
