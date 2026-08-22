@@ -362,7 +362,7 @@ window.__helixTerminal = terminal;
 window.helixVfs = { write: vfs_write, read: vfs_read, list: vfs_list };
 
 // Read-only editor state inspection (issue #18): `state()` returns
-// { mode, path, cursor: { row, col }, selections: [{ anchor, head }] },
+// { mode, theme, path, cursor: { row, col }, selections: [{ anchor, head }] },
 // `text()` the focused buffer's live text (unsaved edits included — unlike
 // `helixVfs.read`, which sees what was last saved). Both return `undefined`
 // when helix is not running, and throw if called from inside the editor's

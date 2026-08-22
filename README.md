@@ -94,8 +94,9 @@ The wasm module also exports a read-only inspection surface
 of scraping the rendered terminal: `editor_state()` returns
 `{ mode, theme, path, cursor: { row, col }, selections: [{ anchor, head }] }`
 for the focused view (`theme` is the name of the theme in effect — what
-`:theme` last set, or `"default"`), and `editor_text()` returns the live buffer text —
-unsaved edits included, unlike `vfs_read`, which sees what was last saved.
+`:theme` last set, previews included, or `"default"`), and `editor_text()` returns
+the live buffer text — unsaved edits included, unlike `vfs_read`, which sees what
+was last saved.
 The demo page exposes them as `window.helixState` — try
 `helixState.state()` in the devtools console while switching modes. Both
 return `undefined` when helix is not running; see `web/src/inspect.rs` for
