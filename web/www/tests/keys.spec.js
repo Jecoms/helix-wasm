@@ -379,6 +379,52 @@ test("a Firefox-numbered punctuation Alt chord reaches the editor off macOS (iss
   );
 });
 
+test("a Windows AltGr character on a handled row is left to xterm (issue #137)", async ({
+  page,
+}) => {
+  // AltGr reaches the browser as `altKey && ctrlKey` on Windows (Chrome
+  // and Firefox alike), and as `getModifierState("AltGraph")`; `key` is
+  // already the third-level character — `{` on a German `AltGr-7`. xterm
+  // drops the keydown in `_isThirdLevelShift` so the keypress can insert
+  // it, but that check runs after the custom handler: the handler has to
+  // bail on its own, or the character is forwarded as `C-A-{` and
+  // cancelled. Asserted in insert mode, where a forwarded chord would be
+  // the most visible as a lost keystroke — and where `preventDefault()`
+  // would otherwise stop the keypress from ever being seen.
+  await bootAsPlatform(page, "Win32");
+  await openFile(page, "altgr.txt", "alpha\n");
+
+  await page.keyboard.press("i");
+  await expect.poll(() => getState(page).then((s) => s.mode)).toBe("insert");
+
+  for (const shape of [{ ctrlKey: true }, { modifierAltGraph: true }]) {
+    const cancelled = await page.evaluate(
+      (event) =>
+        !window.__helixTerminal.textarea.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            ...event,
+            bubbles: true,
+            cancelable: true,
+          }),
+        ),
+      { key: "{", code: "Digit7", keyCode: 55, altKey: true, ...shape },
+    );
+    expect(
+      cancelled,
+      `AltGr shape ${JSON.stringify(shape)} was cancelled`,
+    ).toBe(false);
+  }
+
+  // A real keypress would follow each keydown and insert the character;
+  // synthetic events carry none. The positive control that the page is
+  // still listening: a plain keystroke after the two lands, and nothing
+  // from the AltGr events — a forwarded `C-A-{` would have left insert
+  // mode or eaten the stroke.
+  await page.keyboard.type("Z");
+  await expect.poll(() => getText(page)).toBe("Zalpha\n");
+  expect((await getState(page)).mode).toBe("insert");
+});
+
 test("a macOS-composed punctuation Alt chord resolves off the physical key (issue #137)", async ({
   page,
 }) => {

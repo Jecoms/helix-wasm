@@ -172,7 +172,8 @@ const IS_MAC = ["Macintosh", "MacIntel", "MacPPC", "Mac68K"].includes(
 //     would resolve a Russian `A-ф` through keyCode 65 into `A-a`
 //     (`select_all_siblings`) — a live command where the chord had been
 //     inert. (Windows AltGr never gets this far: xterm's
-//     `_isThirdLevelShift` drops it before `onKey`.)
+//     `_isThirdLevelShift` drops it before `onKey`, and the custom key
+//     handler below bails on it for the same reason.)
 //   - named keys keep `domEvent.key`, because xterm encodes `A-Left` as
 //     `ESC b` on macOS and a looser rule would forward that as `A-b`.
 //
@@ -277,11 +278,23 @@ terminal.attachCustomKeyEventHandler((event) => {
   // two cannot disagree if the option is ever turned off: Option would go
   // back to composing characters, and every Alt chord (these included)
   // back to being dropped, together.
+  //
+  // AltGr is not an Alt chord. Windows reports it as `altKey && ctrlKey`
+  // (Chrome and Firefox both), or as `getModifierState("AltGraph")`, with
+  // `key` already the third-level character — German `AltGr-7` is `{`,
+  // `AltGr-ß` (`code: "Minus"`) is `\`. xterm leaves those alone in
+  // `_isThirdLevelShift` so the keypress inserts the character, and that
+  // check runs *after* this handler, so it has to be repeated here or
+  // every brace, bracket and backslash typed through AltGr would be
+  // forwarded as a `C-A-` chord and cancelled. Helix binds no
+  // `C-A-<punctuation>` chord, so nothing is given up by bailing.
   if (
     event.type !== "keydown" ||
     (IS_MAC && !terminal.options.macOptionIsMeta) ||
     !event.altKey ||
+    event.ctrlKey ||
     event.metaKey ||
+    event.getModifierState("AltGraph") ||
     event.code.startsWith("Key")
   ) {
     return true;
@@ -290,11 +303,15 @@ terminal.attachCustomKeyEventHandler((event) => {
   if (!chord) {
     return true;
   }
+  // In the order the comment above gives: where macOS composed the name
+  // away, the physical key stands in; otherwise a single character is the
+  // layout's own and is trusted as-is; anything else (a named key, a
+  // multi-character key off macOS) is xterm's to handle.
   let name;
-  if (event.key.length === 1 && !composed(event.key)) {
-    name = event.key;
-  } else if (composed(event.key)) {
+  if (composed(event.key)) {
     name = chord[event.shiftKey ? 1 : 0];
+  } else if (event.key.length === 1) {
+    name = event.key;
   } else {
     return true;
   }
@@ -303,7 +320,7 @@ terminal.attachCustomKeyEventHandler((event) => {
   // keystroke still begins its composition in xterm's helper textarea, and
   // the `compositionend` that eventually lands would arrive as a paste.
   event.preventDefault();
-  callEditor(() => key_event(name, event.ctrlKey, true, event.shiftKey, false));
+  callEditor(() => key_event(name, false, true, event.shiftKey, false));
   return false;
 });
 terminal.onKey(({ key, domEvent }) => {
