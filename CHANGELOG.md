@@ -38,6 +38,12 @@ absolute — the copy in an embedder's extracted tree has no README next to it.
   for the page's own deletions; it bypasses the handler. The README's
   [Files live in an in-memory VFS](https://github.com/Jecoms/helix-wasm/blob/main/README.md#files-live-in-an-in-memory-vfs)
   carries the full entry.
+- **`editor_state()` reports the theme.** The snapshot carries a `theme` field: the
+  name of the theme the editor is rendering with — what `:theme` last set (a preview
+  still showing from the prompt included), or `"default"`. An embedding page that wants
+  to remember the theme a reader picked can poll for it instead of watching the `:theme`
+  prompt's keystrokes, which completion and aborted previews make unreliable. Additive;
+  the rest of the shape is unchanged.
 
 ## [0.0.2] — 2026-08-20
 

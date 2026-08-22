@@ -1,6 +1,6 @@
 //! Read-only inspection of live editor state (issue #18): embedders poll
-//! mode, cursor, selections, and buffer text from JS instead of scraping the
-//! rendered terminal.
+//! mode, theme, cursor, selections, and buffer text from JS instead of
+//! scraping the rendered terminal.
 //!
 //! Everything reads the focused view's document. Coordinate semantics:
 //! `cursor.row`/`cursor.col` are 0-based document coordinates (row = line
@@ -39,11 +39,14 @@ fn set(obj: &Object, key: &str, value: &JsValue) {
 }
 
 /// A snapshot of the focused view's state:
-/// `{ mode, path, cursor: { row, col }, selections: [{ anchor, head }] }`.
+/// `{ mode, theme, path, cursor: { row, col }, selections: [{ anchor, head }] }`.
 ///
-/// `mode` is `"normal"` / `"select"` / `"insert"`; `path` is the document's
-/// path, or `undefined` for a scratch buffer. See the module docs for
-/// coordinate semantics.
+/// `mode` is `"normal"` / `"select"` / `"insert"`; `theme` is the name of
+/// the theme the editor is rendering with right now — what `:theme` set,
+/// including a preview it is still showing from the prompt, or `"default"`
+/// when nothing configured one; `path` is the document's path, or
+/// `undefined` for a scratch buffer. See the module docs for coordinate
+/// semantics.
 #[wasm_bindgen]
 pub fn editor_state() -> Result<JsValue, JsError> {
     let state = with_app(|app| {
@@ -67,6 +70,7 @@ pub fn editor_state() -> Result<JsValue, JsError> {
 
         let obj = Object::new();
         set(&obj, "mode", &editor.mode().to_string().into());
+        set(&obj, "theme", &editor.theme.name().into());
         let path = doc
             .path()
             .map_or(JsValue::UNDEFINED, |path| path.to_string_lossy().as_ref().into());
