@@ -92,8 +92,9 @@ The wasm module also exports a read-only inspection surface
 ([#18](https://github.com/Jecoms/helix-wasm/issues/18)) so embedding pages
 (interactive docs, tutorials, test harnesses) can poll editor state instead
 of scraping the rendered terminal: `editor_state()` returns
-`{ mode, path, cursor: { row, col }, selections: [{ anchor, head }] }` for
-the focused view, and `editor_text()` returns the live buffer text —
+`{ mode, theme, path, cursor: { row, col }, selections: [{ anchor, head }] }`
+for the focused view (`theme` is the name of the theme in effect — what
+`:theme` last set, or `"default"`), and `editor_text()` returns the live buffer text —
 unsaved edits included, unlike `vfs_read`, which sees what was last saved.
 The demo page exposes them as `window.helixState` — try
 `helixState.state()` in the devtools console while switching modes. Both

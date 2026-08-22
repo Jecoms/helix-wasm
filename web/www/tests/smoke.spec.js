@@ -255,6 +255,25 @@ test(":theme lists a bundled theme and applying it recolors the screen", async (
   await expect.poll(() => topLeftBg(page)).toBe(0x282828);
 });
 
+test("editor_state() names the theme in effect, previews and aborts included", async ({
+  page,
+}) => {
+  await bootEditor(page);
+  expect((await getState(page)).theme).toBe("default");
+
+  // Typing a complete name in the prompt previews it before Enter commits,
+  // and Escape reverts — the snapshot follows the theme actually rendering
+  // at each step, which is what lets an embedder persist the committed one.
+  await page.keyboard.type(":theme gruvbox");
+  await expect.poll(async () => (await getState(page)).theme).toBe("gruvbox");
+  await page.keyboard.press("Escape");
+  await expect.poll(async () => (await getState(page)).theme).toBe("default");
+
+  await page.keyboard.type(":theme nord");
+  await page.keyboard.press("Enter");
+  await expect.poll(async () => (await getState(page)).theme).toBe("nord");
+});
+
 test("a theme using inherits resolves through its parent", async ({
   page,
 }) => {
