@@ -29,6 +29,19 @@ pub fn vfs_read(path: &str) -> Option<String> {
         .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
 }
 
+/// Deletes the file at `path`. Throws if there is none.
+///
+/// The page's own deletion, so it does *not* go through the handler
+/// [`crate::on_remove`] registered — that handler exists to tell the page
+/// about deletions the editor makes, and here the page is the one making
+/// it. Nor does it close a buffer open on the path: like `vfs_write` over
+/// an open file, the buffer keeps its text and the editor's usual
+/// external-modification bookkeeping takes it from there.
+#[wasm_bindgen]
+pub fn vfs_delete(path: &str) -> Result<(), JsError> {
+    vfs::remove(path).map_err(|err| JsError::new(&err.to_string()))
+}
+
 /// All file paths in the virtual file system, sorted.
 #[wasm_bindgen]
 pub fn vfs_list() -> Vec<String> {

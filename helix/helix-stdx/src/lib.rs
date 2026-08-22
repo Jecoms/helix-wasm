@@ -13,6 +13,10 @@ pub mod env;
 pub mod faccess;
 pub mod path;
 pub mod range;
+// The seam a wasm32 host is told about (and may refuse) a file's removal
+// through; gated like `vfs` below, and for the same reasons.
+#[cfg(any(target_arch = "wasm32", test))]
+pub mod remove;
 pub mod rope;
 // Only wasm32 code paths consult the virtual file system; `test` keeps its
 // unit tests runnable on the host without shipping the module (and its

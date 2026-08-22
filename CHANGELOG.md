@@ -23,6 +23,21 @@ absolute — the copy in an embedder's extracted tree has no README next to it.
 
 ### Added
 
+- **`:remove` (`:rm`)** — a file out of the virtual file system, at last
+  ([#132](https://github.com/Jecoms/helix-wasm/issues/132)). Native helix has no delete
+  command because `:sh rm` is always there; this build has no shell, so a key written into
+  the store was there for the life of the page. `:remove` drops the current file's key and
+  closes its buffer in one act, `:remove <path>` names another key (open or not), and
+  `:remove!` goes ahead over unsaved changes. Keys only — the store has no directories.
+  It is host-gated the way `:download` is: the command works only on a page that
+  registered the new **`on_remove(handler)`** export, which is called with the store key
+  before it goes and may throw to refuse (the message lands on the statusline);
+  unregistered, `:remove` reports that this host cannot remove files, so deletion is a
+  per-page capability. A buffer whose path has no key in the store (never `:w`'d, or
+  deleted by the page since) just closes, without the handler. **`vfs_delete(path)`** completes the `vfs_write` / `vfs_read` / `vfs_list` set
+  for the page's own deletions; it bypasses the handler. The README's
+  [Files live in an in-memory VFS](https://github.com/Jecoms/helix-wasm/blob/main/README.md#files-live-in-an-in-memory-vfs)
+  carries the full entry.
 - **`editor_state()` reports the theme.** The snapshot carries a `theme` field: the
   name of the theme the editor is rendering with — what `:theme` last set (a preview
   still showing from the prompt included), or `"default"`. An embedding page that wants

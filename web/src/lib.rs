@@ -27,6 +27,8 @@ mod keys;
 // compiling it everywhere lets its unit tests run under a native cargo test.
 mod mouse;
 #[cfg(target_family = "wasm")]
+mod remove;
+#[cfg(target_family = "wasm")]
 mod samples;
 #[cfg(target_family = "wasm")]
 mod session;
@@ -39,6 +41,8 @@ mod vfs;
 pub use download::*;
 #[cfg(target_family = "wasm")]
 pub use inspect::*;
+#[cfg(target_family = "wasm")]
+pub use remove::*;
 #[cfg(target_family = "wasm")]
 pub use session::*;
 #[cfg(target_family = "wasm")]
