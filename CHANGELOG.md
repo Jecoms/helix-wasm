@@ -21,6 +21,8 @@ absolute — the copy in an embedder's extracted tree has no README next to it.
 
 ## [Unreleased]
 
+## [0.0.3] — 2026-08-22
+
 ### Added
 
 - **`:remove` (`:rm`)** — a file out of the virtual file system, at last
