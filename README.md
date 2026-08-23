@@ -437,12 +437,15 @@ web page:
   every platform, though, the punctuation- and digit-row Alt chords are read
   from the DOM's key name rather than xterm.js's legacy `keyCode` table,
   which is what keeps `A-;`, `A-=` and `A--` working in Firefox (Gecko
-  numbers those three keys differently from Chromium and Safari). The
-  composition half of this entry is the other one here not taken from a run:
-  it is read from xterm.js's source and exercised with synthetic events,
-  because browser automation drives the renderer directly and never goes
-  through the OS input method, so nothing in this tree can compose a real
-  Option keystroke.
+  numbers those three keys differently from Chromium and Safari). Firefox on
+  macOS also starts the dead key's own composition even though the chord was
+  already handled; the page swallows that one before xterm.js can draw the
+  accent at the cursor or paste it, so `A-u` and `` A-` `` leave no stray
+  `¨` or `` ` `` behind there. The composition half of this entry is the
+  other one here not taken from a run: it is read from xterm.js's source and
+  exercised with synthetic events, because browser automation drives the
+  renderer directly and never goes through the OS input method, so nothing
+  in this tree can compose a real Option keystroke.
 - **No kitty keyboard protocol.** The bridge reports no keyboard
   enhancement, so this is the classic terminal key space: no key-release or
   repeat events, and no `Tab`/`C-i` or `Enter`/`C-m` disambiguation.

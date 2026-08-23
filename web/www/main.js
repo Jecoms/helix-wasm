@@ -323,6 +323,76 @@ terminal.attachCustomKeyEventHandler((event) => {
   callEditor(() => key_event(name, false, true, event.shiftKey, false));
   return false;
 });
+
+// Cancelling the dead key's keydown is not the end of it in Firefox on
+// macOS (issue #142). Chromium and Safari take the cancel as "no
+// composition", but Gecko starts the dead key's composition anyway, and
+// xterm's `CompositionHelper` is listening for it: `macOptionIsMeta` only
+// skips the *keydown* check (`shouldIgnoreComposition`, Terminal.ts:1010),
+// while the `compositionstart`/`compositionupdate`/`compositionend`
+// listeners on the helper textarea (Terminal.ts:381-383, `_bindKeys`) run
+// regardless. So after `A-u` has already reached the editor as `earlier`,
+// the helper also shows its `.composition-view` — a stray `¨` drawn at the
+// cursor cell — and on `compositionend` diffs the textarea and emits the
+// accent through `onData`, which the paste path below would forward. A
+// further chord pressed while that composition is still open can be eaten
+// by it, too.
+//
+// Keep an Option-started composition away from xterm altogether. The
+// keydown that starts one is the `key: "Dead"` Alt keydown both handlers
+// above already recognise; remember it, and swallow the composition events
+// that follow. Capture-phase listeners on the same target run before
+// bubble-phase ones, and xterm registers its composition listeners in the
+// bubble phase, so `stopImmediatePropagation()` from a capture listener
+// here is enough to keep `CompositionHelper` from ever activating — even
+// though these are registered after `terminal.open()`, the only point at
+// which the textarea exists. Clearing the textarea on `compositionend`
+// drops the composed accent Gecko commits into it so nothing is left for
+// a later diff to pick up. xterm's `input` listener is capture-phase
+// (Terminal.ts:384) but only acts on `inputType === "insertText"`, and a
+// composition commits as `insertCompositionText`, so that path needs no
+// guard.
+//
+// The flag is cleared on the next keydown that is not itself part of a
+// composition, so a composition that never ended (focus lost mid-way)
+// cannot leave the following real IME composition — which has no Option
+// keydown in front of it and must still reach the editor as a paste —
+// swallowed. A keydown *inside* the composition (`isComposing`) keeps it:
+// that is the chord Gecko is about to feed into the same composition, and
+// its `compositionend` has to be swallowed as well.
+const textarea = terminal.textarea;
+let altComposing = false;
+textarea.addEventListener(
+  "keydown",
+  (event) => {
+    if (IS_MAC && event.altKey && event.key === "Dead") {
+      altComposing = true;
+    } else if (!event.isComposing) {
+      altComposing = false;
+    }
+  },
+  true,
+);
+for (const type of [
+  "compositionstart",
+  "compositionupdate",
+  "compositionend",
+]) {
+  textarea.addEventListener(
+    type,
+    (event) => {
+      if (!altComposing) {
+        return;
+      }
+      event.stopImmediatePropagation();
+      if (type === "compositionend") {
+        textarea.value = "";
+        altComposing = false;
+      }
+    },
+    true,
+  );
+}
 terminal.onKey(({ key, domEvent }) => {
   dataIsFromKey = true;
   let name = domEvent.key;
