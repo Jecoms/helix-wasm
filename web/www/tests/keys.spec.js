@@ -1,13 +1,14 @@
-// Alt-chord forwarding (issues #68 and #81). The plain key path is covered
-// by the smoke suite's real keystrokes; what needs its own tests is the
-// macOS Option handling, which has two halves:
+// Alt-chord forwarding (issues #68, #81 and #137). The plain key path is
+// covered by the smoke suite's real keystrokes; what needs its own tests is
+// the Alt handling, which has two halves:
 //
 //   - the `onKey` fallback that takes the chord's character from xterm.js
 //     when macOS composed one of its own, and the narrowness of that
 //     fallback, which is what keeps `A-Left` from arriving as `A-b`;
-//   - the custom key handler that resolves the dead keys xterm.js drops
-//     before `onKey` runs at all — the punctuation ones, `` A-` ``
-//     among them (issue #81).
+//   - the custom key handler that resolves the punctuation- and digit-row
+//     chords xterm.js drops before `onKey` runs at all — the macOS dead
+//     keys, `` A-` `` among them (issue #81), and the keys whose legacy
+//     `keyCode` Firefox numbers differently, `A-;` among them (issue #137).
 //
 // The two must not overlap: a chord xterm resolves has to keep going
 // through `onKey` alone, or it lands twice.
@@ -339,6 +340,155 @@ test("the dead-key handler holds xterm's own conditions on an Alt chord", async 
   await expect
     .poll(() => getText(page), { message: "the positive control never fired" })
     .toBe("THIS STAYS LOWERCASE\n");
+});
+
+test("a Firefox-numbered punctuation Alt chord reaches the editor off macOS (issue #137)", async ({
+  page,
+}) => {
+  await bootAsPlatform(page, "Linux x86_64");
+  await openFile(page, "flip.txt", "alpha beta\n");
+
+  // One selection, anchor before head.
+  await page.keyboard.press("w");
+  await expect
+    .poll(() => getState(page).then((s) => s.selections.length))
+    .toBe(1);
+  const before = await getState(page);
+
+  // What a real Alt-; delivers in Firefox: `key` is the layout's own
+  // character, `keyCode` is Gecko's `DOM_VK_SEMICOLON` (59) rather than the
+  // 186 xterm's table knows. Chrome honors `keyCode` from the init dict and
+  // its table misses 59 just as Firefox's does, so this shape is faithful
+  // where it runs: xterm emits nothing for it, and only the custom key
+  // handler — reading `key`, not `keyCode` — can land the chord.
+  await dispatchKey(page, {
+    key: ";",
+    code: "Semicolon",
+    keyCode: 59,
+    altKey: true,
+  });
+
+  // A-; is `flip_selections`: anchor and head trade places.
+  await expect
+    .poll(() => getState(page).then((s) => s.selections[0].head), {
+      message: "A-; did not reach the editor",
+    })
+    .toBe(before.selections[0].anchor);
+  expect((await getState(page)).selections[0].anchor).toBe(
+    before.selections[0].head,
+  );
+});
+
+test("a Windows AltGr character on a handled row is left to xterm (issue #137)", async ({
+  page,
+}) => {
+  // AltGr reaches the browser as `altKey && ctrlKey` on Windows (Chrome
+  // and Firefox alike), and as `getModifierState("AltGraph")`; `key` is
+  // already the third-level character — `{` on a German `AltGr-7`. xterm
+  // drops the keydown in `_isThirdLevelShift` so the keypress can insert
+  // it, but that check runs after the custom handler: the handler has to
+  // bail on its own, or the character is forwarded as `C-A-{` and
+  // cancelled. Asserted in insert mode, where a forwarded chord would be
+  // the most visible as a lost keystroke — and where `preventDefault()`
+  // would otherwise stop the keypress from ever being seen.
+  await bootAsPlatform(page, "Win32");
+  await openFile(page, "altgr.txt", "alpha\n");
+
+  await page.keyboard.press("i");
+  await expect.poll(() => getState(page).then((s) => s.mode)).toBe("insert");
+
+  for (const shape of [{ ctrlKey: true }, { modifierAltGraph: true }]) {
+    const cancelled = await page.evaluate(
+      (event) =>
+        !window.__helixTerminal.textarea.dispatchEvent(
+          new KeyboardEvent("keydown", {
+            ...event,
+            bubbles: true,
+            cancelable: true,
+          }),
+        ),
+      { key: "{", code: "Digit7", keyCode: 55, altKey: true, ...shape },
+    );
+    expect(
+      cancelled,
+      `AltGr shape ${JSON.stringify(shape)} was cancelled`,
+    ).toBe(false);
+  }
+
+  // A real keypress would follow each keydown and insert the character;
+  // synthetic events carry none. The positive control that the page is
+  // still listening: a plain keystroke after the two lands, and nothing
+  // from the AltGr events — a forwarded `C-A-{` would have left insert
+  // mode or eaten the stroke.
+  await page.keyboard.type("Z");
+  await expect.poll(() => getText(page)).toBe("Zalpha\n");
+  expect((await getState(page)).mode).toBe("insert");
+});
+
+test("a macOS-composed punctuation Alt chord resolves off the physical key (issue #137)", async ({
+  page,
+}) => {
+  await bootAsMac(page);
+  await openFile(page, "ellipsis.txt", "alpha beta\n");
+
+  await page.keyboard.press("w");
+  await expect
+    .poll(() => getState(page).then((s) => s.selections.length))
+    .toBe(1);
+  const before = await getState(page);
+
+  // What a real Option-; delivers on macOS (US layout): the composed
+  // ellipsis in `key`, the physical key in `code`. Here `key` names no
+  // binding, so the handler falls back to the `code`-keyed US table — the
+  // same table the dead-key cases above use — and forwards `A-;`.
+  await dispatchKey(page, {
+    key: "…",
+    code: "Semicolon",
+    keyCode: 59,
+    altKey: true,
+  });
+
+  await expect
+    .poll(() => getState(page).then((s) => s.selections[0].head), {
+      message: "A-; did not reach the editor as the US-position character",
+    })
+    .toBe(before.selections[0].anchor);
+});
+
+test("a letter Alt chord still lands exactly once off macOS", async ({
+  page,
+}) => {
+  // The handler now owns the punctuation and digit rows on every platform,
+  // and the letters are still xterm's. This is the ownership boundary from
+  // the other side: a plain `code: "KeyU"` chord must keep going through
+  // xterm and `onKey` alone — a handler that overreached into `Key*` would
+  // run the binding twice off one keystroke.
+  await bootAsPlatform(page, "Linux x86_64");
+  await openFile(page, "once.txt", "alpha\n");
+
+  await page.keyboard.press("i");
+  await page.keyboard.type("X");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("i");
+  await page.keyboard.type("Y");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => getText(page)).toBe("XYalpha\n");
+
+  await dispatchKey(page, {
+    key: "u",
+    code: "KeyU",
+    keyCode: 85,
+    altKey: true,
+  });
+
+  // A-u is `earlier`: one step back strips the "Y" and not the "X".
+  await expect
+    .poll(() => getText(page), { message: "A-u did not reach the editor" })
+    .toBe("Xalpha\n");
+  await page.keyboard.press("i");
+  await expect.poll(() => getState(page).then((s) => s.mode)).toBe("insert");
+  await page.keyboard.press("Escape");
+  expect(await getText(page)).toBe("Xalpha\n");
 });
 
 test("a named key whose sequence is ESC + a character keeps its DOM name", async ({

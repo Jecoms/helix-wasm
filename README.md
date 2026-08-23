@@ -417,7 +417,11 @@ web page:
   key rather than by the character — one layout, read two ways, not two
   layouts. That covers both the letter starters (`A-e`, `A-i`, `A-n`, `A-u`)
   and the punctuation ones, `` A-` `` (`switch_to_uppercase`, the chord
-  `:tutor` 10.3 asks for) among them. None of this applies off macOS. The
+  `:tutor` 10.3 asks for) among them. None of this applies off macOS. On
+  every platform, though, the punctuation- and digit-row Alt chords are read
+  from the DOM's key name rather than xterm.js's legacy `keyCode` table,
+  which is what keeps `A-;`, `A-=` and `A--` working in Firefox (Gecko
+  numbers those three keys differently from Chromium and Safari). The
   composition half of this entry is the other one here not taken from a run:
   it is read from xterm.js's source and exercised with synthetic events,
   because browser automation drives the renderer directly and never goes
