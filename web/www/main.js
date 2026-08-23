@@ -323,6 +323,113 @@ terminal.attachCustomKeyEventHandler((event) => {
   callEditor(() => key_event(name, false, true, event.shiftKey, false));
   return false;
 });
+
+// Cancelling the dead key's keydown is not the end of it in Firefox on
+// macOS (issue #142). Chromium and Safari take the cancel as "no
+// composition", but Gecko starts the dead key's composition anyway, and
+// xterm's `CompositionHelper` is listening for it: `macOptionIsMeta` only
+// skips the *keydown* check (`shouldIgnoreComposition`, Terminal.ts:1010),
+// while the `compositionstart`/`compositionupdate`/`compositionend`
+// listeners on the helper textarea (Terminal.ts:381-383, `_bindKeys`) run
+// regardless. So after `A-u` has already reached the editor as `earlier`,
+// the helper also shows its `.composition-view` — a stray `¨` drawn at the
+// cursor cell — and on `compositionend` diffs the textarea and emits the
+// accent through `onData`, which the paste path below would forward. A
+// further chord pressed while that composition is still open can be eaten
+// by it, too.
+//
+// Keep an Option-started composition away from xterm altogether. The
+// keydown that starts one is the `key: "Dead"` Alt keydown both handlers
+// above already recognise; remember it, and swallow the composition events
+// that follow. Capture-phase listeners on the same target run before
+// bubble-phase ones, and xterm registers its composition listeners in the
+// bubble phase, so `stopImmediatePropagation()` from a capture listener
+// here is enough to keep `CompositionHelper` from ever activating — even
+// though these are registered after `terminal.open()`, the only point at
+// which the textarea exists. On `compositionend` the textarea is put back
+// to what it held before Gecko committed the composed accent into it, so
+// nothing is left for a later diff to pick up. xterm's `input` listener
+// is capture-phase (Terminal.ts:384) but only acts on `inputType ===
+// "insertText"`, and a composition commits as `insertCompositionText`, so
+// that path needs no guard.
+//
+// The gate reads `macOptionIsMeta` off the terminal for the same reason
+// the custom key handler does: with the option off, an Option dead key is
+// a legitimate accent composition, and all three Option-handling sites
+// should flip together.
+//
+// The flag is cleared on the next keydown that is not itself part of a
+// composition, so a composition that never ended (focus lost mid-way)
+// cannot leave the following real IME composition — which has no Option
+// keydown in front of it and must still reach the editor as a paste —
+// swallowed. A keydown *inside* the composition (`isComposing`) keeps it:
+// that is the chord Gecko is about to feed into the same composition, and
+// its `compositionend` has to be swallowed as well.
+//
+// That inner keydown is also why the textarea is *restored* rather than
+// emptied. xterm's own capture-phase keydown listener was registered
+// first, so it has already run: with the helper never told a composition
+// started, a `keyCode === 229` keydown takes `CompositionHelper.keydown`'s
+// other branch (CompositionHelper.ts:113-117) — `_handleAnyTextareaChanges()`,
+// which snapshots the textarea (holding the `¨` Gecko put there) and
+// diffs it against the textarea in a `setTimeout(0)`. Were the textarea
+// emptied on `compositionend`, that diff would read as a shrink and emit
+// `C0.DEL`, which the paste path below would forward as a stray `\x7f`.
+// So the value that keydown saw is recorded — the same value, since both
+// listeners read it synchronously from the same event — and put back on
+// `compositionend`: the diff then sees no change and sends nothing. The
+// accent it leaves behind is harmless, as the keystrokes before it are:
+// xterm only ever reads the textarea relative to a position it took
+// earlier, never wholesale, so it stays there the way typed text already
+// does. An emptying deferred past xterm's diff instead would race the
+// next real composition's own deferred send, and lose its character when
+// it won. With no keydown inside the composition the baseline is the
+// pre-composition value, from the `Dead` keydown — which queues no diff
+// itself, since `shouldIgnoreComposition` skips the helper for Alt
+// keydowns. Nothing is written to the textarea while the composition is
+// still open.
+const textarea = terminal.textarea;
+let altComposing = false;
+let altCompositionBaseline = "";
+textarea.addEventListener(
+  "keydown",
+  (event) => {
+    if (
+      IS_MAC &&
+      terminal.options.macOptionIsMeta &&
+      event.altKey &&
+      event.key === "Dead"
+    ) {
+      altComposing = true;
+      altCompositionBaseline = textarea.value;
+    } else if (!event.isComposing) {
+      altComposing = false;
+    } else if (altComposing) {
+      altCompositionBaseline = textarea.value;
+    }
+  },
+  true,
+);
+for (const type of [
+  "compositionstart",
+  "compositionupdate",
+  "compositionend",
+]) {
+  textarea.addEventListener(
+    type,
+    (event) => {
+      if (!altComposing) {
+        return;
+      }
+      event.stopImmediatePropagation();
+      if (type === "compositionend") {
+        altComposing = false;
+        textarea.value = altCompositionBaseline;
+      }
+    },
+    true,
+  );
+}
 terminal.onKey(({ key, domEvent }) => {
   dataIsFromKey = true;
   let name = domEvent.key;

@@ -515,3 +515,211 @@ test("a named key whose sequence is ESC + a character keeps its DOM name", async
     })
     .toBe("alpha \n");
 });
+
+// The composition a macOS dead key starts, and the Firefox half of it
+// (issue #142). Firefox on macOS begins the dead key's IME composition
+// even after xterm cancelled the keydown, and xterm's `CompositionHelper`
+// would show the accent at the cursor and paste it on `compositionend`;
+// main.js swallows an Option-started composition before it gets there.
+// The events are synthetic for the same reason `dispatchKey`'s are: the
+// renderer never goes through the OS input method (issue #139), and
+// Chromium does not start this composition at all, so the sequence below
+// is the one Gecko fires, read off xterm's own `CompositionHelper`
+// handling rather than captured from a run.
+//
+// Resolves to whether xterm's `.composition-view` — the overlay that draws
+// the in-progress text at the cursor cell — was active mid-composition,
+// which is the only moment it can be: `compositionend` deactivates it.
+const dispatchComposition = (page, data) =>
+  page.evaluate((text) => {
+    const textarea = window.__helixTerminal.textarea;
+    const fire = (type) =>
+      textarea.dispatchEvent(
+        new CompositionEvent(type, { data: text, bubbles: true }),
+      );
+    fire("compositionstart");
+    fire("compositionupdate");
+    const shown = document
+      .querySelector(".xterm .composition-view")
+      .classList.contains("active");
+    // Gecko commits the composed text into the textarea before
+    // `compositionend`; that value is what xterm's helper diffs out.
+    textarea.value += text;
+    fire("compositionend");
+    return shown;
+  }, data);
+
+const textareaValue = (page) =>
+  page.evaluate(() => window.__helixTerminal.textarea.value);
+
+test("an Option dead key's composition is kept away from xterm (issue #142)", async ({
+  page,
+}) => {
+  await bootAsMac(page);
+  await openFile(page, "word.txt", "alpha\n");
+  await page.keyboard.press("i");
+  await page.keyboard.type("X");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("i");
+  await page.keyboard.type("Y");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => getText(page)).toBe("XYalpha\n");
+
+  // The same `A-u` as above, followed by what Firefox does next: the
+  // composition the dead key opened, ending on the accent it composes.
+  await dispatchKey(page, {
+    key: "Dead",
+    code: "KeyU",
+    keyCode: 229,
+    altKey: true,
+  });
+  // xterm's helper never activated — no `¨` drawn at the cursor.
+  expect(
+    await dispatchComposition(page, "¨"),
+    "xterm drew the Option composition at the cursor",
+  ).toBe(false);
+
+  // The chord still lands, once.
+  await expect
+    .poll(() => getText(page), { message: "A-u did not reach the editor" })
+    .toBe("Xalpha\n");
+  // The accent Gecko committed is gone from the textarea — back to what
+  // the keystrokes before it had left there, which xterm never clears —
+  // so nothing is there for a later diff to send as input.
+  expect(await textareaValue(page)).toBe("XY");
+  // xterm's `compositionend` send is a `setTimeout(0)`; a round trip
+  // through the editor in insert mode is past it, and what arrives is the
+  // typed character only — no pasted `¨` before or after it.
+  await page.keyboard.press("i");
+  await expect.poll(() => getState(page).then((s) => s.mode)).toBe("insert");
+  await page.keyboard.type("Z");
+  await expect.poll(() => getText(page)).toBe("XZalpha\n");
+
+  // The swallow ends with the composition: a real IME composition right
+  // after — no Option keydown in front of it — still reaches the editor as
+  // a paste and inserts.
+  await dispatchComposition(page, "é");
+  await expect
+    .poll(() => getText(page), {
+      message: "a real composition after an Option one was swallowed too",
+    })
+    .toBe("XZéalpha\n");
+});
+
+test("a composition with no Option keydown in front of it is still pasted", async ({
+  page,
+}) => {
+  await bootAsMac(page);
+  await openFile(page, "word.txt", "alpha\n");
+  await page.keyboard.press("i");
+  await expect.poll(() => getState(page).then((s) => s.mode)).toBe("insert");
+
+  // The path the README's "IME and other composed input arrive as a paste"
+  // entry describes, pinned so the swallow above cannot widen into it.
+  await dispatchComposition(page, "日本");
+  await expect
+    .poll(() => getText(page), {
+      message: "an IME composition no longer reaches the editor",
+    })
+    .toBe("日本alpha\n");
+});
+
+test("an Option dead key that never composed does not swallow the next composition", async ({
+  page,
+}) => {
+  await bootAsMac(page);
+  await openFile(page, "word.txt", "alpha\n");
+
+  // Chromium and Safari: the cancelled keydown starts no composition at
+  // all, so the flag the keydown set has nothing to clear it — until the
+  // next keydown that is not itself inside a composition. Here that is
+  // `i`, which also puts the editor in insert mode for the composition
+  // after it.
+  await dispatchKey(page, {
+    key: "Dead",
+    code: "KeyU",
+    keyCode: 229,
+    altKey: true,
+  });
+  await page.keyboard.press("i");
+  await expect.poll(() => getState(page).then((s) => s.mode)).toBe("insert");
+  await dispatchComposition(page, "é");
+  await expect
+    .poll(() => getText(page), {
+      message: "a stale Option flag swallowed a real composition",
+    })
+    .toBe("éalpha\n");
+});
+
+test("a keydown inside an Option dead key's composition does not leave a stray DEL", async ({
+  page,
+}) => {
+  await bootAsMac(page);
+  await openFile(page, "word.txt", "alpha\n");
+  await page.keyboard.press("i");
+  await page.keyboard.type("X");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("i");
+  await page.keyboard.type("Y");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => getText(page)).toBe("XYalpha\n");
+
+  // `A-u` then `i` before the composition closes — Gecko feeds the `i`
+  // into the dead key's composition (`keyCode` 229, `isComposing`) and
+  // delivers that keydown *before* the `compositionend` it triggers. With
+  // the helper never told a composition started, xterm takes the
+  // non-composing 229 branch (CompositionHelper.ts:113-117): it snapshots
+  // the textarea's `¨` and diffs it in a `setTimeout(0)`. If the swallowed
+  // `compositionend` had emptied the textarea by then, the diff would read
+  // as a shrink and xterm would emit `C0.DEL`, pasted as `\x7f`; the
+  // host page puts the textarea back to what that keydown saw instead.
+  // Same caveat as `dispatchComposition`: this is Gecko's sequence as
+  // read off xterm's source, not captured from a run.
+  await dispatchKey(page, {
+    key: "Dead",
+    code: "KeyU",
+    keyCode: 229,
+    altKey: true,
+  });
+  await page.evaluate(() => {
+    const textarea = window.__helixTerminal.textarea;
+    const fire = (type, data) =>
+      textarea.dispatchEvent(
+        new CompositionEvent(type, { data, bubbles: true }),
+      );
+    fire("compositionstart", "");
+    fire("compositionupdate", "¨");
+    textarea.value += "¨";
+    textarea.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "i",
+        code: "KeyI",
+        keyCode: 229,
+        isComposing: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    fire("compositionupdate", "ï");
+    textarea.value = textarea.value.slice(0, -1) + "ï";
+    fire("compositionend", "ï");
+  });
+
+  // The chord landed once; the `i` was eaten by the composition, as in
+  // Firefox; and nothing else arrived — a pasted DEL would have deleted a
+  // second character.
+  await expect
+    .poll(() => getText(page), { message: "A-u did not reach the editor" })
+    .toBe("Xalpha\n");
+  // The textarea holds what the inner keydown saw — the `¨` included, so
+  // xterm's diff of it comes out empty — not the `ï` Gecko committed.
+  expect(await textareaValue(page)).toBe("XY¨");
+  // Past xterm's deferred diff: a round trip through insert mode, with the
+  // buffer still holding the `X` a stray DEL would have taken.
+  await page.keyboard.press("i");
+  await expect.poll(() => getState(page).then((s) => s.mode)).toBe("insert");
+  await page.keyboard.type("Z");
+  await expect
+    .poll(() => getText(page), { message: "a stray DEL reached the editor" })
+    .toBe("XZalpha\n");
+});
