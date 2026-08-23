@@ -31,33 +31,83 @@ pub enum ClipboardError {
 
 type Result<T> = std::result::Result<T, ClipboardError>;
 
+#[cfg(target_arch = "wasm32")]
+pub use browser::{set_mirror, set_write_hook, ClipboardProvider};
 #[cfg(not(target_arch = "wasm32"))]
 pub use external::ClipboardProvider;
-#[cfg(target_arch = "wasm32")]
-pub use noop::ClipboardProvider;
 
-// Clipboard not supported for wasm
+// The browser clipboard is asynchronous on both sides (`navigator.clipboard`
+// hands back promises) while this trait-shaped API is synchronous, so the
+// wasm32 provider is a *mirror*: it keeps the last contents it was handed
+// and lets the frontend refresh that copy ahead of a read — see
+// `web/src/clipboard.rs` for the half that talks to the browser.
 #[cfg(target_arch = "wasm32")]
-mod noop {
+mod browser {
     use super::*;
+    use std::cell::{Cell, RefCell};
+
+    thread_local! {
+        /// The last contents known for the browser's clipboard: what the
+        /// editor wrote last, or what the frontend read from the browser
+        /// last, whichever came later. `None` until either happens — the
+        /// register then reads as unsupported, which `Registers::read`
+        /// turns into "use the values saved in the register itself".
+        ///
+        /// A browser has one clipboard; there is no primary selection for
+        /// `*` to map onto, so both [`ClipboardType`]s share this copy.
+        static MIRROR: RefCell<Option<String>> = const { RefCell::new(None) };
+        /// Where writes go on their way to the browser. A plain `fn` keeps
+        /// helix-view free of frontend types (the same seam
+        /// `crossterm::bridge::set_output` uses).
+        static WRITE_HOOK: Cell<Option<fn(&str, ClipboardType)>> = const { Cell::new(None) };
+    }
+
+    /// Registers the frontend's write hook, called with every value the
+    /// editor puts on the clipboard after the mirror has taken it.
+    pub fn set_write_hook(hook: fn(&str, ClipboardType)) {
+        WRITE_HOOK.with(|slot| slot.set(Some(hook)));
+    }
+
+    /// Replaces the mirrored contents with what the frontend read from the
+    /// browser. Does not call the write hook.
+    pub fn set_mirror(contents: String) {
+        MIRROR.with(|slot| *slot.borrow_mut() = Some(contents));
+    }
 
     #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
     #[serde(rename_all = "kebab-case")]
     pub enum ClipboardProvider {
         #[default]
+        Browser,
         None,
     }
 
     impl ClipboardProvider {
         pub fn name(&self) -> Cow<'_, str> {
-            "none".into()
+            match self {
+                Self::Browser => "browser".into(),
+                Self::None => "none".into(),
+            }
         }
 
         pub fn get_contents(&self, _clipboard_type: &ClipboardType) -> Result<String> {
-            Err(ClipboardError::ReadingNotSupported)
+            match self {
+                Self::Browser => MIRROR
+                    .with(|slot| slot.borrow().clone())
+                    .ok_or(ClipboardError::ReadingNotSupported),
+                Self::None => Err(ClipboardError::ReadingNotSupported),
+            }
         }
 
-        pub fn set_contents(&self, _content: &str, _clipboard_type: ClipboardType) -> Result<()> {
+        pub fn set_contents(&self, content: &str, clipboard_type: ClipboardType) -> Result<()> {
+            if let Self::Browser = self {
+                // The mirror first, so a yank/paste round-trip inside the
+                // page works whether or not the browser accepts the write.
+                set_mirror(content.to_owned());
+                if let Some(hook) = WRITE_HOOK.with(Cell::get) {
+                    hook(content, clipboard_type);
+                }
+            }
             Ok(())
         }
     }

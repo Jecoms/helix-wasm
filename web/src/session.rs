@@ -2,6 +2,7 @@
 //! current. Unstable, internal to the host page (see crate docs).
 
 use std::cell::{Cell, RefCell};
+use std::collections::VecDeque;
 use std::future::{poll_fn, Future};
 use std::io::Write;
 use std::pin::pin;
@@ -9,11 +10,13 @@ use std::task::Poll;
 
 use crate::{keys, mouse};
 use crossterm::bridge;
-use crossterm::event::{Event, EventStream};
+use crossterm::event::{Event, EventStream, KeyCode, KeyEvent, KeyModifiers};
 use crossterm::execute;
 use helix_wasm::helix_term::application::Application;
 use helix_wasm::helix_term::args::Args;
 use helix_wasm::helix_term::config::{Config, ConfigLoadError};
+use helix_wasm::helix_view::clipboard;
+use helix_wasm::helix_view::document::Mode;
 use js_sys::{Function, Uint8Array};
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
@@ -39,7 +42,34 @@ thread_local! {
     /// JS runs the cell is unborrowed and [`with_app`] can read editor state
     /// synchronously.
     static APP: RefCell<Option<Application>> = const { RefCell::new(None) };
+    /// The clipboard read in flight, if any, as the generation that started
+    /// it: `0` when none is. While one is pending, every event [`forward`]
+    /// receives goes to [`DEFERRED`] instead of the bridge, so the keystroke
+    /// that asked for the read — first in that queue — reaches helix only
+    /// once the mirror holds the answer, and nothing typed after it can
+    /// overtake it. The generation is what lets the read and its timeout
+    /// race without the loser settling a later read (see [`settle`]).
+    static PREFETCH: Cell<u32> = const { Cell::new(0) };
+    static DEFERRED: RefCell<VecDeque<Event>> = const { RefCell::new(VecDeque::new()) };
+    /// The last key forwarded, reduced to what [`reads_clipboard`] needs to
+    /// know about it: helix's own pending-key state lives in the compositor,
+    /// out of reach of a `&Application`.
+    static PREVIOUS_KEY: Cell<PreviousKey> = const { Cell::new(PreviousKey::Other) };
 }
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PreviousKey {
+    Space,
+    CtrlR,
+    Other,
+}
+
+/// How long a clipboard read may keep input waiting. A read settles at once
+/// on Chromium (permission granted or refused) and on Firefox for the
+/// page's own copy; the wait is for Safari's and Firefox's "Paste"
+/// affordance, which the reader may never answer — after this, the
+/// keystroke goes through against the mirror as it stands.
+const PREFETCH_TIMEOUT_MS: u32 = 5_000;
 
 /// Inspection is impossible right now because the editor is mid-poll: the
 /// caller is JS invoked from inside the event loop (the `output` callback
@@ -107,6 +137,7 @@ pub fn start(
     OUTPUT.with(|slot| *slot.borrow_mut() = Some(output));
     bridge::set_output(forward_output);
     bridge::set_size(columns, rows);
+    crate::clipboard::install();
 
     // Config and log paths resolve under the stubbed home directory. The
     // config path is a real key in the virtual file system (see below); the
@@ -404,8 +435,99 @@ fn restore_terminal(mouse: bool) -> std::io::Result<()> {
 /// liveness gate each host page's problem. Events sent before [`start`] are
 /// dropped for the same reason: nothing has been booted to consume them.
 fn forward(event: Event) {
-    if RUNNING.with(Cell::get) {
+    if !RUNNING.with(Cell::get) {
+        return;
+    }
+    if PREFETCH.with(Cell::get) != 0 {
+        DEFERRED.with(|queue| queue.borrow_mut().push_back(event));
+    } else {
         bridge::inject_event(event);
+    }
+}
+
+/// Whether `key` is about to make helix read the `+` or `*` register —
+/// the moment the clipboard mirror has to be fresh. Judged from the editor
+/// as it stands when the key arrives (every earlier key has been handled
+/// by then: the loop drains the bridge queue in a microtask, and each DOM
+/// keystroke is its own task) plus the one key before it:
+///
+/// - `p`/`P`/`R` with `+` or `*` selected (`"+p`), in normal or select mode;
+/// - `p`/`P`/`R` after `space` (`space-p` pastes the clipboard), likewise;
+/// - `+`/`*` after `C-r` in insert mode (`C-r +` inserts a register).
+///
+/// The previous-key half is a guess where the compositor has the truth —
+/// a space a picker swallowed still counts — so it can ask for a read the
+/// key will not use (Firefox and Safari then show their Paste affordance for
+/// nothing), and a typed `:clipboard-paste-after` is not on the list at
+/// all, so it pastes whatever the mirror last held. Both cost a stale or
+/// spurious prompt, never wrong text in the buffer.
+fn reads_clipboard(key: &KeyEvent) -> bool {
+    let plain = key.modifiers.difference(KeyModifiers::SHIFT).is_empty();
+    let KeyCode::Char(ch) = key.code else {
+        return false;
+    };
+    if !plain {
+        return false;
+    }
+    let previous = PREVIOUS_KEY.with(Cell::get);
+    let Ok(Some(wants)) = with_app(|app| {
+        let editor = &app.editor;
+        match editor.mode() {
+            Mode::Normal | Mode::Select => {
+                matches!(ch, 'p' | 'P' | 'R')
+                    && (matches!(editor.selected_register, Some('+' | '*'))
+                        || previous == PreviousKey::Space)
+            }
+            Mode::Insert => matches!(ch, '+' | '*') && previous == PreviousKey::CtrlR,
+        }
+    }) else {
+        return false;
+    };
+    wants
+}
+
+/// Holds `event` back behind a browser clipboard read, when there is one to
+/// make; `false` means the caller should forward it as usual.
+fn prefetch_then(event: Event) -> bool {
+    let Some(read) = crate::clipboard::read() else {
+        return false;
+    };
+    let generation = PREFETCH.with(|slot| slot.get().wrapping_add(1).max(1));
+    PREFETCH.with(|slot| slot.set(generation));
+    DEFERRED.with(|queue| queue.borrow_mut().push_back(event));
+    spawn_local(async move {
+        let contents = read.await.unwrap_or_else(|err| {
+            log::warn!(
+                "clipboard read refused; pasting the last known contents: {}",
+                crate::download::describe(err, "readText failed")
+            );
+            None
+        });
+        settle(generation, contents);
+    });
+    spawn_local(async move {
+        gloo_timers::future::TimeoutFuture::new(PREFETCH_TIMEOUT_MS).await;
+        log::warn!("clipboard read not answered in {PREFETCH_TIMEOUT_MS} ms; pasting the last known contents");
+        settle(generation, None);
+    });
+    true
+}
+
+/// Ends the read `generation` started — or nothing, if that read is already
+/// over: the read and its timeout both land here, and only the first counts.
+/// Refreshes the mirror when the browser answered, then lets the held-back
+/// input through in order.
+fn settle(generation: u32, contents: Option<String>) {
+    if PREFETCH.with(Cell::get) != generation {
+        return;
+    }
+    PREFETCH.with(|slot| slot.set(0));
+    if let Some(contents) = contents {
+        clipboard::set_mirror(contents);
+    }
+    let deferred = DEFERRED.with(|queue| std::mem::take(&mut *queue.borrow_mut()));
+    for event in deferred {
+        forward(event);
     }
 }
 
@@ -418,9 +540,23 @@ fn forward(event: Event) {
 /// A no-op once helix has exited (see [`on_exit`]).
 #[wasm_bindgen]
 pub fn key_event(key: &str, ctrl: bool, alt: bool, shift: bool, meta: bool) {
-    if let Some(event) = keys::convert(key, ctrl, alt, shift, meta) {
-        forward(Event::Key(event));
+    let Some(event) = keys::convert(key, ctrl, alt, shift, meta) else {
+        return;
+    };
+    // A read already in flight queues this key behind the one that asked
+    // for it; by the time it is handled the mirror is as fresh as it gets.
+    let read = RUNNING.with(Cell::get) && PREFETCH.with(Cell::get) == 0 && reads_clipboard(&event);
+    PREVIOUS_KEY.with(|slot| {
+        slot.set(match (event.code, event.modifiers) {
+            (KeyCode::Char(' '), KeyModifiers::NONE) => PreviousKey::Space,
+            (KeyCode::Char('r'), KeyModifiers::CONTROL) => PreviousKey::CtrlR,
+            _ => PreviousKey::Other,
+        })
+    });
+    if read && prefetch_then(Event::Key(event)) {
+        return;
     }
+    forward(Event::Key(event));
 }
 
 /// Feeds one mouse event, as the fields of an SGR mouse report from the
