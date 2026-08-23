@@ -101,6 +101,14 @@ fn setup_integration_logging() {
 }
 
 impl Application {
+    /// The layer stack, read-only: lets the browser host ask what sits on
+    /// top of the editor view (a prompt, a picker) before it decides whether
+    /// a keystroke is about to read the clipboard.
+    #[cfg(target_arch = "wasm32")]
+    pub fn compositor(&self) -> &Compositor {
+        &self.compositor
+    }
+
     pub fn new(args: Args, config: Config, lang_loader: syntax::Loader) -> Result<Self, Error> {
         #[cfg(feature = "integration")]
         setup_integration_logging();

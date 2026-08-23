@@ -79,6 +79,95 @@ test.describe("with the clipboard permissions granted", () => {
   });
 });
 
+// Replace `navigator.clipboard.readText` with one the test scripts: each
+// call takes the next entry of `answers` — a string resolves with it, `null`
+// never resolves — and the calls are counted on `window.__reads`. The bridge
+// reaches the method through the instance, so an own property shadows it.
+async function scriptReads(page, answers) {
+  await page.evaluate((answers) => {
+    window.__reads = 0;
+    navigator.clipboard.readText = () => {
+      const answer = answers[window.__reads];
+      window.__reads += 1;
+      return answer === null ? new Promise(() => {}) : Promise.resolve(answer);
+    };
+  }, answers);
+}
+
+const readCount = (page) => page.evaluate(() => window.__reads);
+
+test.describe("which keystrokes read", () => {
+  test.use({ permissions: ["clipboard-read", "clipboard-write"] });
+
+  test("p typed into a prompt is not a paste, so it does not read", async ({
+    page,
+  }) => {
+    await bootEditor(page);
+    await scriptReads(page, ["never pasted"]);
+    // A space then `p`/`P`/`R` in a search and a command line, where the
+    // editor's mode still says normal; then `"+p` out of the prompt, which
+    // is the one that has to read.
+    await page.keyboard.type("/a p");
+    await page.keyboard.press("Escape");
+    await page.keyboard.type(":open some Path");
+    await page.keyboard.press("Escape");
+    expect(await readCount(page)).toBe(0);
+    await page.keyboard.type('"+p');
+    await expect.poll(() => getText(page)).toBe("never pasted");
+    expect(await readCount(page)).toBe(1);
+  });
+
+  test("a second paste typed during a read makes its own read", async ({
+    page,
+  }) => {
+    await bootEditor(page);
+    await typeWord(page, "x");
+    // The first read is answered only when the test says so; the second
+    // `"+p` is typed while it is still open, and must not go through on
+    // the first one's answer.
+    await page.evaluate(() => {
+      window.__reads = 0;
+      window.__answer = [];
+      navigator.clipboard.readText = () => {
+        const index = window.__reads;
+        window.__reads += 1;
+        return new Promise((resolve) => {
+          window.__answer[index] = resolve;
+        });
+      };
+    });
+    await page.keyboard.type('"+p"+p');
+    await expect.poll(() => readCount(page)).toBe(1);
+    await page.evaluate(() => window.__answer[0]("one"));
+    await expect.poll(() => getText(page)).toBe("xone");
+    await expect.poll(() => readCount(page)).toBe(2);
+    await page.evaluate(() => window.__answer[1]("two"));
+    await expect.poll(() => getText(page)).toBe("xonetwo");
+  });
+
+  test("a settled read's timeout does not cut a later read short", async ({
+    page,
+  }) => {
+    await bootEditor(page);
+    await typeWord(page, "x");
+    await page.clock.install();
+    // First read answered at once; the second is never answered, so only
+    // its own 5 s timeout may end it — not the first read's, which is
+    // still pending when the second starts 4.5 s later.
+    await scriptReads(page, ["one", null]);
+    await page.keyboard.type('"+p');
+    await expect.poll(() => getText(page)).toBe("xone");
+    await page.clock.runFor(4_500);
+    await page.keyboard.type('"+p');
+    await expect.poll(() => readCount(page)).toBe(2);
+    await page.clock.runFor(1_000);
+    // 5.5 s after the first read, 1 s into the second: still waiting.
+    expect(await getText(page)).toBe("xone");
+    await page.clock.runFor(4_500);
+    await expect.poll(() => getText(page)).toBe("xoneone");
+  });
+});
+
 test.describe("with the clipboard read refused", () => {
   // Chromium auto-denies a permission no one granted, so `readText()`
   // rejects at once and the register falls back to what it holds.

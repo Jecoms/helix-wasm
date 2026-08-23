@@ -50,7 +50,15 @@ thread_local! {
     /// overtake it. The generation is what lets the read and its timeout
     /// race without the loser settling a later read (see [`settle`]).
     static PREFETCH: Cell<u32> = const { Cell::new(0) };
-    static DEFERRED: RefCell<VecDeque<Event>> = const { RefCell::new(VecDeque::new()) };
+    /// Where generations come from: a counter that only ever goes up, never
+    /// [`PREFETCH`] itself (which is back to `0` between reads, so a stale
+    /// timer from a read that settled early would otherwise match the next
+    /// read and end it, too).
+    static NEXT_GENERATION: Cell<u32> = const { Cell::new(1) };
+    /// Input held back behind a clipboard read, in arrival order, each key
+    /// with the key that came before it — what [`reads_clipboard`] needs to
+    /// judge it again when it is finally let through (see [`drain`]).
+    static DEFERRED: RefCell<VecDeque<(Event, PreviousKey)>> = const { RefCell::new(VecDeque::new()) };
     /// The last key forwarded, reduced to what [`reads_clipboard`] needs to
     /// know about it: helix's own pending-key state lives in the compositor,
     /// out of reach of a `&Application`.
@@ -435,11 +443,20 @@ fn restore_terminal(mouse: bool) -> std::io::Result<()> {
 /// liveness gate each host page's problem. Events sent before [`start`] are
 /// dropped for the same reason: nothing has been booted to consume them.
 fn forward(event: Event) {
+    forward_after(event, PreviousKey::Other);
+}
+
+/// [`forward`] for a key, remembering the key before it. Input goes to
+/// [`DEFERRED`] rather than the bridge while a clipboard read is in flight,
+/// and also while an earlier read's backlog is still being let through —
+/// nothing may overtake held-back input.
+fn forward_after(event: Event, previous: PreviousKey) {
     if !RUNNING.with(Cell::get) {
         return;
     }
-    if PREFETCH.with(Cell::get) != 0 {
-        DEFERRED.with(|queue| queue.borrow_mut().push_back(event));
+    let held = PREFETCH.with(Cell::get) != 0 || DEFERRED.with(|queue| !queue.borrow().is_empty());
+    if held {
+        DEFERRED.with(|queue| queue.borrow_mut().push_back((event, previous)));
     } else {
         bridge::inject_event(event);
     }
@@ -447,21 +464,25 @@ fn forward(event: Event) {
 
 /// Whether `key` is about to make helix read the `+` or `*` register —
 /// the moment the clipboard mirror has to be fresh. Judged from the editor
-/// as it stands when the key arrives (every earlier key has been handled
-/// by then: the loop drains the bridge queue in a microtask, and each DOM
-/// keystroke is its own task) plus the one key before it:
+/// as it stands when the key is about to go in (every earlier key has been
+/// handled by then: the loop drains the bridge queue in a microtask, each
+/// DOM keystroke is its own task, and [`drain`] lets held-back keys through
+/// one microtask apart) plus the one key before it, `previous`:
 ///
 /// - `p`/`P`/`R` with `+` or `*` selected (`"+p`), in normal or select mode;
 /// - `p`/`P`/`R` after `space` (`space-p` pastes the clipboard), likewise;
 /// - `+`/`*` after `C-r` in insert mode (`C-r +` inserts a register).
 ///
-/// The previous-key half is a guess where the compositor has the truth —
-/// a space a picker swallowed still counts — so it can ask for a read the
-/// key will not use (Firefox and Safari then show their Paste affordance for
-/// nothing), and a typed `:clipboard-paste-after` is not on the list at
-/// all, so it pastes whatever the mirror last held. Both cost a stale or
-/// spurious prompt, never wrong text in the buffer.
-fn reads_clipboard(key: &KeyEvent) -> bool {
+/// None of it while a prompt or a picker is open: the editor's mode stays
+/// Normal behind a `:` or `/` line, but the key is going into that line,
+/// not to the paste command. The previous-key half is otherwise a guess
+/// where the compositor has the truth — a `space` a popup swallowed still
+/// counts — so it can ask for a read the key will not use (Firefox and
+/// Safari then show their Paste affordance for nothing), and a typed
+/// `:clipboard-paste-after` is not on the list at all, so it pastes
+/// whatever the mirror last held. Both cost a stale or spurious prompt,
+/// never wrong text in the buffer.
+fn reads_clipboard(key: &KeyEvent, previous: PreviousKey) -> bool {
     let plain = key.modifiers.difference(KeyModifiers::SHIFT).is_empty();
     let KeyCode::Char(ch) = key.code else {
         return false;
@@ -469,8 +490,10 @@ fn reads_clipboard(key: &KeyEvent) -> bool {
     if !plain {
         return false;
     }
-    let previous = PREVIOUS_KEY.with(Cell::get);
     let Ok(Some(wants)) = with_app(|app| {
+        if app.compositor().has_prompt_or_picker() {
+            return false;
+        }
         let editor = &app.editor;
         match editor.mode() {
             Mode::Normal | Mode::Select => {
@@ -487,14 +510,21 @@ fn reads_clipboard(key: &KeyEvent) -> bool {
 }
 
 /// Holds `event` back behind a browser clipboard read, when there is one to
-/// make; `false` means the caller should forward it as usual.
-fn prefetch_then(event: Event) -> bool {
+/// make; `false` means the caller should forward it as usual. The event goes
+/// to the front of [`DEFERRED`]: it is the next thing due in, whether the
+/// queue is empty (a fresh keystroke) or holds the rest of an earlier
+/// read's backlog (a key [`drain`] just took out).
+fn prefetch_then(event: Event, previous: PreviousKey) -> bool {
     let Some(read) = crate::clipboard::read() else {
         return false;
     };
-    let generation = PREFETCH.with(|slot| slot.get().wrapping_add(1).max(1));
+    let generation = NEXT_GENERATION.with(|next| {
+        let generation = next.get();
+        next.set(generation.wrapping_add(1).max(1));
+        generation
+    });
     PREFETCH.with(|slot| slot.set(generation));
-    DEFERRED.with(|queue| queue.borrow_mut().push_back(event));
+    DEFERRED.with(|queue| queue.borrow_mut().push_front((event, previous)));
     spawn_local(async move {
         let contents = read.await.unwrap_or_else(|err| {
             log::warn!(
@@ -507,8 +537,10 @@ fn prefetch_then(event: Event) -> bool {
     });
     spawn_local(async move {
         gloo_timers::future::TimeoutFuture::new(PREFETCH_TIMEOUT_MS).await;
-        log::warn!("clipboard read not answered in {PREFETCH_TIMEOUT_MS} ms; pasting the last known contents");
-        settle(generation, None);
+        if PREFETCH.with(Cell::get) == generation {
+            log::warn!("clipboard read not answered in {PREFETCH_TIMEOUT_MS} ms; pasting the last known contents");
+            settle(generation, None);
+        }
     });
     true
 }
@@ -525,10 +557,49 @@ fn settle(generation: u32, contents: Option<String>) {
     if let Some(contents) = contents {
         clipboard::set_mirror(contents);
     }
-    let deferred = DEFERRED.with(|queue| std::mem::take(&mut *queue.borrow_mut()));
-    for event in deferred {
-        forward(event);
+    // The key that asked for the read is first in line, and has had it.
+    if let Some((event, _)) = DEFERRED.with(|queue| queue.borrow_mut().pop_front()) {
+        if RUNNING.with(Cell::get) {
+            bridge::inject_event(event);
+        }
     }
+    schedule_drain();
+}
+
+/// Arranges for the next held-back event to go in on the next microtask.
+/// The bridge wakes the event loop on every event, and that wake-up is
+/// queued ahead of the step scheduled here, so each event has been handled
+/// before the one after it is judged — the same footing a fresh keystroke
+/// gets.
+fn schedule_drain() {
+    if DEFERRED.with(|queue| !queue.borrow().is_empty()) {
+        spawn_local(async { drain() });
+    }
+}
+
+/// Lets one held-back event through, judging it afresh first: a deferred key
+/// that reads the clipboard itself (a second `"+p` typed while the browser
+/// was still asking) starts its own read rather than going through on the
+/// mirror the first one left, and the rest of the backlog waits behind it.
+fn drain() {
+    let Some((event, previous)) = DEFERRED.with(|queue| queue.borrow_mut().pop_front()) else {
+        return;
+    };
+    if !RUNNING.with(Cell::get) {
+        DEFERRED.with(|queue| queue.borrow_mut().clear());
+        return;
+    }
+    let event = match event {
+        Event::Key(key) if reads_clipboard(&key, previous) => {
+            if prefetch_then(Event::Key(key), previous) {
+                return;
+            }
+            Event::Key(key)
+        }
+        event => event,
+    };
+    bridge::inject_event(event);
+    schedule_drain();
 }
 
 /// Feeds one keyboard event: a `KeyboardEvent.key`-shaped name plus the
@@ -544,19 +615,23 @@ pub fn key_event(key: &str, ctrl: bool, alt: bool, shift: bool, meta: bool) {
         return;
     };
     // A read already in flight queues this key behind the one that asked
-    // for it; by the time it is handled the mirror is as fresh as it gets.
-    let read = RUNNING.with(Cell::get) && PREFETCH.with(Cell::get) == 0 && reads_clipboard(&event);
-    PREVIOUS_KEY.with(|slot| {
-        slot.set(match (event.code, event.modifiers) {
+    // for it; it is judged again, against a fresh mirror, as it goes in.
+    let previous = PREVIOUS_KEY.with(|slot| {
+        slot.replace(match (event.code, event.modifiers) {
             (KeyCode::Char(' '), KeyModifiers::NONE) => PreviousKey::Space,
             (KeyCode::Char('r'), KeyModifiers::CONTROL) => PreviousKey::CtrlR,
             _ => PreviousKey::Other,
         })
     });
-    if read && prefetch_then(Event::Key(event)) {
+    let held = PREFETCH.with(Cell::get) != 0 || DEFERRED.with(|queue| !queue.borrow().is_empty());
+    if RUNNING.with(Cell::get)
+        && !held
+        && reads_clipboard(&event, previous)
+        && prefetch_then(Event::Key(event), previous)
+    {
         return;
     }
-    forward(Event::Key(event));
+    forward_after(Event::Key(event), previous);
 }
 
 /// Feeds one mouse event, as the fields of an SGR mouse report from the

@@ -401,10 +401,11 @@ web page:
   input typed meanwhile is held in order behind the paste, not lost. A
   browser has one clipboard, so `*` is the same clipboard as `+`. Two
   corners the bridge does not cover: it decides *which* keystrokes read the
-  clipboard from the editor's state plus the key before (`space`, `C-r`), so
-  a typed `:clipboard-paste-after` pastes what the register last saw rather
-  than asking the browser, and a `space` a picker consumed can cost a
-  spurious Paste prompt. On a plain `http://` origin that is not localhost
+  clipboard from the editor's state plus the key before (`space`, `C-r`) —
+  never while a `:`/`/` prompt or a picker has the keyboard — so a typed
+  `:clipboard-paste-after` pastes what the register last saw rather than
+  asking the browser, and a `space` a popup swallowed can cost a spurious
+  Paste prompt. On a plain `http://` origin that is not localhost
   there is no `navigator.clipboard` at all, and the registers stay
   editor-local. The browser's own paste (Ctrl/Cmd-V) works regardless — it
   arrives as a bracketed paste.

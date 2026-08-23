@@ -197,6 +197,18 @@ impl Compositor {
             .any(|component| component.type_name() == type_name)
     }
 
+    /// Whether a prompt (`:` command line, `/` search, `select:`, ...) or a
+    /// picker is open — a layer that takes every keystroke before the editor
+    /// view sees it. Pickers are wrapped in an `Overlay`, so they are found
+    /// by id rather than type.
+    #[cfg(target_arch = "wasm32")]
+    pub fn has_prompt_or_picker(&self) -> bool {
+        let prompt = std::any::type_name::<crate::ui::Prompt>();
+        self.layers
+            .iter()
+            .any(|layer| layer.type_name() == prompt || layer.id() == Some(picker::ID))
+    }
+
     pub fn find<T: 'static>(&mut self) -> Option<&mut T> {
         let type_name = std::any::type_name::<T>();
         self.layers
