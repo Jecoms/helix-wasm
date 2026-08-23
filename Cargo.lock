@@ -712,12 +712,14 @@ dependencies = [
  "console_error_panic_hook",
  "console_log",
  "crossterm",
+ "gloo-timers",
  "helix-wasm",
  "js-sys",
  "log",
  "tree-house",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "web-sys",
  "web-time",
 ]
 

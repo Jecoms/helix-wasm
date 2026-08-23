@@ -387,12 +387,28 @@ loop either does not happen or happens inline:
 The editor drives xterm.js through the vendored crossterm bridge, inside a
 web page:
 
-- **The OS clipboard is not wired up in either direction.** `"+y` and `"*y`
-  behave like ordinary editor-local registers: the yank round-trips inside
-  helix but never reaches the system clipboard, and `"+p` cannot read what
-  you copied somewhere else. The browser's own paste (Ctrl/Cmd-V) does work —
-  it arrives as a bracketed paste. To copy out, select with the mouse and use
-  the browser's copy.
+- **The `+` and `*` registers reach the OS clipboard through
+  `navigator.clipboard`, with the browser's own consent UX in the way of
+  reads.** `"+y` (and `space y`) writes on every browser without a prompt —
+  a keystroke counts as the user gesture writes require. `"+p` (and
+  `space p`, `C-r +` in insert mode) reads it, and what that looks like is
+  the browser's call: Chromium asks once for the clipboard-read permission
+  and then reads silently; Safari shows a "Paste" button to tap each time;
+  Firefox 125+ shows a one-item "Paste" context menu each time, except when
+  the clipboard holds what this page copied, which it reads silently. A read
+  you refuse or ignore (the prompt is waited on for 5 s) leaves the register
+  holding its last in-page yank, so `"+y` → `"+p` always round-trips, and
+  input typed meanwhile is held in order behind the paste, not lost. A
+  browser has one clipboard, so `*` is the same clipboard as `+`. Two
+  corners the bridge does not cover: it decides *which* keystrokes read the
+  clipboard from the editor's state plus the key before (`space`, `C-r`) —
+  never while a `:`/`/` prompt or a picker has the keyboard — so a typed
+  `:clipboard-paste-after` pastes what the register last saw rather than
+  asking the browser, and a `space` a popup swallowed can cost a spurious
+  Paste prompt. On a plain `http://` origin that is not localhost
+  there is no `navigator.clipboard` at all, and the registers stay
+  editor-local. The browser's own paste (Ctrl/Cmd-V) works regardless — it
+  arrives as a bracketed paste.
 - **Your browser claims some chords first.** `C-w` — helix's entire window
   prefix — closes the tab in most browsers, as do `C-n` and `C-t`, and
   `Ctrl-Shift-<key>` is generally spoken for too. Upstream binds the same

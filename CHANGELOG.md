@@ -21,6 +21,24 @@ absolute — the copy in an embedder's extracted tree has no README next to it.
 
 ## [Unreleased]
 
+### Added
+
+- **`"+y` / `"+p` talk to the OS clipboard**
+  ([#140](https://github.com/Jecoms/helix-wasm/issues/140)). The `+` and `*`
+  registers — `space y`, `space p`, `C-r +` in insert mode included — are bridged
+  to `navigator.clipboard`: a yank writes it (no prompt; a keystroke is the
+  gesture writes need), and a paste reads it under whatever the browser asks for
+  that — a one-time permission in Chromium, a per-paste "Paste" affordance in
+  Safari and Firefox (silent in Firefox for the page's own copy). A refused or
+  unanswered read (5 s) leaves the register holding its last in-page yank, so a
+  `"+y` → `"+p` round trip always works, and keys typed while the browser asks
+  are held in order behind the paste. `*` is the same clipboard as `+` — a browser
+  has one. `:clipboard-provider` reports `browser`; an embedder that wants the
+  registers editor-local again can set `editor.clipboard-provider = "none"`. The
+  bridge needs no host-page change. See the README's
+  [Terminal and browser differences](https://github.com/Jecoms/helix-wasm/blob/main/README.md#terminal-and-browser-differences)
+  for the per-browser detail and the two corners it does not cover.
+
 ## [0.0.3] — 2026-08-22
 
 ### Added

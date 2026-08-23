@@ -35,6 +35,12 @@ tree-house = { version = "0.3.0", default-features = false }
 wasm-bindgen = "0.2"
 wasm-bindgen-futures = "0.4"
 js-sys = "0.3"
+# `navigator.clipboard` for the `+`/`*` register bridge (see clipboard.rs);
+# the features are exactly the three interfaces on the path to it.
+web-sys = { version = "0.3", features = ["Window", "Navigator", "Clipboard"] }
+# The timer that bounds a clipboard read the reader never answers — the
+# same crate helix-view already runs its wasm32 timers on.
+gloo-timers = { version = "0.3", features = ["futures"] }
 console_error_panic_hook = "0.1.7"
 console_log = "1.0"
 log = "0.4"
