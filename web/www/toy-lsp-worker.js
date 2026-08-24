@@ -80,6 +80,11 @@ onmessage = (event) => {
     case "exit":
       close();
       break;
+    case "toy/emitGarbage":
+      // Test hook, sent by the page (not helix) to make the server
+      // misbehave: something no JSON-RPC parser accepts.
+      postMessage("this is not a JSON-RPC message");
+      break;
     default:
       if (id !== undefined) {
         // -32601 = MethodNotFound.

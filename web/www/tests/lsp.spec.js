@@ -140,6 +140,32 @@ test(":lsp-restart reconnects to the same worker", async ({ page }) => {
   }
 });
 
+test("a malformed message from the server neither traps nor wedges", async ({
+  page,
+}) => {
+  await bootWithToyServer(page);
+  await page.keyboard.press(" ");
+  await page.keyboard.press("k");
+  await expect.poll(() => terminalText(page)).toContain("toy hover");
+  await page.keyboard.press("Escape");
+
+  // The first thing a hand-written server produces is a string the
+  // transport cannot parse. That is its error branch: it fails the pending
+  // requests, injects `exit`, and helix reports the server gone — the
+  // editor itself keeps taking input. The page asks the toy worker to
+  // misbehave through the same port helix talks on; the worker answers
+  // helix, not the page.
+  await page.evaluate(() =>
+    window.helixLanguageServers.toy.postMessage(
+      JSON.stringify({ jsonrpc: "2.0", method: "toy/emitGarbage" }),
+    ),
+  );
+  await expect.poll(() => terminalText(page)).toContain("Language server exited");
+  await page.keyboard.press("i");
+  await page.keyboard.type("ok ");
+  await expect.poll(() => getText(page)).toBe(`ok ${DOCUMENT}`);
+});
+
 test("a server name with no worker fails the way it always has", async ({
   page,
 }) => {
