@@ -60,6 +60,12 @@ mod wasm {
     /// The `tokio::task::JoinSet` API subset the completion handler uses,
     /// over `spawn_local` tasks funneling their outputs through a channel.
     /// Completion order is the order the tasks finish in, same as tokio's.
+    ///
+    /// One divergence: tokio aborts the in-flight tasks when the set is
+    /// dropped (a canceled completion request stops mid-flight), whereas
+    /// these tasks run to completion and send into a closed channel. The
+    /// observable outcome is the same — nothing receives the result — but
+    /// the request still costs the server the work.
     pub struct JoinSet<T> {
         tx: UnboundedSender<T>,
         rx: UnboundedReceiver<T>,
