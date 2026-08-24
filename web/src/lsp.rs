@@ -15,8 +15,9 @@
 //! are ignored for a registered name; the name is the whole of the match.
 //! Unstable, internal to the host page (see crate docs).
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
+use std::rc::Rc;
 
 use helix_wasm::helix_lsp::host::{self, Connection};
 use js_sys::{Function, Reflect};
@@ -24,16 +25,39 @@ use tokio::sync::mpsc::unbounded_channel;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen_futures::spawn_local;
 
+/// One live connection's handles on this side: the `onmessage` closure (a
+/// closure handed to JS is only called for as long as the Rust side keeps
+/// it alive) and the flag that tells its outgoing pump to stop.
+struct Live {
+    /// Never read: held so the JS side has something to call.
+    #[allow(dead_code)]
+    onmessage: Closure<dyn FnMut(JsValue)>,
+    severed: Rc<Cell<bool>>,
+}
+
+impl Live {
+    /// Cuts the connection off from the port in both directions: dropping
+    /// the closure closes the incoming channel (the transport sees
+    /// `StreamClosed` and unwinds), and the flag makes the outgoing pump
+    /// drop whatever the old client still sends instead of posting it.
+    fn sever(self) {
+        self.severed.set(true);
+    }
+}
+
 thread_local! {
     /// The ports the host registered, by server name. Read when helix
     /// launches a server, so a registration only has to precede the first
     /// document that wants the server, not [`crate::start`].
     static PORTS: RefCell<HashMap<String, JsValue>> = RefCell::new(HashMap::new());
-    /// The live `onmessage` handlers, by server name: a closure handed to
-    /// JS is only called for as long as the Rust side keeps it alive.
-    /// Keyed so a restart (`:lsp-restart`), which connects afresh, replaces
-    /// the old one rather than leaving two handlers for one port.
-    static HANDLERS: RefCell<HashMap<String, Closure<dyn FnMut(JsValue)>>> = RefCell::new(HashMap::new());
+    /// The live connections, by server name. Keyed so a restart
+    /// (`:lsp-restart`), which connects afresh, severs the old one rather
+    /// than leaving two connections on one port: helix shuts the old client
+    /// down *after* the new one has attached, and its `shutdown`/`exit`
+    /// would otherwise reach the very server the new client just
+    /// initialized against (and the `shutdown` response would land on the
+    /// new transport as a response without a request).
+    static LIVE: RefCell<HashMap<String, Live>> = RefCell::new(HashMap::new());
 }
 
 /// Registers `port` — a `Worker` or a `MessagePort`, anything with
@@ -69,6 +93,12 @@ fn connect(name: &str) -> Option<Connection> {
     let (incoming_tx, incoming) = unbounded_channel::<String>();
     let (outgoing, mut outgoing_rx) = unbounded_channel::<String>();
 
+    // A previous connection under this name (a restart) is cut off first,
+    // so nothing its client still sends reaches the port from here on.
+    if let Some(old) = LIVE.with(|live| live.borrow_mut().remove(name)) {
+        old.sever();
+    }
+
     let server = name.to_owned();
     let onmessage = Closure::wrap(Box::new(move |event: JsValue| {
         let data = Reflect::get(&event, &"data".into()).unwrap_or(JsValue::UNDEFINED);
@@ -86,7 +116,16 @@ fn connect(name: &str) -> Option<Connection> {
         log::error!("language server '{name}': cannot set onmessage on the port: {err:?}");
         return None;
     }
-    HANDLERS.with(|handlers| handlers.borrow_mut().insert(name.to_owned(), onmessage));
+    let severed = Rc::new(Cell::new(false));
+    LIVE.with(|live| {
+        live.borrow_mut().insert(
+            name.to_owned(),
+            Live {
+                onmessage,
+                severed: severed.clone(),
+            },
+        )
+    });
 
     let server = name.to_owned();
     let post_message: Function = Reflect::get(&port, &"postMessage".into())
@@ -95,6 +134,13 @@ fn connect(name: &str) -> Option<Connection> {
         .ok()?;
     spawn_local(async move {
         while let Some(message) = outgoing_rx.recv().await {
+            if severed.get() {
+                // Severed by a newer connection: the port is someone else's
+                // now. Dropping the receiver fails the old client's later
+                // sends with `StreamClosed`, which is what ends its shutdown.
+                log::info!("language server '{server}': dropping a message sent after reconnect");
+                break;
+            }
             if let Err(err) = post_message.call1(&port, &JsValue::from_str(&message)) {
                 // A terminated worker throws here; dropping the receiver
                 // is what tells the transport the stream is closed.

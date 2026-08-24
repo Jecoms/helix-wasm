@@ -28,7 +28,11 @@ pub struct Connection {
 
 /// Asked once per client start, with the language server's configured name;
 /// `None` means the host has nothing registered under it. A restart asks
-/// again, so the factory hands out a fresh pair each time.
+/// again, so the factory hands out a fresh pair each time — and the old
+/// client is shut down only *after* the new pair is handed out, so a host
+/// that reuses one port has to cut the old pair off from it, or the old
+/// client's `shutdown`/`exit` land on the server the new one just
+/// initialized against.
 ///
 /// A plain `fn`, not a closure: the registry is a process-wide static, and
 /// a host holding onto non-`Send` handles (JS values) keeps them on its own

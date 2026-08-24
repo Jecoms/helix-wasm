@@ -99,6 +99,47 @@ test("gd jumps to the definition the server returns", async ({ page }) => {
     .toEqual({ row: 2, col: 4 });
 });
 
+test(":lsp-restart reconnects to the same worker", async ({ page }) => {
+  await bootWithToyServer(page);
+  await page.keyboard.press(" ");
+  await page.keyboard.press("k");
+  await expect.poll(() => terminalText(page)).toContain("toy hover");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => terminalText(page)).not.toContain("toy hover");
+
+  // The restart connects afresh to the port the page registered. Helix
+  // shuts the old client down *after* the new one has attached, so the old
+  // client's `exit` must not reach the worker — the toy server honors it
+  // with `close()`, which would leave the new connection talking to
+  // nothing. The proof is a second round trip after the restart. The new
+  // client only supports hover once the server has answered its
+  // `initialize`, and nothing on the surface says when that is: a hover
+  // asked for before then reports "No configured language server supports
+  // hover", so ask, read which of the two answers came, and ask again on
+  // that one.
+  await page.keyboard.type(":lsp-restart");
+  await page.keyboard.press("Enter");
+  const NO_SERVER = "No configured language server supports hover";
+  for (;;) {
+    await page.keyboard.press(" ");
+    await page.keyboard.press("k");
+    let outcome;
+    await expect
+      .poll(async () => {
+        const text = await terminalText(page);
+        if (text.includes("toy hover")) outcome = "hover";
+        else if (text.includes(NO_SERVER)) outcome = "not yet";
+        return outcome;
+      })
+      .toBeDefined();
+    if (outcome === "hover") break;
+    // The next key clears the statusline; wait for that so the read above
+    // cannot see this attempt's message again.
+    await page.keyboard.press("Escape");
+    await expect.poll(() => terminalText(page)).not.toContain(NO_SERVER);
+  }
+});
+
 test("a server name with no worker fails the way it always has", async ({
   page,
 }) => {

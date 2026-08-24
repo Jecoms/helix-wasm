@@ -587,11 +587,15 @@ completion, hover and `gd` through), or a real server compiled to wasm and
 loaded in the worker, with no network involved either way. Servers are
 launched lazily, on the first document of a language that lists them, so
 register before that document opens; `:lsp-restart` connects to the same
-port afresh. A name in `languages.toml` with no port registered fails the
-way an unconfigured server always has (the "No subprocesses" table). Two
-things a real server would notice: `initialize` carries no `processId`
-(there is none), and `workspace/didChangeWatchedFiles` registrations are
-accepted but never fire — the VFS has no watcher.
+port afresh — the old connection is severed rather than shut down, so the
+`exit` meant for it never reaches the worker, and the server just sees a
+second `initialize` (`:lsp-stop` does deliver `exit`, and a worker that
+honors it is gone until the page registers a new one). A name in
+`languages.toml` with no port registered fails the way an unconfigured
+server always has (the "No subprocesses" table). Three things a real server
+would notice: `initialize` carries no `processId` (there is none), it can
+arrive more than once, and `workspace/didChangeWatchedFiles` registrations
+are accepted but never fire — the VFS has no watcher.
 
 Beyond the terminal loop, the module
 exports the file-injection hooks (`vfs_write` / `vfs_read` / `vfs_list` /
