@@ -71,7 +71,10 @@ thread_local! {
 /// first document of a language that lists the server is opened — helix
 /// launches servers lazily, on the document, and a name it finds nothing
 /// under at that moment fails the way an unconfigured server always has.
-/// Registering the same name again replaces the port for later launches.
+/// Registering the same name again replaces the port for later launches;
+/// a server already running on the old port is cut off from helix, which
+/// reports it exited (and relaunches it, on the new port, when a document
+/// next asks).
 #[wasm_bindgen]
 pub fn register_language_server(name: String, port: JsValue) -> Result<(), JsValue> {
     let post_message = Reflect::get(&port, &"postMessage".into())?;
@@ -80,7 +83,20 @@ pub fn register_language_server(name: String, port: JsValue) -> Result<(), JsVal
             "language server '{name}': the port has no postMessage method"
         )));
     }
-    PORTS.with(|ports| ports.borrow_mut().insert(name, port));
+    let replaced = PORTS.with(|ports| ports.borrow_mut().insert(name.clone(), port.clone()));
+    // A different port under a live name: the old port's `onmessage` still
+    // points at the JS shim of a closure about to be dropped, and a late
+    // message from the old worker would then throw "closure invoked after
+    // being dropped" as a page error. Detach it, and cut the old
+    // connection off so helix sees that server go rather than hang.
+    if let Some(old) = replaced.filter(|old| *old != port) {
+        if let Some(live) = LIVE.with(|live| live.borrow_mut().remove(&name)) {
+            if let Err(err) = Reflect::set(&old, &"onmessage".into(), &JsValue::NULL) {
+                log::warn!("language server '{name}': cannot clear onmessage on the old port: {err:?}");
+            }
+            live.sever();
+        }
+    }
     host::set_connection_factory(connect);
     Ok(())
 }
