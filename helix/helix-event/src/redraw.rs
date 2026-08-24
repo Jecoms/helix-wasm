@@ -1,8 +1,9 @@
 //! Signals that control when/if the editor redraws
 
 use std::future::Future;
+use std::task::Waker;
 
-use parking_lot::{RwLock, RwLockReadGuard};
+use parking_lot::{Mutex, RwLock, RwLockReadGuard};
 use tokio::sync::Notify;
 
 use crate::runtime_local;
@@ -18,6 +19,12 @@ runtime_local! {
     /// locks (read) to prevent the next frame from being drawn
     /// until a certain computation has finished.
     static RENDER_LOCK: RwLock<()> = RwLock::new(());
+
+    /// The waker of a driver that polls the editor's event loop as a
+    /// freshly built future each time (the browser port's `drive`, see
+    /// [`register_loop_waker`]). Unset — and so a no-op in
+    /// [`request_redraw`] — everywhere the loop is one long-lived future.
+    static LOOP_WAKER: Mutex<Option<Waker>> = Mutex::new(None);
 }
 
 pub type RenderLockGuard = RwLockReadGuard<'static, ()>;
@@ -27,6 +34,28 @@ pub type RenderLockGuard = RwLockReadGuard<'static, ()>;
 /// be rendered.
 pub fn request_redraw() {
     REDRAW_NOTIFY.notify_one();
+    if let Some(waker) = LOOP_WAKER.lock().as_ref() {
+        waker.wake_by_ref();
+    }
+}
+
+/// Registers the waker of the task driving the event loop, for a driver
+/// that rebuilds the loop's future on every poll rather than holding one
+/// across polls. Dropping that future drops the [`redraw_requested`]
+/// waiter inside it, so a later [`request_redraw`] finds no waiter to wake:
+/// `notify_one` stores its permit (the next poll's waiter takes it) but
+/// wakes nobody, and the loop stays asleep until something else — a
+/// keystroke, a channel — polls it. Registering here is what supplies that
+/// wake. Call it on every poll, before the loop's future is built; a waker
+/// that would wake the same task as the registered one is not replaced.
+pub fn register_loop_waker(waker: &Waker) {
+    let mut slot = LOOP_WAKER.lock();
+    if !slot
+        .as_ref()
+        .is_some_and(|current| current.will_wake(waker))
+    {
+        *slot = Some(waker.clone());
+    }
 }
 
 /// Returns a future that will yield once a redraw has been asynchronously

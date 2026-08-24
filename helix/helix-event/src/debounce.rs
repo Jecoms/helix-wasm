@@ -6,7 +6,8 @@ use std::time::Duration;
 #[cfg(not(target_arch = "wasm32"))]
 use futures_executor::block_on;
 use tokio::sync::mpsc::{self, error::TrySendError, Sender};
-use tokio::time::Instant;
+
+use crate::time::Instant;
 
 /// Async hooks provide a convenient framework for implementing (debounced)
 /// async event handlers. Most synchronous event hooks will likely need to
@@ -31,9 +32,16 @@ pub trait AsyncHook: Sync + Send + 'static + Sized {
         // However, a bounded channel is much more efficient so it's nice to use here
         let (tx, rx) = mpsc::channel(128);
         // only spawn worker if we are inside runtime to avoid having to spawn a runtime for unrelated unit tests
+        #[cfg(not(target_arch = "wasm32"))]
         if tokio::runtime::Handle::try_current().is_ok() {
             tokio::spawn(run(self, rx));
         }
+        // wasm32 has no tokio runtime, ever, so the guard above would leave
+        // every async hook running nowhere — the completion, signature-help
+        // and diagnostics handlers would swallow their events silently. The
+        // browser's microtask queue is the executor there (see crate::task).
+        #[cfg(target_arch = "wasm32")]
+        crate::task::spawn(run(self, rx));
         tx
     }
 }
@@ -43,7 +51,7 @@ async fn run<Hook: AsyncHook>(mut hook: Hook, mut rx: mpsc::Receiver<Hook::Event
     loop {
         let event = match deadline {
             Some(deadline_) => {
-                let res = tokio::time::timeout_at(deadline_, rx.recv()).await;
+                let res = crate::time::timeout_at(deadline_, rx.recv()).await;
                 match res {
                     Ok(event) => event,
                     Err(_) => {

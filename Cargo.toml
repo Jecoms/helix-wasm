@@ -10,6 +10,9 @@ publish = false
 # a helix file is an edit in this workspace.
 [dependencies]
 helix-core = { path = "helix/helix-core" }
+# For `helix_event::register_loop_waker`, which the frontend's event-loop
+# driver needs (see web/src/session.rs `drive`).
+helix-event = { path = "helix/helix-event" }
 helix-view = { path = "helix/helix-view" }
 # No default features: `git` would enable helix-vcs's gix integration, which
 # is dead weight in a browser (there is no repository to diff against).
@@ -17,6 +20,10 @@ helix-view = { path = "helix/helix-view" }
 # feature); the crossterm it gets is the browser shim swapped in below.
 helix-term = { path = "helix/helix-term", default-features = false }
 helix-loader = { path = "helix/helix-loader" }
+# For `helix_lsp::host`, the seam a host page supplies language servers
+# through on wasm32 (a message transport in place of the subprocess the
+# browser cannot spawn) — re-exported so the frontend can register one.
+helix-lsp = { path = "helix/helix-lsp" }
 # For `helix_stdx::vfs`, the in-memory virtual file system document IO goes
 # through on wasm32 — re-exported so embedders can inject and extract files.
 helix-stdx = { path = "helix/helix-stdx" }

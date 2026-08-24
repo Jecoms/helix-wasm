@@ -10,7 +10,9 @@
 //! in-tree in #82.
 
 pub use helix_core;
+pub use helix_event;
 pub use helix_loader;
+pub use helix_lsp;
 pub use helix_stdx;
 pub use helix_term;
 pub use helix_view;

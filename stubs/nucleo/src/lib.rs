@@ -356,6 +356,19 @@ impl<T: Sync + Send + 'static> Nucleo<T> {
     /// excessive redraws this method will wait `timeout` milliseconds for the
     /// worker therad to finish. It is recommend to set the timeout to 10ms.
     pub fn tick(&mut self, timeout: u64) -> Status {
+        let res = self.tick_matcher(timeout);
+        // On wasm32 any match run `tick_inner` spawned has already finished
+        // inline by now, so `running` means "its result publishes on the
+        // next tick" — and there is no worker thread to ask for that tick
+        // by notifying when it finishes. Ask for it here instead.
+        #[cfg(target_arch = "wasm32")]
+        if res.running {
+            (self.notify)();
+        }
+        res
+    }
+
+    fn tick_matcher(&mut self, timeout: u64) -> Status {
         self.should_notify.store(false, atomic::Ordering::Relaxed);
         let status = self.pattern.status();
         let canceled = status != pattern::Status::Unchanged || self.state.canceled();

@@ -16,7 +16,7 @@ use helix_view::{
     handlers::{AutoSaveEvent, Handlers},
     Editor,
 };
-use tokio::time::Instant;
+use helix_event::time::Instant;
 
 use crate::{
     commands, compositor,
@@ -43,7 +43,7 @@ impl helix_event::AsyncHook for AutoSaveHandler {
     fn handle_event(
         &mut self,
         event: Self::Event,
-        existing_debounce: Option<tokio::time::Instant>,
+        existing_debounce: Option<Instant>,
     ) -> Option<Instant> {
         match event {
             Self::Event::DocumentChanged { save_after } => {

@@ -150,6 +150,13 @@ test.describe("which keystrokes read", () => {
   }) => {
     await bootEditor(page);
     await typeWord(page, "x");
+    // The keystrokes above armed helix's debounced hooks (diagnostics,
+    // signature help — 350 ms at most) on real timers. Let those elapse
+    // before the fake clock takes over: a real timer can only be cleared by
+    // the real `clearTimeout`, and once installed the fake one answers that
+    // call instead, so a hook re-arming its debounce under the fake clock
+    // would leave the real timer to fire into a cancelled callback.
+    await page.waitForTimeout(500);
     await page.clock.install();
     // First read answered at once; the second is never answered, so only
     // its own 5 s timeout may end it — not the first read's, which is

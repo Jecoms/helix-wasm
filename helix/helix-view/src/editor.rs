@@ -2266,17 +2266,17 @@ impl Editor {
 
         /// wasm32 has no timer to bound this with — `tokio::time::timeout`
         /// builds a `tokio::time` sleep, and building one calls
-        /// `Instant::now()`, which traps on wasm32-unknown-unknown — and no
-        /// shutdown to bound either. `Client::start` fails unconditionally
-        /// there (no subprocesses, so `which` never resolves a server
-        /// binary), so `iter_clients()` is always empty, the `join_all` this
-        /// is handed is ready on its first poll, and awaiting it directly is
-        /// what the timeout would have returned anyway.
-        ///
-        /// The deadline is the part that cannot be honored, not the wait: a
-        /// client that could hang would need a real timer here, so if
-        /// language servers ever reach wasm32 this has to grow one rather
-        /// than keep waiting forever.
+        /// `Instant::now()`, which traps on wasm32-unknown-unknown. The wait
+        /// is bounded all the same, one level down: a client on wasm32 is
+        /// one the host supplied a message transport for (see
+        /// `helix_lsp::host`), and each `force_shutdown` it runs is a single
+        /// `shutdown` request, which `Client::call_with_timeout` bounds with
+        /// the server's configured request timeout (`timeout` in
+        /// `languages.toml`, 20 s by default) — through helix-event's
+        /// browser-backed timer. So the `join_all` this is handed resolves
+        /// within that per-server timeout — later than the `timeout`
+        /// argument asks for, since it cannot be honored here, but never
+        /// never.
         #[cfg(target_arch = "wasm32")]
         async fn bounded<F: std::future::Future>(
             _timeout: Option<u64>,

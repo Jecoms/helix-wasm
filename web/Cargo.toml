@@ -48,6 +48,10 @@ log = "0.4"
 # crate — and so the same `performance.now()` timeline — the helix crates
 # already read `Instant` from on wasm32.
 web-time = "1"
+# The channels a language-server transport is made of (see lsp.rs): the
+# helix-lsp client reads and writes `tokio::sync::mpsc` ends, and `sync` is
+# the one tokio feature that needs no runtime.
+tokio = { version = "1", default-features = false, features = ["sync"] }
 
 [build-dependencies]
 cc = "1"

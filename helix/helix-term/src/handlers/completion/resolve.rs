@@ -2,8 +2,8 @@ use std::sync::Arc;
 
 use helix_lsp::lsp;
 use tokio::sync::mpsc::Sender;
-use tokio::time::{Duration, Instant};
 
+use helix_event::time::{Duration, Instant};
 use helix_event::{send_blocking, AsyncHook, TaskController, TaskHandle};
 use helix_view::Editor;
 
@@ -107,8 +107,8 @@ impl AsyncHook for ResolveTimeout {
     fn handle_event(
         &mut self,
         request: Self::Event,
-        timeout: Option<tokio::time::Instant>,
-    ) -> Option<tokio::time::Instant> {
+        timeout: Option<Instant>,
+    ) -> Option<Instant> {
         if self
             .next_request
             .as_ref()
@@ -134,7 +134,7 @@ impl AsyncHook for ResolveTimeout {
         };
         let token = self.task_controller.restart();
         self.in_flight = Some(request.item.clone());
-        tokio::spawn(request.execute(token));
+        helix_event::task::spawn(request.execute(token));
     }
 }
 

@@ -23,6 +23,31 @@ absolute — the copy in an embedder's extracted tree has no README next to it.
 
 ### Added
 
+- **Language servers, over a Web Worker the page supplies**
+  ([#144](https://github.com/Jecoms/helix-wasm/issues/144)). The browser cannot
+  spawn a server process, but LSP is JSON-RPC over any byte stream, so the new
+  **`register_language_server(name, port)`** export takes a `Worker` (or
+  `MessagePort`) per server name and helix's unmodified LSP client runs over
+  `postMessage` — one JSON-RPC message per string, no framing. The `initialize`
+  handshake, request gating, document sync, the completion popup, hover,
+  signature help, `gd` and its siblings, diagnostics, code actions and rename all
+  work as far as the server implements them; a scripted one
+  (`web/www/toy-lsp-worker.js`) is what the browser tests drive. **`start()`
+  gains a fifth argument**, the text of a `languages.toml`, seeded and re-read
+  like `config.toml`: it is where a page declares its servers (a
+  `[language-server.<name>]` table's `command` is ignored; the registered name
+  is the match) and the languages that use them. The demo page reads both from
+  `window.helixLanguages` and `window.helixLanguageServers`. A server name with
+  no port registered fails the way an unconfigured server always has. See the
+  README's
+  [Language servers](https://github.com/Jecoms/helix-wasm/blob/main/README.md#language-servers).
+- **The async hooks run.** Helix's debounced handlers — completion, signature
+  help, diagnostics, auto-save, the pickers' dynamic queries — used to be spawned
+  only inside a tokio runtime, so on wasm32 they swallowed their events; they now
+  run on the browser's executor and `setTimeout`. Beyond the LSP features above,
+  that turns on `auto-save.after-delay`, gives `<space>/` global search its native
+  debounce between keystrokes (it dispatched every keystroke before), and lets a
+  picker's preview highlight the file it shows.
 - **`"+y` / `"+p` talk to the OS clipboard**
   ([#140](https://github.com/Jecoms/helix-wasm/issues/140)). The `+` and `*`
   registers — `space y`, `space p`, `C-r +` in insert mode included — are bridged
@@ -38,6 +63,13 @@ absolute — the copy in an embedder's extracted tree has no README next to it.
   bridge needs no host-page change. See the README's
   [Terminal and browser differences](https://github.com/Jecoms/helix-wasm/blob/main/README.md#terminal-and-browser-differences)
   for the per-browser detail and the two corners it does not cover.
+
+### Fixed
+
+- A redraw requested from a background task — a picker's injector finishing, a
+  debounced hook firing — reached the editor only when the next keystroke
+  happened to poll it. The event-loop driver now registers its waker with
+  `helix-event`, so such requests render on their own.
 
 ## [0.0.3] — 2026-08-22
 

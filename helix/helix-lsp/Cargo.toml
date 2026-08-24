@@ -1,19 +1,29 @@
 # Patched for wasm32-unknown-unknown: the language-server subprocess
-# machinery is removed, since the browser has no subprocesses. The delta
-# from upstream 25.07.1:
+# machinery is replaced by a host-supplied message transport, since the
+# browser has no subprocesses. The delta from upstream 25.07.1:
 #   - tokio's `process` feature is dropped (it pulls in mio, which does not
 #     build for wasm32)
-#   - `Client::start` keeps upstream's `which(cmd)?` line (which always
-#     fails on wasm32, yielding `Error::ExecutableNotFound`) and drops the
-#     server spawn that followed; the `Client._process: Child` field and its
+#   - `Client::start` first asks the `host` module (new) for a connection
+#     registered under the server's name and builds the client over it; with
+#     none it keeps upstream's `which(cmd)?` line (which always fails on
+#     wasm32, yielding `Error::ExecutableNotFound`) and drops the server
+#     spawn that followed; the `Client._process: Child` field and its
 #     construction are removed with it
-#   - transport.rs is trimmed to the `Payload` type; the stdio pump is gone
+#   - transport.rs runs upstream's pending-requests map and initialize
+#     gating over string channels (one JSON-RPC message per item) instead of
+#     Content-Length-framed stdio; the stderr pump is gone
+#   - `tokio::spawn` and `tokio::time::timeout` go through helix-event's
+#     `task`/`time` shims (tokio on native, the browser's executor and timers
+#     on wasm32), which is the one added dependency below
+#   - `InitializeParams.process_id` is `None` on wasm32 (`std::process::id()`
+#     panics there)
 #   - `file_event::Handler::new` spawns its worker only when a tokio runtime
 #     exists (`Handle::try_current()`); upstream spawns unconditionally,
-#     which would panic on wasm32 where no runtime is ever entered
+#     which would panic on wasm32 where no runtime is ever entered. On
+#     wasm32 that leaves file-watch registrations inert: the vfs has no
+#     watcher to feed them anyway
 # Everything else (util conversions, jsonrpc, Registry, progress tracking)
-# is the pristine upstream code, so editor logic behaves identically —
-# there is simply never a running language server.
+# is the pristine upstream code, so editor logic behaves identically.
 #
 # One `[package]`-table choice the outgoing `stubs/helix-lsp` carried is
 # deliberately not reproduced here: `publish = false` is not set. Upstream's
@@ -39,6 +49,7 @@ homepage.workspace = true
 [dependencies]
 helix-stdx = { path = "../helix-stdx" }
 helix-core = { path = "../helix-core" }
+helix-event = { path = "../helix-event" }
 helix-loader = { path = "../helix-loader" }
 helix-lsp-types = { path = "../helix-lsp-types" }
 
