@@ -10,6 +10,12 @@
 import { test, expect } from "@playwright/test";
 import { bootEditor, getState, getText } from "./helpers.js";
 
+// The longest debounce a keystroke arms in helix's async hooks: the
+// diagnostics hook's `TIMEOUT` (helix/helix-view/src/handlers/diagnostics.rs);
+// signature help and completion are shorter. One test waits it out on the
+// wall clock before installing the fake one — see there for why.
+const MAX_HOOK_DEBOUNCE_MS = 350;
+
 const readClipboard = (page) =>
   page.evaluate(() => navigator.clipboard.readText());
 
@@ -151,12 +157,15 @@ test.describe("which keystrokes read", () => {
     await bootEditor(page);
     await typeWord(page, "x");
     // The keystrokes above armed helix's debounced hooks (diagnostics,
-    // signature help — 350 ms at most) on real timers. Let those elapse
-    // before the fake clock takes over: a real timer can only be cleared by
-    // the real `clearTimeout`, and once installed the fake one answers that
-    // call instead, so a hook re-arming its debounce under the fake clock
-    // would leave the real timer to fire into a cancelled callback.
-    await page.waitForTimeout(500);
+    // signature help) on real timers. Let those elapse before the fake
+    // clock takes over: a real timer can only be cleared by the real
+    // `clearTimeout`, and once installed the fake one answers that call
+    // instead, so a hook re-arming its debounce under the fake clock would
+    // leave the real timer to fire into a cancelled callback. Nothing on
+    // the surface says when a hook has fired, so this is the suite's one
+    // wall-clock wait: a multiple of the longest debounce, for a loaded
+    // runner.
+    await page.waitForTimeout(3 * MAX_HOOK_DEBOUNCE_MS);
     await page.clock.install();
     // First read answered at once; the second is never answered, so only
     // its own 5 s timeout may end it — not the first read's, which is
