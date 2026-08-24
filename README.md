@@ -509,16 +509,16 @@ rows, config, languages)` with a callback that feeds editor output bytes to
 an xterm.js `Terminal`, and forward input with `key_event(...)`,
 `paste(...)`, and `resize(cols, rows)`. `config` is the text of a
 `config.toml` and `languages` the text of a `languages.toml`, each
-`undefined` for helix's defaults (see "Configuration" above). Register `on_exit(handler)`
-before `start` to learn
-when helix quits (`:q` and friends really do exit, and nothing can restart
-it in place — the page has to reload), and route the calls into wasm
-through a `try`/`catch` as the demo page does: a panicked instance traps on
-every later call, and a host that keeps forwarding into it silently
-swallows the user's input. Input calls made after a clean exit are inert
-(the module drops them rather than queueing for an event loop that is gone),
-but a page still forwarding is a page still pretending to have an editor —
-stop on the exit and tell the reader.
+`undefined` for helix's defaults (see "Configuration" above). Register
+`on_exit(handler)` before `start` to learn when helix quits (`:q` and
+friends really do exit, and nothing can restart it in place — the page has
+to reload), and route the calls into wasm through a `try`/`catch` as the
+demo page does: a panicked instance traps on every later call, and a host
+that keeps forwarding into it silently swallows the user's input. Input
+calls made after a clean exit are inert (the module drops them rather than
+queueing for an event loop that is gone), but a page still forwarding is a
+page still pretending to have an editor — stop on the exit and tell the
+reader.
 
 `on_download(handler)` is the other callback worth registering: `:download`
 and `:download-all` call it with the file name to save under and a
