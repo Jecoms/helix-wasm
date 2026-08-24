@@ -10,6 +10,8 @@ lists every one of those.
 
 **Live demo: <https://jecoms.github.io/helix-wasm/>**
 
+**Helix tutorial site: <https://helix.manycoolprojects.com/>**
+
 ## Run it locally
 
 ```sh
