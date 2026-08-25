@@ -183,4 +183,4 @@ license" says they are byte-identical.
   `web/Cargo.toml`'s `version`, rebuilds the full-catalog `web/pkg`
   wasm-pack output, and attaches it to a GitHub release as
   `helix-web-<version>.tar.gz` — the artifact [Embedding the editor](embedding.md)
-  pins, and the thing [`CHANGELOG.md`](CHANGELOG.md) versions.
+  pins, and the thing [`CHANGELOG.md`](../CHANGELOG.md) versions.

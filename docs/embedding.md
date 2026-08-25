@@ -126,7 +126,7 @@ than scrape the rendered terminal. The JS surface is unstable by design
 read-only inspection surface (`web/src/inspect.rs`,
 [#18](https://github.com/Jecoms/helix-wasm/issues/18)) is meant to be
 kept stable. Either way, pin a tagged tarball and check its `.d.ts` when
-upgrading — [`CHANGELOG.md`](CHANGELOG.md) is what changed between two of
+upgrading — [`CHANGELOG.md`](../CHANGELOG.md) is what changed between two of
 them, and its scope note says which changes reach the bundle at all.
 
 To cut a release: bump the version everywhere the old one appears — `version`

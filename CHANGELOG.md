@@ -17,7 +17,7 @@ to the git history.
 The format is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are
 [semantic](https://semver.org/spec/v2.0.0.html), read against the stability note in each
 entry. This file ships *inside* the tarball as well as living here, so its links out are
-absolute — the copy in an embedder's extracted tree has no README next to it.
+absolute — the copy in an embedder's extracted tree has no repo next to it.
 
 ## [Unreleased]
 
