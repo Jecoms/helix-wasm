@@ -25,6 +25,8 @@ mod grammars;
 mod inspect;
 #[cfg(target_family = "wasm")]
 mod keys;
+#[cfg(target_family = "wasm")]
+mod lsp;
 // Not wasm-gated: pure decode over the (vendored) crossterm event types, so
 // compiling it everywhere lets its unit tests run under a native cargo test.
 mod mouse;
@@ -43,6 +45,8 @@ mod vfs;
 pub use download::*;
 #[cfg(target_family = "wasm")]
 pub use inspect::*;
+#[cfg(target_family = "wasm")]
+pub use lsp::*;
 #[cfg(target_family = "wasm")]
 pub use remove::*;
 #[cfg(target_family = "wasm")]

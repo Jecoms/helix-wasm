@@ -356,6 +356,24 @@ impl<T: Sync + Send + 'static> Nucleo<T> {
     /// excessive redraws this method will wait `timeout` milliseconds for the
     /// worker therad to finish. It is recommend to set the timeout to 10ms.
     pub fn tick(&mut self, timeout: u64) -> Status {
+        let res = self.tick_matcher(timeout);
+        // On wasm32 any match run `tick_inner` spawned has already finished
+        // inline by now, so `running` means "its result publishes on the
+        // next tick". On the plain path the run asks for that tick itself
+        // (`tick_inner` sets `should_notify` first, and the worker calls
+        // `notify` when it finishes), so this call double-fires there — one
+        // redundant redraw request. What it closes is the rest: the canceled
+        // path, whose first run is spawned with `should_notify` clear and so
+        // finishes silently, and a notify that fired mid-tick, into the
+        // frame in flight, with nobody left to draw the next one.
+        #[cfg(target_arch = "wasm32")]
+        if res.running {
+            (self.notify)();
+        }
+        res
+    }
+
+    fn tick_matcher(&mut self, timeout: u64) -> Status {
         self.should_notify.store(false, atomic::Ordering::Relaxed);
         let status = self.pattern.status();
         let canceled = status != pattern::Status::Unchanged || self.state.canceled();

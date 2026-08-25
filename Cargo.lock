@@ -504,11 +504,15 @@ dependencies = [
  "anyhow",
  "foldhash",
  "futures-executor",
+ "gloo-timers",
  "hashbrown 0.15.5",
  "log",
  "once_cell",
  "parking_lot",
+ "pin-project-lite",
  "tokio",
+ "wasm-bindgen-futures",
+ "web-time",
 ]
 
 [[package]]
@@ -538,6 +542,7 @@ dependencies = [
  "futures-util",
  "globset",
  "helix-core",
+ "helix-event",
  "helix-loader",
  "helix-lsp-types",
  "helix-stdx",
@@ -698,7 +703,9 @@ name = "helix-wasm"
 version = "0.0.3"
 dependencies = [
  "helix-core",
+ "helix-event",
  "helix-loader",
+ "helix-lsp",
  "helix-stdx",
  "helix-term",
  "helix-view",
@@ -716,6 +723,7 @@ dependencies = [
  "helix-wasm",
  "js-sys",
  "log",
+ "tokio",
  "tree-house",
  "wasm-bindgen",
  "wasm-bindgen-futures",

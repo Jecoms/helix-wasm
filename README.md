@@ -130,17 +130,13 @@ helix already has for "not configured":
 
 | What | What you get |
 | --- | --- |
-| Language servers — diagnostics, hover, rename, code actions | "No configured language server supports …"; `:lsp-restart` → "LSP not defined for the current document" |
-| The goto commands — `gd`, `gD`, `gy`, `gi` and `gr` | "No definition found." / "No references found." — helix's own empty-result message, since these five queue their request before checking for a server. Native helix with no server configured says the same |
+| Language servers the host page did not supply — diagnostics, hover, rename, code actions | "No configured language server supports …"; `:lsp-restart` → "LSP not defined for the current document". A server the page *does* supply, as a Web Worker registered under its `languages.toml` name, runs helix's unmodified LSP client over `postMessage` — see "Language servers" under "Embedding the editor" |
+| The goto commands — `gd`, `gD`, `gy`, `gi` and `gr` — without such a server | "No definition found." / "No references found." — helix's own empty-result message, since these five queue their request before checking for a server. Native helix with no server configured says the same |
 | Debugging — `:debug-start`, `:debug-remote`, the rest of the DAP layer | "No debug adapter available for language" |
 | External formatters, including format-on-save (`:format`) | "A formatter isn't available, and no language server provides formatting capabilities" |
 | Shell commands — `:sh`, `:!`, `:run-shell-command`, the `!` and `\|` keys, `:pipe`, `:pipe-to`, `:insert-output`, `:append-output` | "Shell commands are not supported on this platform" |
 | Opening a URL — `gf` with the cursor on one | "Opening URLs in an external program is not supported on this platform" — there is no handoff to the browser either, so nothing here can open a URL. `gf` on a file path works normally |
 | Git — the diff gutter, `:reset-diff-change`, the `<space>g` changed-file picker | "Diff is not available in the current buffer" / "Current working directory does not exist" |
-
-One language-server feature is not in that table because it fails some other
-way: completion goes quiet rather than saying anything at all (see "No
-background work").
 
 Dynamic grammar loading is out as well (`libloading` is stubbed), so the
 grammar set is whatever was linked at build time.
@@ -269,14 +265,12 @@ above). What that changes:
   runtime files, with `hidden` and `max-depth` honored and the rest of the
   `file-picker.*` options ignored for the same reasons. Open buffers are
   searched as they stand, so unsaved edits match — what native helix does —
-  and everything else is searched by its last saved bytes. Two things are
-  different, both because there is no runtime to hand the work to: the
-  debounce native helix runs between keystrokes needs a timer wasm32 cannot
-  build, so every keystroke dispatches its search immediately; and the
-  search runs inline on the main thread, like picker matching (see "No
-  background work"), so a store big enough to grep slowly is a page frozen
-  for that long. Regex syntax, smart-case and the picker's preview behave
-  as they do natively.
+  and everything else is searched by its last saved bytes. One thing is
+  different, because there is no thread to hand the work to: the search
+  runs inline on the main thread, like picker matching (see "No background
+  work"), so a store big enough to grep slowly is a page frozen for that
+  long. The debounce between keystrokes, regex syntax, smart-case and the
+  picker's preview behave as they do natively.
 - **The file explorer reads the VFS, and filters nothing.** `<space>e` lists
   one prefix at a time, with `../` below the root and no `../` at `/`, and
   descending into a row re-reads the store — as does the preview pane, which
@@ -297,7 +291,9 @@ above). What that changes:
   not an entry the store holds. There is nothing on disk to hide or ignore
   here, so `hidden` and gitignore filtering do not apply. `:theme` completion
   reads the VFS too. In-buffer path completion is a separate surface and
-  still offers nothing — see "No completion popup and no signature help".
+  still offers nothing: its handler runs now (see "No background work"),
+  but it lists the directory through `std::fs`, which has nothing behind it
+  on wasm32, so the popup never opens.
 - `:config-open` opens the config the page booted with, or an empty buffer to
   write one in — either way a real, editable key in the store, which `:w`
   saves back to (see "Configuration" below). `:log-open` opens an empty buffer
@@ -329,9 +325,17 @@ other status message; the console line is the durable half.
 - RGB themes need a true-color claim that wasm32 has no `COLORTERM` or
   terminfo to make. The port answers for the terminal emulator rather than
   overriding the loaded config, so the claim survives `:config-reload`.
-- **`languages.toml` and `.editorconfig` are still unreachable**, through
-  different readers that are still `std::fs`. A missing `languages.toml` is
-  not an error, so it does not block `:config-reload`.
+- `languages.toml` is read out of the VFS the same way
+  ([#144](https://github.com/Jecoms/helix-wasm/issues/144)): the user one at
+  `/.config/helix/languages.toml` — `start()`'s fifth argument seeds it, the
+  demo page reads it from `window.helixLanguages` — merged over the built-in
+  set, with a workspace `.helix/languages.toml` over that, and re-read by
+  `:config-reload`. A malformed one is reported like a malformed config and
+  boots the built-in set; a missing one is not an error. It is where a page
+  declares the language servers it supplies (see "Language servers" under
+  "Embedding the editor"); a `[language-server]` table's `command` and
+  `args` are ignored there, since nothing can be spawned.
+- **`.editorconfig` is still unreachable**: its reader is still `std::fs`.
 - `.helix/` is never *detected*: `find_workspace` probes the real filesystem
   for a `.git`/`.jj`/`.helix` marker and nothing on wasm32 answers, so the
   workspace is always the working directory.
@@ -340,19 +344,19 @@ other status message; the console line is the durable half.
 ### No background work
 
 No threads and no tokio runtime, so what helix normally does off the main
-loop either does not happen or happens inline:
+loop either runs on the browser's own executor or happens inline:
 
-- **Background jobs run on the browser's microtask queue**, not a tokio
-  runtime — `Jobs::add` hands them to `wasm_bindgen_futures::spawn_local`
-  instead of `tokio::spawn`. They are still detached and still resolve
-  through the same callback channel, so the commands that queue one behave
-  as they do natively; what is missing is anything a job might want from a
-  runtime, which is why the entries below and the "No subprocesses" table
-  read the way they do.
-- **No completion popup and no signature help.** `C-x` in insert mode does
-  nothing; both are driven by handlers that need a runtime, and there is no
-  language server to feed them in any case.
-- **`auto-save.after-delay` never fires.** An explicit `:w` still works.
+- **Background jobs and async hooks run on the browser's microtask queue**,
+  not a tokio runtime — `Jobs::add` hands them to
+  `wasm_bindgen_futures::spawn_local` instead of `tokio::spawn`, and the
+  debounced handlers (completion, signature help, diagnostics, auto-save,
+  the pickers' dynamic queries) run through `helix-event`'s `task` and
+  `time` shims, which are the browser's executor and `setTimeout` on wasm32
+  and tokio's everywhere else. They are still detached and still resolve
+  through the same channels, so the commands and handlers that use them
+  behave as they do natively: the completion popup, signature help and
+  `auto-save.after-delay` all work, given a language server to feed the
+  first two (see "Language servers" under "Embedding the editor").
 - **Picker matching runs inline** on the browser's main thread — the vendored
   `nucleo` calls the match job directly instead of handing it to a
   threadpool — so a large picker blocks rendering and input while it matches
@@ -501,19 +505,20 @@ the way the demo's `web/www/package.json` does:
 
 `web/www/main.js` is the reference host wiring to replicate: call `init()`
 (fetches and instantiates the wasm module), then `start(writeBytes, cols,
-rows, config)` with a callback that feeds editor output bytes to an xterm.js
-`Terminal`, and forward input with `key_event(...)`, `paste(...)`, and
-`resize(cols, rows)`. `config` is the text of a `config.toml`, or `undefined`
-for helix's defaults (see "Configuration" above). Register `on_exit(handler)`
-before `start` to learn
-when helix quits (`:q` and friends really do exit, and nothing can restart
-it in place — the page has to reload), and route the calls into wasm
-through a `try`/`catch` as the demo page does: a panicked instance traps on
-every later call, and a host that keeps forwarding into it silently
-swallows the user's input. Input calls made after a clean exit are inert
-(the module drops them rather than queueing for an event loop that is gone),
-but a page still forwarding is a page still pretending to have an editor —
-stop on the exit and tell the reader.
+rows, config, languages)` with a callback that feeds editor output bytes to
+an xterm.js `Terminal`, and forward input with `key_event(...)`,
+`paste(...)`, and `resize(cols, rows)`. `config` is the text of a
+`config.toml` and `languages` the text of a `languages.toml`, each
+`undefined` for helix's defaults (see "Configuration" above). Register
+`on_exit(handler)` before `start` to learn when helix quits (`:q` and
+friends really do exit, and nothing can restart it in place — the page has
+to reload), and route the calls into wasm through a `try`/`catch` as the
+demo page does: a panicked instance traps on every later call, and a host
+that keeps forwarding into it silently swallows the user's input. Input
+calls made after a clean exit are inert (the module drops them rather than
+queueing for an event loop that is gone), but a page still forwarding is a
+page still pretending to have an editor — stop on the exit and tell the
+reader.
 
 `on_download(handler)` is the other callback worth registering: `:download`
 and `:download-all` call it with the file name to save under and a
@@ -544,13 +549,61 @@ unregistered, `:remove` reports that this host cannot remove files. It is not ca
 handler is a no-op at `window.helixRemove`, replaceable for a devtools
 session.
 
+### Language servers
+
+The browser cannot spawn the server process helix talks LSP to over stdio,
+but LSP is JSON-RPC over any byte stream, and a Web Worker's `postMessage`
+is one ([#144](https://github.com/Jecoms/helix-wasm/issues/144)). A page
+supplies a language server as a `Worker` (or a `MessagePort`) registered
+under the name its `languages.toml` uses:
+
+```js
+window.helixLanguages = `
+[language-server.toy]
+command = "toy-lsp"        # ignored: the registered name is the match
+
+[[language]]
+name = "toy"
+scope = "source.toy"
+file-types = ["toy"]
+roots = []
+language-servers = ["toy"]
+`;
+window.helixLanguageServers = { toy: new Worker("./toy-lsp-worker.js") };
+```
+
+That is the demo page's wiring (`register_language_server(name, port)` for
+each entry, before `start`); an embedder calls the export directly. The
+wire format is one complete JSON-RPC message per `postMessage`, as a string,
+in each direction — no `Content-Length` framing. Helix's unmodified LSP
+client runs on top: the `initialize` handshake, the pending-request map,
+the gating that holds requests until the server has answered `initialize`,
+`didOpen`/`didChange` sync, and everything the client drives from there —
+the completion popup, hover, signature help, `gd` and its siblings,
+diagnostics, code actions, rename — as far as the server on the other end
+implements them. What that server *is* is the page's business: a scripted
+responder (`web/www/toy-lsp-worker.js` is the one the browser tests drive
+completion, hover and `gd` through), or a real server compiled to wasm and
+loaded in the worker, with no network involved either way. Servers are
+launched lazily, on the first document of a language that lists them, so
+register before that document opens; `:lsp-restart` connects to the same
+port afresh — the old connection is severed rather than shut down, so the
+`exit` meant for it never reaches the worker, and the server just sees a
+second `initialize` (`:lsp-stop` does deliver `exit`, and a worker that
+honors it is gone until the page registers a new one). A name in
+`languages.toml` with no port registered fails the way an unconfigured
+server always has (the "No subprocesses" table). Three things a real server
+would notice: `initialize` carries no `processId` (there is none), it can
+arrive more than once, and `workspace/didChangeWatchedFiles` registrations
+are accepted but never fire — the VFS has no watcher.
+
 Beyond the terminal loop, the module
 exports the file-injection hooks (`vfs_write` / `vfs_read` / `vfs_list` /
 `vfs_delete`, see "Virtual file system" above) and the read-only inspection surface (`editor_state()`
 / `editor_text()`, see "Editor state inspection") — the intended surface
 for tutorial-style embedders that drive and assert on the editor rather
 than scrape the rendered terminal. The JS surface is unstable by design
-(`web/src/session.rs`, `web/src/vfs.rs`), with one exception: the
+(`web/src/session.rs`, `web/src/vfs.rs`, `web/src/lsp.rs`), with one exception: the
 read-only inspection surface (`web/src/inspect.rs`,
 [#18](https://github.com/Jecoms/helix-wasm/issues/18)) is meant to be
 kept stable. Either way, pin a tagged tarball and check its `.d.ts` when

@@ -25,5 +25,16 @@ anyhow = "1"
 log = "0.4"
 futures-executor = "0.3.31"
 
+# The wasm32 halves of the `time` and `task` shim modules: browser-timeout
+# futures and performance.now() where tokio's time driver cannot run (no
+# runtime thread to park), and the microtask queue as the executor where
+# there is no tokio runtime at all. Same crates helix-view's editor timers
+# and helix-term's job spawning already run on for wasm32.
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+gloo-timers = { version = "0.3", features = ["futures"] }
+pin-project-lite = "0.2"
+wasm-bindgen-futures = "0.4"
+web-time = "1"
+
 [features]
 integration_test = []

@@ -3,13 +3,13 @@ use std::collections::HashMap;
 use helix_core::chars::char_is_word;
 use helix_core::completion::CompletionProvider;
 use helix_core::syntax::config::LanguageServerFeature;
+use helix_event::task::JoinSet;
 use helix_event::{register_hook, TaskHandle};
 use helix_lsp::lsp;
 use helix_stdx::rope::RopeSliceExt;
 use helix_view::document::Mode;
 use helix_view::handlers::completion::{CompletionEvent, ResponseContext};
 use helix_view::Editor;
-use tokio::task::JoinSet;
 
 use crate::commands;
 use crate::compositor::Compositor;

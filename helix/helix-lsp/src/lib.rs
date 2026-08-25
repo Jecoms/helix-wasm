@@ -1,6 +1,7 @@
 mod client;
 pub mod file_event;
 mod file_operations;
+pub mod host;
 pub mod jsonrpc;
 mod transport;
 
@@ -637,7 +638,7 @@ impl Registry {
             for old_client in old_clients {
                 self.file_event_handler.remove_client(old_client.id());
                 self.inner.remove(old_client.id());
-                tokio::spawn(async move {
+                helix_event::task::spawn(async move {
                     let _ = old_client.force_shutdown().await;
                 });
             }
@@ -669,7 +670,7 @@ impl Registry {
             for client in clients.drain(..) {
                 self.file_event_handler.remove_client(client.id());
                 self.inner.remove(client.id());
-                tokio::spawn(async move {
+                helix_event::task::spawn(async move {
                     let _ = client.force_shutdown().await;
                 });
             }
@@ -915,7 +916,7 @@ fn start_client(
 
     // Initialize the client asynchronously
     let _client = client.clone();
-    tokio::spawn(async move {
+    helix_event::task::spawn(async move {
         use futures_util::TryFutureExt;
         let value = _client
             .capabilities

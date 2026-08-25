@@ -1,7 +1,7 @@
 use crate::{
     file_operations::FileOperationsInterest,
     find_lsp_workspace, jsonrpc,
-    transport::Payload,
+    transport::{Payload, Transport},
     Call, Error, LanguageServerId, OffsetEncoding, Result,
 };
 
@@ -109,7 +109,7 @@ impl Client {
             // clients and therefore also require us to retroactively update the corresponding
             // documents LSP client handle. It's doable but a pretty weird edgecase so let's
             // wait and see if anyone ever runs into it.
-            tokio::spawn(async move {
+            helix_event::task::spawn(async move {
                 client.initialize_notify.notified().await;
                 if let Some(workspace_folders_caps) = client
                     .capabilities()
@@ -194,12 +194,18 @@ impl Client {
         }
     }
 
-    /// wasm32 stub: there are no subprocesses, so a language server can
-    /// never be spawned. Upstream's `which(cmd)?` line is kept — the `which`
-    /// stub fails unconditionally on wasm32, so this returns
+    /// wasm32 has no subprocesses, so a language server can never be
+    /// *spawned*; what it can have is a transport the host supplies (see
+    /// [`crate::host`]), consulted first by the server's `name`. Given one,
+    /// this is upstream's `start` minus the process: the transport over the
+    /// host's channels, and a `Client` built exactly as upstream builds it.
+    ///
+    /// Without one, upstream's `which(cmd)?` line is kept — the `which` stub
+    /// fails unconditionally on wasm32, so this returns
     /// `Error::ExecutableNotFound`, the variant helix-view's
     /// `launch_language_servers` logs quietly at debug level, and the editor
-    /// runs without LSP.
+    /// runs without that server. `args` and `server_environment` describe a
+    /// process, so they have nothing to apply to on either path.
     #[allow(clippy::type_complexity, clippy::too_many_arguments, unused_variables)]
     pub fn start(
         cmd: &str,
@@ -216,6 +222,33 @@ impl Client {
         UnboundedReceiver<(LanguageServerId, Call)>,
         Arc<Notify>,
     )> {
+        if let Some(connection) = crate::host::connect(&name) {
+            let (server_rx, server_tx, initialize_notify) =
+                Transport::start(connection.incoming, connection.outgoing, id, name.clone());
+
+            let workspace_folders = root_uri
+                .clone()
+                .map(|root| vec![workspace_for_uri(root)])
+                .unwrap_or_default();
+
+            let client = Self {
+                id,
+                name,
+                server_tx,
+                request_counter: AtomicU64::new(0),
+                capabilities: OnceCell::new(),
+                file_operation_interest: OnceLock::new(),
+                config,
+                req_timeout,
+                root_path,
+                root_uri,
+                workspace_folders: Mutex::new(workspace_folders),
+                initialize_notify: initialize_notify.clone(),
+            };
+
+            return Ok((client, server_rx, initialize_notify));
+        }
+
         // Resolve path to the binary — always fails on wasm32, yielding
         // Error::ExecutableNotFound exactly as upstream does for a missing
         // server binary.
@@ -437,8 +470,8 @@ impl Client {
             });
 
         async move {
+            use helix_event::time::timeout;
             use std::time::Duration;
-            use tokio::time::timeout;
             // TODO: delay other calls until initialize success
             timeout(Duration::from_secs(timeout_secs), rx?.recv())
                 .await
@@ -523,7 +556,14 @@ impl Client {
 
         #[allow(deprecated)]
         let params = lsp::InitializeParams {
+            #[cfg(not(target_arch = "wasm32"))]
             process_id: Some(std::process::id()),
+            // `std::process::id()` panics on wasm32-unknown-unknown (there
+            // are no processes to have an id). The field is optional and
+            // advisory — a server uses it to notice its client dying, which
+            // in the browser takes the worker down with the page anyway.
+            #[cfg(target_arch = "wasm32")]
+            process_id: None,
             workspace_folders: Some(self.workspace_folders.lock().clone()),
             // root_path is obsolete, but some clients like pyright still use it so we specify both.
             // clients will prefer _uri if possible

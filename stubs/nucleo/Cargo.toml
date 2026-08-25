@@ -15,6 +15,10 @@
 #   - on wasm32 `Worker::new` forces `worker_threads = 1`, discarding any
 #     explicit thread count passed to `Nucleo::new` (upstream honors it;
 #     inline matching has exactly one thread to use)
+#   - on wasm32 `Nucleo::tick` calls `notify` itself when it reports
+#     `running`: the inline run has already finished by then and its result
+#     publishes on the next tick, which upstream's worker thread would have
+#     asked for by notifying when it finished
 # The stub is pure Rust and compiles identically on native, where the native
 # `cargo check` type-checks helix against it. Deltas are gated on
 # `target_arch = "wasm32"` (not this repo's usual `target_family = "wasm"`):

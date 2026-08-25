@@ -4,8 +4,8 @@ use std::{
     time::Duration,
 };
 
+use helix_event::time::Instant;
 use helix_event::AsyncHook;
-use tokio::time::Instant;
 
 use crate::{job, ui::overlay::Overlay};
 
@@ -33,8 +33,8 @@ impl<T: 'static + Send + Sync, D: 'static + Send + Sync> AsyncHook
     fn handle_event(
         &mut self,
         path: Self::Event,
-        timeout: Option<tokio::time::Instant>,
-    ) -> Option<tokio::time::Instant> {
+        timeout: Option<Instant>,
+    ) -> Option<Instant> {
         if self
             .trigger
             .as_ref()
@@ -77,7 +77,7 @@ impl<T: 'static + Send + Sync, D: 'static + Send + Sync> AsyncHook
             let loader = editor.syn_loader.load();
             let text = doc.text().clone();
 
-            tokio::task::spawn_blocking(move || {
+            let highlight = move || {
                 let syntax = match helix_core::Syntax::new(text.slice(..), language, &loader) {
                     Ok(syntax) => syntax,
                     Err(err) => {
@@ -107,7 +107,15 @@ impl<T: 'static + Send + Sync, D: 'static + Send + Sync> AsyncHook
                     doc.replace_diagnostics(diagnostics, &[], None);
                     doc.syntax = Some(syntax);
                 });
-            });
+            };
+            #[cfg(not(target_arch = "wasm32"))]
+            tokio::task::spawn_blocking(highlight);
+            // wasm32 has no second thread to hand the parse to, so it runs
+            // right here, on the main thread — where every other
+            // tree-sitter parse runs in the browser, under the same parse
+            // timeout (see the port's README).
+            #[cfg(target_arch = "wasm32")]
+            highlight();
         });
     }
 }
@@ -178,23 +186,12 @@ impl<T: 'static + Send + Sync, D: 'static + Send + Sync> AsyncHook for DynamicQu
             picker.matcher.restart(false);
             let injector = picker.injector();
             let get_options = (callback)(&query, editor, picker.editor_data.clone(), &injector);
-            #[cfg(not(target_arch = "wasm32"))]
-            tokio::spawn(async move {
+            helix_event::task::spawn(async move {
                 if let Err(err) = get_options.await {
                     log::info!("Dynamic request failed: {err}");
                 }
                 // NOTE: the Drop implementation of Injector will request a redraw when the
                 // injector falls out of scope here, clearing the "running" indicator.
-            });
-            // wasm32 has no runtime to spawn onto; the browser's microtask
-            // queue is where every detached job runs (see
-            // `job::spawn_detached`). The Injector's Drop requests the
-            // redraw here exactly as it does natively.
-            #[cfg(target_arch = "wasm32")]
-            wasm_bindgen_futures::spawn_local(async move {
-                if let Err(err) = get_options.await {
-                    log::info!("Dynamic request failed: {err}");
-                }
             });
         })
     }

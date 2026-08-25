@@ -19,6 +19,7 @@ import init, {
   editor_text,
   on_download,
   on_remove,
+  register_language_server,
 } from "helix-web";
 
 // The one color every background surface derives from: xterm's default
@@ -129,20 +130,48 @@ on_exit((code) => {
 // (or an already-parsed object) left where the text belongs: helix would boot
 // on its defaults with nothing anywhere to say why. `null` and `undefined`
 // are how a page says "no config", so they pass quietly.
-const configured = window.helixConfig ?? undefined;
-if (configured !== undefined && typeof configured !== "string") {
-  console.warn(
-    "window.helixConfig must be the text of a config.toml; ignoring",
-    configured,
-  );
+function configText(name) {
+  const configured = window[name] ?? undefined;
+  if (configured !== undefined && typeof configured !== "string") {
+    console.warn(
+      `window.${name} must be the text of a TOML file; ignoring`,
+      configured,
+    );
+  }
+  return typeof configured === "string" ? configured : undefined;
 }
-const bootConfig = typeof configured === "string" ? configured : undefined;
+const bootConfig = configText("helixConfig");
+// `languages.toml` rides the same mechanism as `window.helixLanguages`. It
+// is how a page declares language servers: a `[language-server.<name>]`
+// table per server and the `language-servers` list of each language that
+// uses one. The servers themselves cannot be spawned here (issue #144), so
+// the page supplies each as a message channel instead — `window.
+// helixLanguageServers` maps a server name to a `Worker` (or a
+// `MessagePort`) that speaks JSON-RPC over `postMessage`, one message per
+// string, no framing. Registered before `start` so helix finds the port
+// the moment a document asks for the server; a name in the map with no
+// table in `languages.toml` is never asked for, and a table with no port
+// fails as an unconfigured server always has. The `command` in the table is
+// ignored for a registered name.
+const bootLanguages = configText("helixLanguages");
+const servers = window.helixLanguageServers ?? {};
+if (typeof servers !== "object") {
+  console.warn(
+    "window.helixLanguageServers must map server names to Workers; ignoring",
+    servers,
+  );
+} else {
+  for (const [name, port] of Object.entries(servers)) {
+    callEditor(() => register_language_server(name, port));
+  }
+}
 callEditor(() =>
   start(
     (bytes) => terminal.write(bytes),
     terminal.cols,
     terminal.rows,
     bootConfig,
+    bootLanguages,
   ),
 );
 

@@ -4,9 +4,9 @@ use std::sync::atomic::{self, AtomicUsize};
 use std::sync::Arc;
 use std::time::Duration;
 
+use helix_event::time::Instant;
 use helix_event::{request_redraw, send_blocking, AsyncHook};
 use tokio::sync::mpsc::Sender;
-use tokio::time::Instant;
 
 use crate::{Document, DocumentId, ViewId};
 

@@ -6,6 +6,8 @@ use arc_swap::ArcSwap;
 use futures_util::Future;
 use helix_core::completion::CompletionProvider;
 use helix_core::syntax::config::LanguageServerFeature;
+use helix_event::task::JoinSet;
+use helix_event::time::{timeout_at, Instant};
 use helix_event::{cancelable_future, TaskController, TaskHandle};
 use helix_lsp::lsp;
 use helix_lsp::lsp::{CompletionContext, CompletionTriggerKind};
@@ -14,8 +16,6 @@ use helix_stdx::rope::RopeSliceExt;
 use helix_view::document::{Mode, SavePoint};
 use helix_view::handlers::completion::{CompletionEvent, ResponseContext};
 use helix_view::{Document, DocumentId, Editor, ViewId};
-use tokio::task::JoinSet;
-use tokio::time::{timeout_at, Instant};
 
 use crate::compositor::Compositor;
 use crate::config::Config;
@@ -279,7 +279,7 @@ fn request_completions(
             replace_completions(handle_, requests, false).await;
         }
     };
-    tokio::spawn(cancelable_future(request_completions, handle));
+    helix_event::task::spawn(cancelable_future(request_completions, handle));
 }
 
 fn request_completions_from_language_server(
@@ -362,6 +362,6 @@ pub fn request_incomplete_completion_list(editor: &mut Editor, handle: TaskHandl
         requests.spawn(request);
     }
     if !requests.is_empty() {
-        tokio::spawn(replace_completions(handle, requests, true));
+        helix_event::task::spawn(replace_completions(handle, requests, true));
     }
 }

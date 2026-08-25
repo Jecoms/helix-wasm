@@ -15,11 +15,7 @@ pub fn user_lang_config() -> Result<toml::Value, toml::de::Error> {
     ]
     .into_iter()
     .map(|path| path.join("languages.toml"))
-    .filter_map(|file| {
-        std::fs::read_to_string(file)
-            .map(|config| toml::from_str(&config))
-            .ok()
-    })
+    .filter_map(|file| Some(toml::from_str(&read_lang_config(file)?)))
     .collect::<Result<Vec<_>, _>>()?
     .into_iter()
     .fold(default_lang_config(), |a, b| {
@@ -27,4 +23,19 @@ pub fn user_lang_config() -> Result<toml::Value, toml::de::Error> {
     });
 
     Ok(config)
+}
+
+/// One `languages.toml`, or `None` where there is none to read (a missing
+/// file is the common case, not an error).
+#[cfg(not(target_arch = "wasm32"))]
+fn read_lang_config(file: std::path::PathBuf) -> Option<String> {
+    std::fs::read_to_string(file).ok()
+}
+
+/// wasm32 has no file system; the language config is read from the virtual
+/// one, same as `config.toml` and document IO. Both paths above are absolute
+/// there, so an embedder can seed either before the editor boots.
+#[cfg(target_arch = "wasm32")]
+fn read_lang_config(file: std::path::PathBuf) -> Option<String> {
+    String::from_utf8(helix_stdx::vfs::read(file).ok()?).ok()
 }

@@ -125,6 +125,16 @@ fn forward_output(bytes: &[u8]) {
 /// message: the first event helix handles clears it, so a page that wants to
 /// hold the reader on it has to render it itself.
 ///
+/// `languages` is the text of a `languages.toml`, seeded and read the same
+/// way — at `config_dir()/languages.toml`, with the workspace
+/// `.helix/languages.toml` merged over it, and `:config-reload` re-reading
+/// both. It is where a page declares the language servers it registers
+/// with [`crate::register_language_server`]: a `[language-server.<name>]`
+/// table per server (its `command` is ignored; the registered name is the
+/// match) and the `language-servers` list of each language that uses one.
+/// A malformed one is reported like a malformed config, and boots the
+/// built-in language set.
+///
 /// Must be called exactly once per page load, before any other export, and
 /// with the real terminal size — the bridge otherwise reports a placeholder
 /// 80x24 and helix would lay out against it.
@@ -134,6 +144,7 @@ pub fn start(
     columns: u16,
     rows: u16,
     config: Option<String>,
+    languages: Option<String>,
 ) -> Result<(), JsValue> {
     if STARTED.with(|started| started.replace(true)) {
         return Err(JsValue::from_str("helix is already running on this page"));
@@ -175,6 +186,16 @@ pub fn start(
             .map_err(|err| JsValue::from_str(&format!("failed to seed the config file: {err}")))?;
     }
 
+    // The page's language config, likewise, at the user `languages.toml`
+    // path `user_lang_loader` below merges over the built-in one.
+    if let Some(languages) = languages {
+        helix_wasm::helix_stdx::vfs::write(
+            helix_wasm::helix_loader::config_dir().join("languages.toml"),
+            languages,
+        )
+        .map_err(|err| JsValue::from_str(&format!("failed to seed the languages file: {err}")))?;
+    }
+
     // A config that will not parse is worth saying out loud — native helix
     // prints it and waits for a keypress before falling back to the defaults;
     // here it goes to the console and to the statusline, once there is an
@@ -191,7 +212,22 @@ pub fn start(
         }
     };
     let mouse = config.editor.mouse;
-    let lang_loader = helix_wasm::helix_core::config::default_lang_loader();
+    // The user language config over the built-in one, exactly as native
+    // helix's `main` loads it — including its fallback to the built-in set
+    // when the user file will not parse, reported the way a bad config is.
+    // A missing file is not an error: `user_lang_config` skips it.
+    let (lang_loader, languages_error) = match helix_wasm::helix_core::config::user_lang_loader()
+    {
+        Ok(loader) => (loader, None),
+        Err(err) => {
+            let message = format!("Bad language config: {err}");
+            log::error!("{message}");
+            (
+                helix_wasm::helix_core::config::default_lang_loader(),
+                Some(message),
+            )
+        }
+    };
 
     // Seed helix's own tutorial text, read straight out of the in-tree port
     // (see ../runtime/README.md for the steps the browser cannot honor), into
@@ -227,7 +263,9 @@ pub fn start(
     let mut app = Application::new(Args::default(), config, lang_loader)
         .map_err(|err| JsValue::from_str(&format!("failed to initialize helix: {err}")))?;
 
-    if let Some(message) = config_error {
+    // One statusline: with both files bad, the config's report is the one
+    // that stays up (the language one is still on the console).
+    for message in [languages_error, config_error].into_iter().flatten() {
         app.editor.set_error(message);
     }
 
@@ -264,20 +302,32 @@ pub fn start(
 ///   a stateless poll of the bridge queue, the jobs channels are tokio mpsc,
 ///   redraw requests go through `Notify::notify_one` (the permit survives a
 ///   dropped future), and the idle/redraw timers live in `Editor`;
+/// - every source can also *wake* this task with its future dropped: the
+///   bridge and the mpsc channels keep the last waker they were polled with,
+///   but a `Notify` forgets its waiter on drop, so a `request_redraw` from a
+///   background task (a picker's injector finishing, a debounced hook)
+///   would store its permit and wake nobody. `register_loop_waker`, called
+///   on every poll below, is what makes those wake this task too;
 /// - once an arm fires, its handler body runs to completion within that same
 ///   poll — on wasm the handlers never actually pend (`render`'s body is
-///   synchronous, the LSP/DAP arms are stubbed, `signals` is
-///   `stream::empty()` on non-unix) — so a drop can't abandon a half-handled
-///   event.
+///   synchronous, the DAP arm is stubbed, `signals` is `stream::empty()` on
+///   non-unix, and the LSP arm — live since issue #144, fed by the
+///   host-registered servers of `lsp.rs` — has exactly one `.await` in
+///   `handle_language_server_message`, on `Client::workspace_folders`, an
+///   `async fn` around a parking_lot lock that resolves on its first poll)
+///   — so a drop can't abandon a half-handled event.
 ///
 /// INVARIANT: "handlers never pend on wasm" is rev-specific. Recheck it on
 /// every upstream bump — an event handler that gains a real `.await` would
 /// silently break this driver (dropping the future would abandon the
-/// half-run handler and the event it consumed).
+/// half-run handler and the event it consumed). The LSP arm is the one to
+/// watch: a pending `.await` added anywhere in
+/// `handle_language_server_message` would drop that server message.
 async fn drive() {
     let mut events = EventStream::new();
 
     poll_fn(|cx| {
+        helix_wasm::helix_event::register_loop_waker(cx.waker());
         APP.with(|cell| {
             let mut guard = cell.borrow_mut();
             let Some(app) = guard.as_mut() else {

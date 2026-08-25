@@ -35,7 +35,8 @@ use anyhow::Result;
 pub use cancel::{cancelable_future, TaskController, TaskHandle};
 pub use debounce::{send_blocking, AsyncHook};
 pub use redraw::{
-    lock_frame, redraw_requested, request_redraw, start_frame, RenderLockGuard, RequestRedrawOnDrop,
+    lock_frame, redraw_requested, register_loop_waker, request_redraw, start_frame,
+    RenderLockGuard, RequestRedrawOnDrop,
 };
 pub use registry::Event;
 
@@ -47,6 +48,8 @@ mod registry;
 #[doc(hidden)]
 pub mod runtime;
 pub mod status;
+pub mod task;
+pub mod time;
 
 #[cfg(test)]
 mod test;
