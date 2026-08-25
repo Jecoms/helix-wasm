@@ -19,7 +19,7 @@ description: >
 #
 # To bump: change both `BINARYEN_VERSION` and `BINARYEN_SHA256` below (the
 # checksum is published as `<asset>.sha256` next to the release asset), and the
-# version named in the README's "Run it locally" section.
+# version named in `docs/building.md`.
 
 runs:
   using: composite

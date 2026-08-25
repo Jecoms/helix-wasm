@@ -5,7 +5,7 @@ Notable changes to **`helix-web`** — the embeddable wasm bundle this repo publ
 **Scope.** This file tracks the *artifact*, not the repository. The unit that gets
 versioned is the `web/pkg` wasm-pack output that a `web-v<semver>` tag ships as
 `helix-web-<version>.tar.gz` (see
-[Embedding the editor](https://github.com/Jecoms/helix-wasm/blob/main/README.md#embedding-the-editor)),
+[Embedding the editor](https://github.com/Jecoms/helix-wasm/blob/main/docs/embedding.md)),
 so an entry earns its place by changing what an embedder gets: the editor's behavior in
 the browser, the JS surface, or what the bundle contains. That is a narrower thing than
 the repo but a wider one than the `web/` crate — the patch set under `helix/`, the
@@ -17,7 +17,7 @@ to the git history.
 The format is [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions are
 [semantic](https://semver.org/spec/v2.0.0.html), read against the stability note in each
 entry. This file ships *inside* the tarball as well as living here, so its links out are
-absolute — the copy in an embedder's extracted tree has no README next to it.
+absolute — the copy in an embedder's extracted tree has no repo next to it.
 
 ## [Unreleased]
 
@@ -41,8 +41,8 @@ absolute — the copy in an embedder's extracted tree has no README next to it.
   is the match) and the languages that use them. The demo page reads both from
   `window.helixLanguages` and `window.helixLanguageServers`. A server name with
   no port registered fails the way an unconfigured server always has. See the
-  README's
-  [Language servers](https://github.com/Jecoms/helix-wasm/blob/main/README.md#language-servers).
+  port's docs'
+  [Language servers](https://github.com/Jecoms/helix-wasm/blob/main/docs/embedding.md#language-servers).
 - **The async hooks run.** Helix's debounced handlers — completion, signature
   help, diagnostics, auto-save, the pickers' dynamic queries — used to be spawned
   only inside a tokio runtime, so on wasm32 they swallowed their events; they now
@@ -62,8 +62,8 @@ absolute — the copy in an embedder's extracted tree has no README next to it.
   are held in order behind the paste. `*` is the same clipboard as `+` — a browser
   has one. `:clipboard-provider` reports `browser`; an embedder that wants the
   registers editor-local again can set `editor.clipboard-provider = "none"`. The
-  bridge needs no host-page change. See the README's
-  [Terminal and browser differences](https://github.com/Jecoms/helix-wasm/blob/main/README.md#terminal-and-browser-differences)
+  bridge needs no host-page change. See the docs'
+  [Terminal and browser differences](https://github.com/Jecoms/helix-wasm/blob/main/docs/limitations.md#terminal-and-browser-differences)
   for the per-browser detail and the two corners it does not cover.
 
 ### Fixed
@@ -102,8 +102,8 @@ absolute — the copy in an embedder's extracted tree has no README next to it.
   unregistered, `:remove` reports that this host cannot remove files, so deletion is a
   per-page capability. A buffer whose path has no key in the store (never `:w`'d, or
   deleted by the page since) just closes, without the handler. **`vfs_delete(path)`** completes the `vfs_write` / `vfs_read` / `vfs_list` set
-  for the page's own deletions; it bypasses the handler. The README's
-  [Files live in an in-memory VFS](https://github.com/Jecoms/helix-wasm/blob/main/README.md#files-live-in-an-in-memory-vfs)
+  for the page's own deletions; it bypasses the handler. The port's docs'
+  [Files live in an in-memory VFS](https://github.com/Jecoms/helix-wasm/blob/main/docs/limitations.md#files-live-in-an-in-memory-vfs)
   carries the full entry.
 - **`editor_state()` reports the theme.** The snapshot carries a `theme` field: the
   name of the theme the editor is rendering with — what `:theme` last set (a preview
@@ -125,8 +125,8 @@ absolute — the copy in an embedder's extracted tree has no README next to it.
   bytes, with the preview and line-jump behaving as they do natively. Two trades against
   native, both from the missing runtime: no debounce (every keystroke dispatches its
   search immediately) and the search runs inline on the main thread, like picker
-  matching. The README's
-  [Files live in an in-memory VFS](https://github.com/Jecoms/helix-wasm/blob/main/README.md#files-live-in-an-in-memory-vfs)
+  matching. The port's docs'
+  [Files live in an in-memory VFS](https://github.com/Jecoms/helix-wasm/blob/main/docs/limitations.md#files-live-in-an-in-memory-vfs)
   carries the full entry.
 - **`:download-all`** — the whole session out of the page as one zip, where `:download`
   gets one file ([#110](https://github.com/Jecoms/helix-wasm/issues/110)). It packs every
@@ -141,8 +141,8 @@ absolute — the copy in an embedder's extracted tree has no README next to it.
   themes, the `:tutor` text, the sample files and a page-supplied `config.toml` belong to
   the page, and that stays true after you edit one; save such a file under a new name, or
   `:download` it, to keep the edit. A page that seeds its own files with `vfs_write` before
-  `start` puts them on the same side of that line. The README's
-  [Files live in an in-memory VFS](https://github.com/Jecoms/helix-wasm/blob/main/README.md#files-live-in-an-in-memory-vfs)
+  `start` puts them on the same side of that line. The port's docs'
+  [Files live in an in-memory VFS](https://github.com/Jecoms/helix-wasm/blob/main/docs/limitations.md#files-live-in-an-in-memory-vfs)
   is the full statement of both.
 
 ### Fixed
@@ -174,8 +174,8 @@ behavior can move under you for reasons that are upstream's rather than this por
 **What it does not do.** The browser takes away subprocesses, a real filesystem and
 threads, and that is load-bearing rather than incidental: no language servers, no
 debugger, no shell commands, no external formatters, no git integration, no OS clipboard
-in either direction, no persistence across a page reload. The README's
-[Limitations and behavioral differences](https://github.com/Jecoms/helix-wasm/blob/main/README.md#limitations-and-behavioral-differences)
+in either direction, no persistence across a page reload. The port's docs'
+[Limitations and behavioral differences](https://github.com/Jecoms/helix-wasm/blob/main/docs/limitations.md)
 catalogs every one of those and is the section to read before deciding to embed this —
 it is written from behavior reproduced by hand, not from what the source suggests.
 
@@ -184,7 +184,7 @@ it is written from behavior reproduced by hand, not from what the source suggest
 - **The editor.** helix 25.07.1 boots in the browser and drives an xterm.js terminal
   through a wasm-bindgen module. This is upstream helix rather than a subset of it: the
   editor is unmodified except where the browser forced a change, and the "Known
-  limitations" below — with the README catalog it points at — is the list of those
+  limitations" below — with the limitations catalog it points at — is the list of those
   changes, so treat anything not named there as behaving the way upstream's
   documentation says. Modal editing, splits, the `:` command prompt and `:tutor` are
   covered directly by the browser smoke suite. Mouse input (click, drag, wheel) and focus
@@ -256,8 +256,8 @@ it is written from behavior reproduced by hand, not from what the source suggest
 
 ### Known limitations
 
-The short version of the README's
-[catalog](https://github.com/Jecoms/helix-wasm/blob/main/README.md#limitations-and-behavioral-differences),
+The short version of the docs'
+[catalog](https://github.com/Jecoms/helix-wasm/blob/main/docs/limitations.md),
 which is the source of truth and goes further than this list:
 
 - **Nothing survives a page reload.** The VFS is memory. `:download`, `helixVfs.read`
@@ -286,7 +286,7 @@ which is the source of truth and goes further than this list:
 
 <!-- The `0.0.2` links below resolve once `web-v0.0.2` is pushed; until then
      they are pending rather than broken. Publishing is a separate, deliberate
-     step — see the README's "Embedding the editor" for the procedure. -->
+     step — see [Embedding the editor](docs/embedding.md) for the procedure. -->
 
 [Unreleased]: https://github.com/Jecoms/helix-wasm/compare/web-v0.0.4...main
 [0.0.4]: https://github.com/Jecoms/helix-wasm/releases/tag/web-v0.0.4

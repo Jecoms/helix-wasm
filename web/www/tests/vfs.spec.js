@@ -158,7 +158,7 @@ test(":move onto a directory-shaped key renames to it, not into it", async ({
   // so `move_buffer`'s `new_path.is_dir()` test is false and it never
   // appends the original file name the way native helix would. `/dir`
   // becomes an ordinary sibling key holding the contents — this is the
-  // README's "There are no directories" entry, pinned.
+  // docs/limitations.md "There are no directories" entry, pinned.
   await page.keyboard.type(":move /dir");
   await page.keyboard.press("Enter");
   await expect.poll(() => getState(page).then((s) => s.path)).toBe("/dir");

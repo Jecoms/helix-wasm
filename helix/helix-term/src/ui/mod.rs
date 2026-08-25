@@ -268,7 +268,7 @@ pub(crate) fn walk_files(editor: &Editor, root: &Path) -> impl Iterator<Item = P
 /// are not: `parents` and `ignore` want ignore files scoped to directories,
 /// `git_ignore`/`git_global`/`git_exclude` want a repository, and
 /// `follow_symlinks`/`deduplicate_links` want symlinks. None of those three
-/// things exists here (see the README's limitations catalog).
+/// things exists here (see docs/limitations.md).
 #[cfg(target_arch = "wasm32")]
 pub(crate) fn walk_files(editor: &Editor, root: &Path) -> impl Iterator<Item = PathBuf> {
     let config = editor.config();

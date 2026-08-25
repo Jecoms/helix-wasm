@@ -112,5 +112,5 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --verify-tag \
             --title "helix-web $version" \
-            --notes "The embeddable wasm bundle: the \`web/pkg\` wasm-pack output (\`--target web\`, full grammar catalog), with the MPL-2.0 \`LICENSE\` the bundle is under and \`NOTICE.md\` covering the third-party components it statically links. See the README's \"Embedding the editor\" section for the pinning and host-wiring recipe, and [CHANGELOG.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/CHANGELOG.md) for what changed in this version and what the port cannot do." \
+            --notes "The embeddable wasm bundle: the \`web/pkg\` wasm-pack output (\`--target web\`, full grammar catalog), with the MPL-2.0 \`LICENSE\` the bundle is under and \`NOTICE.md\` covering the third-party components it statically links. See [docs/embedding.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/embedding.md) for the pinning and host-wiring recipe, and [CHANGELOG.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/CHANGELOG.md) for what changed in this version and what the port cannot do." \
             "helix-web-$version.tar.gz"
