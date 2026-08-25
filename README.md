@@ -489,8 +489,8 @@ instead of linking into the deployed demo, whose asset names are
 content-hashed and replaced on every push to `main`:
 
 ```sh
-curl -LO https://github.com/Jecoms/helix-wasm/releases/download/web-v0.0.3/helix-web-0.0.3.tar.gz
-tar xzf helix-web-0.0.3.tar.gz    # extracts helix-web-0.0.3/
+curl -LO https://github.com/Jecoms/helix-wasm/releases/download/web-v0.0.4/helix-web-0.0.4.tar.gz
+tar xzf helix-web-0.0.4.tar.gz    # extracts helix-web-0.0.4/
 ```
 
 The extracted directory is a standard wasm-pack `--target web` package (ES
@@ -500,7 +500,7 @@ the C it statically links, and `CHANGELOG.md` as of that version). Consume it
 the way the demo's `web/www/package.json` does:
 
 ```json
-"dependencies": { "helix-web": "file:../helix-web-0.0.3" }
+"dependencies": { "helix-web": "file:../helix-web-0.0.4" }
 ```
 
 `web/www/main.js` is the reference host wiring to replicate: call `init()`
@@ -610,9 +610,14 @@ kept stable. Either way, pin a tagged tarball and check its `.d.ts` when
 upgrading — [`CHANGELOG.md`](CHANGELOG.md) is what changed between two of
 them, and its scope note says which changes reach the bundle at all.
 
-To cut a release: bump `version` in `web/Cargo.toml` and turn the changelog's
-`[Unreleased]` section into the new version's entry, merge, then tag that
-commit `web-v<version>` and push the tag. The workflow verifies the tag
+To cut a release: bump the version everywhere the old one appears — `version`
+in `web/Cargo.toml` and the root `Cargo.toml` (and `Cargo.lock`), the crate
+table in `web/NOTICE.md`, the download snippet and `file:../helix-web-<version>`
+line above, and the demo's `web/www/package.json` / `package-lock.json` — then
+turn the changelog's `[Unreleased]` section into the new version's entry and
+add its link reference at the bottom. Grep for the previous version string
+before merging; it is the only reliable list. Merge, then tag that commit
+`web-v<version>` and push the tag. The workflow verifies the tag
 against the crate version, rebuilds the bundle with `--locked`, and
 attaches the tarball to a release on the tag.
 

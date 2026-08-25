@@ -21,6 +21,8 @@ absolute — the copy in an embedder's extracted tree has no README next to it.
 
 ## [Unreleased]
 
+## [0.0.4] — 2026-08-24
+
 ### Added
 
 - **Language servers, over a Web Worker the page supplies**
@@ -70,6 +72,19 @@ absolute — the copy in an embedder's extracted tree has no README next to it.
   debounced hook firing — reached the editor only when the next keystroke
   happened to poll it. The event-loop driver now registers its waker with
   `helix-event`, so such requests render on their own.
+- **Firefox dropped `Alt-;`, `Alt-=` and `Alt--`**
+  ([#137](https://github.com/Jecoms/helix-wasm/issues/137)). Gecko reports legacy
+  key codes for the punctuation row that xterm.js's keyCode table does not know, so
+  those chords never reached the editor. Every Alt chord on the punctuation and digit
+  rows is now resolved from the DOM `key`/`code` on every platform, in front of xterm.
+  One consequence: on a non-Latin layout, a key that composes into a character
+  (Russian `Alt-ж` on the `;` key) forwards that character rather than resolving to
+  `A-;` through the key code — the README's stated stance, applied consistently.
+- **A stray accent after an Option chord in Firefox on macOS**
+  ([#142](https://github.com/Jecoms/helix-wasm/issues/142)). `A-u` ran its command,
+  then Firefox's dead-key composition drew a `¨` at the cursor and pasted it on
+  release. The composition is now swallowed when an Alt dead-key keydown started it;
+  real IME compositions still arrive as before.
 
 ## [0.0.3] — 2026-08-22
 
@@ -273,6 +288,8 @@ which is the source of truth and goes further than this list:
      they are pending rather than broken. Publishing is a separate, deliberate
      step — see the README's "Embedding the editor" for the procedure. -->
 
-[Unreleased]: https://github.com/Jecoms/helix-wasm/compare/web-v0.0.2...main
+[Unreleased]: https://github.com/Jecoms/helix-wasm/compare/web-v0.0.4...main
+[0.0.4]: https://github.com/Jecoms/helix-wasm/releases/tag/web-v0.0.4
+[0.0.3]: https://github.com/Jecoms/helix-wasm/releases/tag/web-v0.0.3
 [0.0.2]: https://github.com/Jecoms/helix-wasm/releases/tag/web-v0.0.2
 [0.0.1]: https://github.com/Jecoms/helix-wasm/releases/tag/web-v0.0.1
