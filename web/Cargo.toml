@@ -8,8 +8,7 @@
 name = "helix-web"
 # The source of truth for what version this tree is: `web_release.yml`
 # refuses a tag that is not `web-v` + this string, and it names the tarball.
-# Bumping it is step one of cutting a release — see the README's "Embedding
-# the editor".
+# Bumping it is step one of cutting a release — see `docs/embedding.md`.
 version = "0.0.4"
 edition = "2021"
 license = "MPL-2.0"

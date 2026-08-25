@@ -614,7 +614,7 @@ test("a composition with no Option keydown in front of it is still pasted", asyn
   await page.keyboard.press("i");
   await expect.poll(() => getState(page).then((s) => s.mode)).toBe("insert");
 
-  // The path the README's "IME and other composed input arrive as a paste"
+  // The path docs/limitations.md's "IME and other composed input arrive as a paste"
   // entry describes, pinned so the swallow above cannot widen into it.
   await dispatchComposition(page, "日本");
   await expect

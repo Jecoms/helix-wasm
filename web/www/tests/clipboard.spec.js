@@ -3,8 +3,8 @@
 // these cover the bridge's mechanics — the write on a yank, the read
 // prefetched ahead of a paste, the held-back input flowing on in order, and
 // the editor-local fallback when the read is refused. Safari's and
-// Firefox's per-paste "Paste" affordance is a manual check (see the README's
-// limitations section).
+// Firefox's per-paste "Paste" affordance is a manual check (see docs/limitations.md,
+// "Terminal and browser differences").
 //
 // Same shape as the other suites, sharing their plumbing (./helpers.js).
 import { test, expect } from "@playwright/test";

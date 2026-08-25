@@ -2244,7 +2244,7 @@ impl Editor {
         }
 
         // Split out so the wasm32 arm below is an addition rather than a
-        // re-indent of upstream's body (see the port's README on patch shape).
+        // re-indent of upstream's body (see docs/development.md on patch shape).
         //
         // Not a `timeout` added to `wasm_timer` above, which is otherwise
         // where a `tokio::time` lookalike for this file belongs:
