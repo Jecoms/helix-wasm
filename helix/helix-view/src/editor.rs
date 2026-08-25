@@ -2276,7 +2276,7 @@ impl Editor {
         /// browser-backed timer. So the `join_all` this is handed resolves
         /// within that per-server timeout — later than the `timeout`
         /// argument asks for, since it cannot be honored here, but never
-        /// never.
+        /// forever.
         #[cfg(target_arch = "wasm32")]
         async fn bounded<F: std::future::Future>(
             _timeout: Option<u64>,
