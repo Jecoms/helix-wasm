@@ -489,8 +489,8 @@ instead of linking into the deployed demo, whose asset names are
 content-hashed and replaced on every push to `main`:
 
 ```sh
-curl -LO https://github.com/Jecoms/helix-wasm/releases/download/web-v0.0.3/helix-web-0.0.3.tar.gz
-tar xzf helix-web-0.0.3.tar.gz    # extracts helix-web-0.0.3/
+curl -LO https://github.com/Jecoms/helix-wasm/releases/download/web-v0.0.4/helix-web-0.0.4.tar.gz
+tar xzf helix-web-0.0.4.tar.gz    # extracts helix-web-0.0.4/
 ```
 
 The extracted directory is a standard wasm-pack `--target web` package (ES
@@ -500,7 +500,7 @@ the C it statically links, and `CHANGELOG.md` as of that version). Consume it
 the way the demo's `web/www/package.json` does:
 
 ```json
-"dependencies": { "helix-web": "file:../helix-web-0.0.3" }
+"dependencies": { "helix-web": "file:../helix-web-0.0.4" }
 ```
 
 `web/www/main.js` is the reference host wiring to replicate: call `init()`
