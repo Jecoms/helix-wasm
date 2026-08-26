@@ -12,6 +12,15 @@ curl -LO https://github.com/Jecoms/helix-wasm/releases/download/web-v0.0.4/helix
 tar xzf helix-web-0.0.4.tar.gz    # extracts helix-web-0.0.4/
 ```
 
+Each release carries two tarballs that differ only in which tree-sitter
+grammars are linked into the wasm. `helix-web-<version>.tar.gz` links the
+default grammar set — the languages a developer opens most, listed under
+"What the bundle ships with" in [Building from source](building.md#what-the-bundle-ships-with) —
+and is the one to reach for; `helix-web-<version>-full.tar.gz` links the
+whole catalog and is several times the size. Any other selection is a build
+from source with `HELIX_WEB_GRAMMARS` (same page): grammars are linked at
+build time, and there is no loading one at runtime.
+
 The extracted directory is a standard wasm-pack `--target web` package (ES
 module + `.wasm` + `.d.ts`, plus the MPL-2.0 `LICENSE` the bundle is under,
 `NOTICE.md` with the license notices for the Rust crates the wasm links and

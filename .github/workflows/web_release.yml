@@ -76,10 +76,19 @@ jobs:
       - name: Install wasm-opt
         uses: ./.github/actions/wasm-opt
 
-      # Same build as the demo deploy (web_demo.yml): full grammar catalog,
-      # locked deps, same pinned binaryen. What ships is exactly what the demo
-      # runs.
+      # Two builds of the same tree, differing only in HELIX_WEB_GRAMMARS
+      # (web/build.rs): the default grammar set — the same build as the demo
+      # deploy (web_demo.yml), locked deps, same pinned binaryen, so what
+      # ships is exactly what the demo runs — and the full catalog, several
+      # times the size, for embedders who opt into every grammar.
+      # Full first: the default build is the one that has to be in web/pkg
+      # for the tarball assembly below.
       - name: Build the wasm package (full grammar catalog)
+        run: |
+          HELIX_WEB_GRAMMARS=full wasm-pack build web --target web -- --locked
+          mv web/pkg web/pkg-full
+
+      - name: Build the wasm package (default grammar set)
         run: wasm-pack build web --target web -- --locked
 
       # LICENSE rides along because the bundle is MPL-2.0 — helix's files and
@@ -92,17 +101,20 @@ jobs:
       # standing on the release page.
       # The .gitignore wasm-pack emits (it ignores the whole pkg dir) would
       # only confuse an embedder vendoring the extracted tree, so drop it.
-      - name: Assemble the tarball
+      - name: Assemble the tarballs
         run: |
           version="${{ steps.version.outputs.version }}"
-          cp LICENSE web/pkg/
-          cp web/NOTICE.md web/pkg/
-          cp CHANGELOG.md web/pkg/
-          rm -f web/pkg/.gitignore
           mkdir stage
-          cp -r web/pkg "stage/helix-web-$version"
-          tar -czf "helix-web-$version.tar.gz" -C stage "helix-web-$version"
-          tar -tzf "helix-web-$version.tar.gz"
+          for tier in "" -full; do
+            pkg="web/pkg$tier"
+            cp LICENSE "$pkg/"
+            cp web/NOTICE.md "$pkg/"
+            cp CHANGELOG.md "$pkg/"
+            rm -f "$pkg/.gitignore"
+            cp -r "$pkg" "stage/helix-web-$version$tier"
+            tar -czf "helix-web-$version$tier.tar.gz" -C stage "helix-web-$version$tier"
+            tar -tzf "helix-web-$version$tier.tar.gz"
+          done
 
       - name: Create the GitHub release
         env:
@@ -112,5 +124,6 @@ jobs:
           gh release create "$GITHUB_REF_NAME" \
             --verify-tag \
             --title "helix-web $version" \
-            --notes "The embeddable wasm bundle: the \`web/pkg\` wasm-pack output (\`--target web\`, full grammar catalog), with the MPL-2.0 \`LICENSE\` the bundle is under and \`NOTICE.md\` covering the third-party components it statically links. See [docs/embedding.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/embedding.md) for the pinning and host-wiring recipe, and [CHANGELOG.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/CHANGELOG.md) for what changed in this version and what the port cannot do." \
-            "helix-web-$version.tar.gz"
+            --notes "The embeddable wasm bundle: the \`web/pkg\` wasm-pack output (\`--target web\`), with the MPL-2.0 \`LICENSE\` the bundle is under and \`NOTICE.md\` covering the third-party components it statically links. \`helix-web-$version.tar.gz\` links the default grammar set; \`helix-web-$version-full.tar.gz\` links the whole grammar catalog and is several times the size. See [docs/embedding.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/docs/embedding.md) for the pinning and host-wiring recipe, and [CHANGELOG.md](https://github.com/$GITHUB_REPOSITORY/blob/$GITHUB_REF_NAME/CHANGELOG.md) for what changed in this version and what the port cannot do." \
+            "helix-web-$version.tar.gz" \
+            "helix-web-$version-full.tar.gz"

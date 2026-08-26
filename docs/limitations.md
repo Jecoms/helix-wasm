@@ -358,5 +358,19 @@ Syntax highlighting covers only the grammars linked into the bundle (listed
 in [Building from source](building.md#what-the-bundle-ships-with)), and `:theme` only the themes the
 bundle embeds (`THEME_CATALOG` in `web/build.rs`). Anything else opens as plain
 text —
-`:set-language haskell` is accepted without complaint and simply highlights
+`:set-language yaml` is accepted without complaint and simply highlights
 nothing — and any other theme name is not found.
+
+The default set is a size budget, not the whole catalog: the demo and the
+release's default tarball link sixteen grammars, and the other twenty-five
+(cpp, c-sharp, kotlin, haskell and the like) are opt-in — the `-full`
+tarball, or a build from source with `HELIX_WEB_GRAMMARS`. A few languages
+are missing from the catalog altogether, as toolchain limits rather than
+choices: yaml, ruby, php and cmake ship a C++ external scanner at helix's
+pinned revision, and the wasm C toolchain has no C++ sysroot, so they cannot
+be linked until upstream ports the scanner to C or a newer revision that has
+is acceptable; git-commit's grammar is left out because its generated parser
+takes clang twenty minutes and nine gigabytes of memory to compile for wasm.
+Whichever way a grammar is absent, nothing helix does for that language
+beyond highlighting is available either — no syntax-aware text objects
+(`mif`, `maf`), no `Alt-o`/`Alt-i` selection expansion, no indent queries.

@@ -113,7 +113,15 @@ jobs:
       - name: Install wasm-opt
         uses: ./.github/actions/wasm-opt
 
-      - name: Build the wasm package
+      # The full catalog first, as a link gate only: nothing else builds the
+      # opt-in grammars before a release does, and a scanner that pulls a
+      # libc symbol the sysroot lacks fails only at this link. Then the
+      # default set, which is what the browser suite runs against and what
+      # the size report below measures — the tarball embedders get.
+      - name: Build the wasm package (full grammar catalog, link check)
+        run: HELIX_WEB_GRAMMARS=full wasm-pack build web --target web -- --locked
+
+      - name: Build the wasm package (default grammar set)
         run: wasm-pack build web --target web -- --locked
 
       - name: Setup node

@@ -43,7 +43,10 @@ jobs:
       - name: Install wasm-opt
         uses: ./.github/actions/wasm-opt
 
-      - name: Build the wasm package (full grammar catalog)
+      # The default grammar set (web/build.rs), the same build the release
+      # tarball ships — the full catalog is several times the size and is
+      # the release's opt-in second tarball, not the demo's page load.
+      - name: Build the wasm package (default grammar set)
         run: wasm-pack build web --target web -- --locked
 
       - name: Setup node

@@ -220,3 +220,35 @@ int iswspace(wint_t wc)
 	};
 	return wc && wcschr(spaces, wc);
 }
+
+int iswxdigit(wint_t wc)
+{
+	return (unsigned)(wc-'0') < 10 || (unsigned)((wc|32)-'a') < 6;
+}
+
+/* Case classification and mapping cover ASCII only — deliberately, not as a
+ * stand-in for musl's tables. Every scanner in the grammar catalog that
+ * calls these does so on text whose case-insensitivity is ASCII by
+ * definition: html and markdown fold HTML tag names (case-insensitive over
+ * ASCII per the HTML spec), and ocaml classifies identifier starts (its
+ * identifiers are ASCII). Grow these into full Unicode mappings only if a
+ * scanner needs them on a language where that is the meaning. */
+int iswlower(wint_t wc)
+{
+	return (unsigned)(wc-'a') < 26;
+}
+
+int iswupper(wint_t wc)
+{
+	return (unsigned)(wc-'A') < 26;
+}
+
+wint_t towlower(wint_t wc)
+{
+	return iswupper(wc) ? wc+32 : wc;
+}
+
+wint_t towupper(wint_t wc)
+{
+	return iswlower(wc) ? wc-32 : wc;
+}
