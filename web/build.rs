@@ -381,6 +381,24 @@ fn main() {
     }
     let grammars = selected_grammars();
     let out_dir = PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
+    // A manifest of what this build links, one name per line in catalog
+    // order, headed by the selection that produced it. The release workflow
+    // copies it into each tarball as GRAMMARS.txt: the two tiers' package.json
+    // are byte-identical, so nothing else in an extracted tree says which
+    // grammars it carries.
+    let manifest = format!(
+        "# HELIX_WEB_GRAMMARS={}\n{}\n",
+        std::env::var("HELIX_WEB_GRAMMARS")
+            .ok()
+            .filter(|selection| !selection.trim().is_empty())
+            .unwrap_or_else(|| "default".to_owned()),
+        grammars
+            .iter()
+            .map(|source| source.name)
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    std::fs::write(out_dir.join("GRAMMARS.txt"), manifest).unwrap();
     for source in &grammars {
         let name = source.name;
         let mut src_dir = fetch_grammar(source, &out_dir);
@@ -422,9 +440,12 @@ fn main() {
 /// `HELIX_WEB_GRAMMARS=default,kotlin` adds one to the default set;
 /// `HELIX_WEB_GRAMMARS=full` links everything. An unknown name fails the
 /// build with a message naming it; a name that comes up twice (spelled out
-/// and via an alias, say) is linked once. The result keeps catalog order,
-/// so the same selection spelled two ways builds the same registration
-/// code.
+/// and via an alias, say) is linked once. Repeats are tolerated because of
+/// the aliases: `default,rust` is a legitimate way to say "the default set,
+/// and make sure rust is in it", whereas the strict panic this had before
+/// them (PR #39) only had bare names to guard, where a repeat could only be
+/// a typo. The result keeps catalog order, so the same selection spelled
+/// two ways builds the same registration code.
 fn selected_grammars() -> Vec<GrammarSource> {
     let selection = std::env::var("HELIX_WEB_GRAMMARS").unwrap_or_default();
     let selection = if selection.trim().is_empty() {

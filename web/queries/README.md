@@ -10,8 +10,10 @@ them with `helix_loader` at startup (`../src/grammars.rs`).
 
 Upstream ships queries for hundreds of languages; the bundle carries a
 subset, and that subset is **derived, not listed**. Starting from the
-grammars the build links — `GRAMMARS` in `../build.rs`, or the subset
-`HELIX_WEB_GRAMMARS` narrows that to — it is:
+grammars the build links — `DEFAULT_GRAMMARS` in `../build.rs` when
+`HELIX_WEB_GRAMMARS` is unset, otherwise the union that variable names
+(catalog names plus the `default` and `full` aliases, so it widens as well
+as narrows) — it is:
 
 - every language in `../../helix/languages.toml` that uses a selected
   grammar (its `grammar = "..."` key, or its name when it has none), plus

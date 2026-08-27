@@ -83,13 +83,22 @@ jobs:
       # times the size, for embedders who opt into every grammar.
       # Full first: the default build is the one that has to be in web/pkg
       # for the tarball assembly below.
+      # Each build also stamps its package with the GRAMMARS.txt the build
+      # script writes to OUT_DIR — the linked grammar names, derived from the
+      # build rather than a hand-kept list — because wasm-pack's package.json
+      # is byte-identical across the two tiers and nothing else in an
+      # extracted tree says which one it is. Copied right after each build:
+      # both builds share one OUT_DIR, so the second overwrites the first.
       - name: Build the wasm package (full grammar catalog)
         run: |
           HELIX_WEB_GRAMMARS=full wasm-pack build web --target web -- --locked
+          cp "$(ls -t target/wasm32-unknown-unknown/release/build/helix-web-*/out/GRAMMARS.txt | head -n1)" web/pkg/
           mv web/pkg web/pkg-full
 
       - name: Build the wasm package (default grammar set)
-        run: wasm-pack build web --target web -- --locked
+        run: |
+          wasm-pack build web --target web -- --locked
+          cp "$(ls -t target/wasm32-unknown-unknown/release/build/helix-web-*/out/GRAMMARS.txt | head -n1)" web/pkg/
 
       # LICENSE rides along because the bundle is MPL-2.0 — helix's files and
       # this port's alike — and the package.json wasm-pack generates declares
@@ -114,6 +123,7 @@ jobs:
             cp -r "$pkg" "stage/helix-web-$version$tier"
             tar -czf "helix-web-$version$tier.tar.gz" -C stage "helix-web-$version$tier"
             tar -tzf "helix-web-$version$tier.tar.gz"
+            head -n1 "$pkg/GRAMMARS.txt"
           done
 
       - name: Create the GitHub release

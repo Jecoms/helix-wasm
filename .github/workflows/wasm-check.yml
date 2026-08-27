@@ -118,6 +118,13 @@ jobs:
       # libc symbol the sysroot lacks fails only at this link. Then the
       # default set, which is what the browser suite runs against and what
       # the size report below measures — the tarball embedders get.
+      # Cache cost of the full build, measured: the build script's OUT_DIR
+      # grows to about 480 MB (395 MB of it the 41 shallow grammar checkouts
+      # under grammar-sources/) against about 30 MB before the catalog grew.
+      # None of it lands in the rust-cache entry: rust-cache prunes
+      # target/*/build/<pkg>-* for every workspace member before saving, and
+      # helix-web is one, so the checkouts are re-fetched each run exactly as
+      # they were with the smaller catalog (#118 quota unaffected).
       - name: Build the wasm package (full grammar catalog, link check)
         run: HELIX_WEB_GRAMMARS=full wasm-pack build web --target web -- --locked
 
@@ -136,7 +143,8 @@ jobs:
           npm run build
 
       # Advisory report, not a gate: bundle size is a documented concern
-      # (roughly 100-500 KB of raw wasm per grammar), so surface the trend
+      # (a few KB to about 5 MB of static lib per grammar, about 13 MB of raw
+      # wasm for the default set and 46 MB for the catalog), so surface the trend
       # on every build; a hard threshold would need a justified budget.
       - name: Report bundle size
         run: |

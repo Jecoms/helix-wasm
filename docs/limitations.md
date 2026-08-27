@@ -368,8 +368,8 @@ tarball, or a build from source with `HELIX_WEB_GRAMMARS`. A few languages
 are missing from the catalog altogether, as toolchain limits rather than
 choices: yaml, ruby, php and cmake ship a C++ external scanner at helix's
 pinned revision, and the wasm C toolchain has no C++ sysroot, so they cannot
-be linked until upstream ports the scanner to C or a newer revision that has
-is acceptable; git-commit's grammar is left out because its generated parser
+be linked until upstream ports the scanner to C, or until a newer revision
+that has done so is acceptable to pin; git-commit's grammar is left out because its generated parser
 takes clang twenty minutes and nine gigabytes of memory to compile for wasm.
 Whichever way a grammar is absent, nothing helix does for that language
 beyond highlighting is available either — no syntax-aware text objects

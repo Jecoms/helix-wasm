@@ -41,7 +41,7 @@ VFS and inspection exports, cutting a release).
 ## What you get
 
 The demo boots on a scratch buffer with syntax highlighting for a static
-grammar set of sixteen languages (try `:set-language rust`; a catalog of
+grammar set of sixteen grammars (try `:set-language rust`; a catalog of
 forty-one is there to opt into), a curated
 set of bundled themes (try `:theme gruvbox`), and a working `:tutor`. Files
 live in an in-memory virtual file system — `:w`, `:o`, the file picker and

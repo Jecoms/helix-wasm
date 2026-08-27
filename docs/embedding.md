@@ -24,7 +24,9 @@ build time, and there is no loading one at runtime.
 The extracted directory is a standard wasm-pack `--target web` package (ES
 module + `.wasm` + `.d.ts`, plus the MPL-2.0 `LICENSE` the bundle is under,
 `NOTICE.md` with the license notices for the Rust crates the wasm links and
-the C it statically links, and `CHANGELOG.md` as of that version). Consume it
+the C it statically links, `CHANGELOG.md` as of that version, and
+`GRAMMARS.txt` naming the grammars that tarball links, one per line, so an
+extracted tree says which tier it is). Consume it
 the way the demo's `web/www/package.json` does:
 
 ```json
