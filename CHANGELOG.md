@@ -21,6 +21,29 @@ absolute — the copy in an embedder's extracted tree has no repo next to it.
 
 ## [Unreleased]
 
+### Added
+
+- **Eight more grammars in the default set, and a catalog of forty-one to opt into**
+  ([#149](https://github.com/Jecoms/helix-wasm/issues/149)). The bundle now links
+  sixteen grammars by default: bash, css, html, json, markdown, markdown_inline, tsx and
+  typescript join c, go, java, javascript, python, regex, rust and toml, all at helix's own
+  pins. Another twenty-five — c-sharp, clojure, cpp, diff, dockerfile, elixir, git-config,
+  git-rebase, gitattributes, gitignore, haskell, hcl, heex, ini, kotlin, lua, make, nix,
+  ocaml, scala, scss, sql, swift, xml, zig — are in the catalog but opt-in, because their
+  parsers are large (the seven biggest alone would triple the bundle): each release now
+  attaches a second tarball, `helix-web-<version>-full.tar.gz`, that links the whole
+  catalog, and a build from source picks any set with `HELIX_WEB_GRAMMARS`, which gained
+  the aliases `default` and `full` (`HELIX_WEB_GRAMMARS=default,kotlin` is the default
+  set plus one). With a grammar come the tree-sitter features that depend on one —
+  syntax-aware text objects, `Alt-o`/`Alt-i` expansion, indent queries — for every helix
+  language it serves (`jsonc`, `env`, `jsx` and the like included: the build now embeds
+  the queries of every language that names a linked grammar, not only the one sharing
+  its name). yaml, ruby, php and cmake are still missing — their scanners are C++ at
+  helix's pin, which the wasm C toolchain cannot build — and so is git-commit, whose
+  generated parser is impractically slow to compile for wasm. The default bundle grows
+  from 9.66 MB raw / 3.14 MB gzip to 13.2 MB raw / 3.80 MB gzip; the full one is
+  45.9 MB raw / 7.09 MB gzip.
+
 ## [0.0.4] — 2026-08-24
 
 ### Added

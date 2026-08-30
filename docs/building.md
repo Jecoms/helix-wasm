@@ -24,16 +24,46 @@ on `$PATH` to reproduce their bytes locally.
 
 ## What the bundle ships with
 
-The demo boots helix on a scratch buffer, with syntax highlighting for a small
-static grammar set (c, go, java, javascript, python, regex, rust, toml — try
-`:set-language rust`) and a curated set of bundled color schemes
+The demo boots helix on a scratch buffer, with syntax highlighting for a
+static grammar set and a curated set of bundled color schemes
 (`THEME_CATALOG` in `web/build.rs` — try `:theme gruvbox`). `:tutor` works,
 with a handful of steps the browser cannot honor as written;
 `web/runtime/README.md` lists those under "Known gaps in the browser".
 
-Set `HELIX_WEB_GRAMMARS` to a comma-separated subset (e.g.
-`HELIX_WEB_GRAMMARS=rust,toml wasm-pack build web --target web`) to slim the
-bundle; to add a grammar to the catalog, see `GRAMMARS` in `web/build.rs`. The
-queries and themes the bundle embeds are read out of the in-tree port at
+A build links the **default grammar set** (`DEFAULT_GRAMMARS` in
+`web/build.rs`): bash, c, css, go, html, java, javascript, json, markdown,
+markdown_inline, python, regex, rust, toml, tsx, typescript. That is what the
+demo runs and what the release's `helix-web-<version>.tar.gz` ships. The
+**catalog** (`GRAMMARS`, pinned to the same revisions as helix's own
+`languages.toml`) is larger — it adds c-sharp, clojure, cpp, diff,
+dockerfile, elixir, git-config, git-rebase, gitattributes, gitignore,
+haskell, hcl, heex, ini, kotlin, lua, make, nix, ocaml, scala, scss, sql,
+swift, xml, zig — and everything beyond the default set is opt-in, because a
+grammar's parser is anywhere from a few KB to 5 MB of wasm and the seven
+largest alone would triple the bundle. A grammar serves every helix language
+that uses it — `json` also covers `jsonc`, `bash` covers `env`, `hcl` covers
+`tfvars`, `markdown_inline` is the injection target `markdown` needs — and
+the build embeds the queries for all of them.
+
+`HELIX_WEB_GRAMMARS` picks the set. It is a comma-separated list of catalog
+names and two aliases, `default` and `full`, and the build links their
+union:
+
+```sh
+HELIX_WEB_GRAMMARS=rust,toml wasm-pack build web --target web        # two grammars
+HELIX_WEB_GRAMMARS=default,kotlin,cpp wasm-pack build web --target web  # the default set plus two
+HELIX_WEB_GRAMMARS=full wasm-pack build web --target web             # the whole catalog
+```
+
+The release attaches the last of those too, as
+`helix-web-<version>-full.tar.gz`, for embedders who want every grammar
+without building (see [Embedding the editor](embedding.md)). To add a grammar
+to the catalog, add a row to `GRAMMARS`. Only grammars whose external scanner
+is C can be linked — the wasm C toolchain here has no C++ sysroot — so a
+grammar that still ships a `scanner.cc` at helix's pin (php, ruby, yaml,
+cmake at 25.07.1) fails the build with a message saying so; `gitcommit` is
+left out for a different reason (its generated `parser.c` takes clang
+twenty minutes and nine gigabytes to compile for wasm). The queries and
+themes the bundle embeds are read out of the in-tree port at
 `helix/runtime/`, not copied into `web/` — see `web/queries/README.md` and
 `web/themes/README.md` for how the build picks which of them to embed.

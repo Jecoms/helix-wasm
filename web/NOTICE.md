@@ -17,11 +17,17 @@ MIT, Apache-2.0 and other terms. Every one of them is enumerated in
 "[Rust crates](#rust-crates)" below, generated from the dependency graph of the
 build that produces this artifact.
 
-The distributed wasm artifact statically links the C parser sources of the
-tree-sitter grammars below (the `GRAMMARS` catalog in `build.rs`, fetched at
-build time at the pinned revisions). All of them are MIT-licensed; the
-copyright lines are reproduced verbatim from each repository's `LICENSE`
-file at the pin, and the MIT license text follows at the end.
+The distributed wasm artifact statically links the C parser sources of
+tree-sitter grammars from the table below (the `GRAMMARS` catalog in
+`build.rs`, fetched at build time at the pinned revisions). The table is the
+whole catalog; a given build links the subset `HELIX_WEB_GRAMMARS` selects —
+the default set for the plain release tarball, everything for the `-full`
+one — so rows for grammars a build left out are attribution for code that
+artifact does not carry. Most are MIT-licensed; a few are under
+Apache-2.0 or CC0 1.0, and one (elixir) splits its `src/` between the two
+per its own `NOTICE`. The copyright lines are reproduced verbatim from each
+repository's license file at the pin, and the full text of every license
+named follows at the end.
 
 It also statically links the tree-sitter runtime those parsers run under: the
 core C library plus the small subset of ICU headers that C includes, both
@@ -257,16 +263,49 @@ it is upstream helix's fork of `lsp-types`, and it keeps that crate's license
 
 ## Grammars
 
-| Grammar | Repository | Pinned revision | Copyright |
-| --- | --- | --- | --- |
-| c | <https://github.com/tree-sitter/tree-sitter-c> | `7175a6dd5fc1cee660dce6fe23f6043d75af424a` | Copyright (c) 2014 Max Brunsfeld |
-| go | <https://github.com/tree-sitter/tree-sitter-go> | `64457ea6b73ef5422ed1687178d4545c3e91334a` | Copyright (c) 2014 Max Brunsfeld |
-| java | <https://github.com/tree-sitter/tree-sitter-java> | `09d650def6cdf7f479f4b78f595e9ef5b58ce31e` | Copyright (c) 2017 Ayman Nadeem |
-| javascript | <https://github.com/tree-sitter/tree-sitter-javascript> | `f772967f7b7bc7c28f845be2420a38472b16a8ee` | Copyright (c) 2014 Max Brunsfeld |
-| python | <https://github.com/tree-sitter/tree-sitter-python> | `4bfdd9033a2225cc95032ce77066b7aeca9e2efc` | Copyright (c) 2016 Max Brunsfeld |
-| regex | <https://github.com/tree-sitter/tree-sitter-regex> | `e1cfca3c79896ff79842f057ea13e529b66af636` | Copyright (c) 2014 Max Brunsfeld |
-| rust | <https://github.com/tree-sitter/tree-sitter-rust> | `1f63b33efee17e833e0ea29266dd3d713e27e321` | Copyright (c) 2017 Maxim Sokolov |
-| toml | <https://github.com/ikatyang/tree-sitter-toml> | `7cff70bbcbbc62001b465603ca1ea88edd668704` | Copyright (c) Ika \<ikatyang@gmail.com\> (<https://github.com/ikatyang>) |
+| Grammar | Repository | Pinned revision | License | Copyright |
+| --- | --- | --- | --- | --- |
+| bash | <https://github.com/tree-sitter/tree-sitter-bash> | `487734f87fd87118028a65a4599352fa99c9cde8` | MIT | Copyright (c) 2017 Max Brunsfeld |
+| c | <https://github.com/tree-sitter/tree-sitter-c> | `7175a6dd5fc1cee660dce6fe23f6043d75af424a` | MIT | Copyright (c) 2014 Max Brunsfeld |
+| c-sharp | <https://github.com/tree-sitter/tree-sitter-c-sharp> | `b5eb5742f6a7e9438bee22ce8026d6b927be2cd7` | MIT | Copyright (c) 2014-2023 Max Brunsfeld, Damien Guard, Amaan Qureshi, and contributors. |
+| clojure | <https://github.com/sogaiu/tree-sitter-clojure> | `e57c569ae332ca365da623712ae1f50f84daeae2` | CC0-1.0 | — (`COPYING.txt` is the CC0 1.0 Universal dedication; it names no copyright holder) |
+| cpp | <https://github.com/tree-sitter/tree-sitter-cpp> | `56455f4245baf4ea4e0881c5169de69d7edd5ae7` | MIT | Copyright (c) 2014 Max Brunsfeld |
+| css | <https://github.com/tree-sitter/tree-sitter-css> | `769203d0f9abe1a9a691ac2b9fe4bb4397a73c51` | MIT | Copyright (c) 2018 Max Brunsfeld |
+| diff | <https://github.com/the-mikedavis/tree-sitter-diff> | `fd74c78fa88a20085dbc7bbeaba066f4d1692b63` | MIT | Copyright (c) 2021 Michael Davis |
+| dockerfile | <https://github.com/camdencheek/tree-sitter-dockerfile> | `087daa20438a6cc01fa5e6fe6906d77c869d19fe` | MIT | Copyright (c) 2021 Camden Cheek |
+| elixir | <https://github.com/elixir-lang/tree-sitter-elixir> | `02a6f7fd4be28dd94ee4dd2ca19cb777053ea74e` | MIT (`src/parser.c`) and Apache-2.0 (`src/scanner.c`), per the repository's `NOTICE` | Copyright (c) 2018-2021 Max Brunsfeld (`src/parser.c`); Copyright 2021 The Elixir Team (`src/scanner.c`) |
+| git-config | <https://github.com/the-mikedavis/tree-sitter-git-config> | `9c2a1b7894e6d9eedfe99805b829b4ecd871375e` | MIT | Copyright (c) 2022 Michael Davis |
+| git-rebase | <https://github.com/the-mikedavis/tree-sitter-git-rebase> | `d8a4207ebbc47bd78bacdf48f883db58283f9fd8` | MIT | Copyright (c) 2021 Michael Davis |
+| gitattributes | <https://github.com/mtoohey31/tree-sitter-gitattributes> | `3dd50808e3096f93dccd5e9dc7dc3dba2eb12dc4` | MIT | Copyright (c) 2022 Matthew Toohey \<contact@mtoohey.com\> |
+| gitignore | <https://github.com/shunsambongi/tree-sitter-gitignore> | `f4685bf11ac466dd278449bcfe5fd014e94aa504` | MIT | Copyright (c) 2022 shunsambongi |
+| go | <https://github.com/tree-sitter/tree-sitter-go> | `64457ea6b73ef5422ed1687178d4545c3e91334a` | MIT | Copyright (c) 2014 Max Brunsfeld |
+| haskell | <https://github.com/tree-sitter/tree-sitter-haskell> | `0975ef72fc3c47b530309ca93937d7d143523628` | MIT | Copyright (c) 2014 Max Brunsfeld |
+| hcl | <https://github.com/tree-sitter-grammars/tree-sitter-hcl> | `9e3ec9848f28d26845ba300fd73c740459b83e9b` | Apache-2.0 | — (`LICENSE` is the unmodified Apache License 2.0 text; it names no copyright holder) |
+| heex | <https://github.com/phoenixframework/tree-sitter-heex> | `f6b83f305a755cd49cf5f6a66b2b789be93dc7b9` | MIT | Copyright (c) 2022 Connor Lay |
+| html | <https://github.com/tree-sitter/tree-sitter-html> | `cbb91a0ff3621245e890d1c50cc811bffb77a26b` | MIT | Copyright (c) 2014 Max Brunsfeld |
+| ini | <https://github.com/justinmk/tree-sitter-ini> | `32b31863f222bf22eb43b07d4e9be8017e36fb31` | Apache-2.0 | — (`LICENSE` is the unmodified Apache License 2.0 text; it names no copyright holder) |
+| java | <https://github.com/tree-sitter/tree-sitter-java> | `09d650def6cdf7f479f4b78f595e9ef5b58ce31e` | MIT | Copyright (c) 2017 Ayman Nadeem |
+| javascript | <https://github.com/tree-sitter/tree-sitter-javascript> | `f772967f7b7bc7c28f845be2420a38472b16a8ee` | MIT | Copyright (c) 2014 Max Brunsfeld |
+| json | <https://github.com/tree-sitter/tree-sitter-json> | `73076754005a460947cafe8e03a8cf5fa4fa2938` | MIT | Copyright (c) 2014 Max Brunsfeld |
+| kotlin | <https://github.com/fwcd/tree-sitter-kotlin> | `c4ddea359a7ff4d92360b2efcd6cfce5dc25afe6` | MIT | Copyright (c) 2019 fwcd |
+| lua | <https://github.com/tree-sitter-grammars/tree-sitter-lua> | `88e446476a1e97a8724dff7a23e2d709855077f2` | MIT | Copyright (c) 2021 Munif Tanjim |
+| make | <https://github.com/alemuller/tree-sitter-make> | `a4b9187417d6be349ee5fd4b6e77b4172c6827dd` | MIT | Copyright (c) 2021 Alexandre A. Muller |
+| markdown | <https://github.com/tree-sitter-grammars/tree-sitter-markdown> | `62516e8c78380e3b51d5b55727995d2c511436d8` | MIT | Copyright (c) 2021 Matthias Deiml |
+| markdown_inline | <https://github.com/tree-sitter-grammars/tree-sitter-markdown> | `62516e8c78380e3b51d5b55727995d2c511436d8` | MIT | Copyright (c) 2021 Matthias Deiml |
+| nix | <https://github.com/nix-community/tree-sitter-nix> | `1b69cf1fa92366eefbe6863c184e5d2ece5f187d` | MIT | Copyright (c) 2019 Charles Strahan |
+| ocaml | <https://github.com/tree-sitter/tree-sitter-ocaml> | `9965d208337d88bbf1a38ad0b0fe49e5f5ec9677` | MIT | Copyright (c) 2020 Max Brunsfeld and Pieter Goetschalckx |
+| python | <https://github.com/tree-sitter/tree-sitter-python> | `4bfdd9033a2225cc95032ce77066b7aeca9e2efc` | MIT | Copyright (c) 2016 Max Brunsfeld |
+| regex | <https://github.com/tree-sitter/tree-sitter-regex> | `e1cfca3c79896ff79842f057ea13e529b66af636` | MIT | Copyright (c) 2014 Max Brunsfeld |
+| rust | <https://github.com/tree-sitter/tree-sitter-rust> | `1f63b33efee17e833e0ea29266dd3d713e27e321` | MIT | Copyright (c) 2017 Maxim Sokolov |
+| scala | <https://github.com/tree-sitter/tree-sitter-scala> | `7891815f42dca9ed6aeb464c2edc39d479ab965c` | MIT | Copyright (c) 2018 Max Brunsfeld and GitHub |
+| scss | <https://github.com/serenadeai/tree-sitter-scss> | `c478c6868648eff49eb04a4df90d703dc45b312a` | MIT | Copyright (c) 2020 Serenade Labs, Inc. |
+| sql | <https://github.com/DerekStride/tree-sitter-sql> | `b9d109588d5b5ed986c857464830c2f0bef53f18` | MIT | Copyright (c) 2021 Derek Stride |
+| swift | <https://github.com/alex-pinkus/tree-sitter-swift> | `57c1c6d6ffa1c44b330182d41717e6fe37430704` | MIT | Copyright (c) 2021 alex-pinkus |
+| toml | <https://github.com/ikatyang/tree-sitter-toml> | `7cff70bbcbbc62001b465603ca1ea88edd668704` | MIT | Copyright (c) Ika \<ikatyang@gmail.com\> (<https://github.com/ikatyang>) |
+| tsx | <https://github.com/tree-sitter/tree-sitter-typescript> | `b1bf4825d9eaa0f3bdeb1e52f099533328acfbdf` | MIT | Copyright (c) 2017 GitHub |
+| typescript | <https://github.com/tree-sitter/tree-sitter-typescript> | `b1bf4825d9eaa0f3bdeb1e52f099533328acfbdf` | MIT | Copyright (c) 2017 GitHub |
+| xml | <https://github.com/RenjiSann/tree-sitter-xml> | `48a7c2b6fb9d515577e115e6788937e837815651` | MIT | Copyright (c) 2021 dorgnarg |
+| zig | <https://github.com/tree-sitter-grammars/tree-sitter-zig> | `eb7d58c2dc4fbeea4745019dee8df013034ae66b` | MIT | Copyright (c) 2024 Amaan Qureshi \<amaanq12@gmail.com\> |
 
 ## Themes
 
@@ -665,4 +704,130 @@ SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
 CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```
+
+## CC0 1.0 Universal
+
+```
+Creative Commons Legal Code
+
+CC0 1.0 Universal
+
+    CREATIVE COMMONS CORPORATION IS NOT A LAW FIRM AND DOES NOT PROVIDE
+    LEGAL SERVICES. DISTRIBUTION OF THIS DOCUMENT DOES NOT CREATE AN
+    ATTORNEY-CLIENT RELATIONSHIP. CREATIVE COMMONS PROVIDES THIS
+    INFORMATION ON AN "AS-IS" BASIS. CREATIVE COMMONS MAKES NO WARRANTIES
+    REGARDING THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS
+    PROVIDED HEREUNDER, AND DISCLAIMS LIABILITY FOR DAMAGES RESULTING FROM
+    THE USE OF THIS DOCUMENT OR THE INFORMATION OR WORKS PROVIDED
+    HEREUNDER.
+
+Statement of Purpose
+
+The laws of most jurisdictions throughout the world automatically confer
+exclusive Copyright and Related Rights (defined below) upon the creator
+and subsequent owner(s) (each and all, an "owner") of an original work of
+authorship and/or a database (each, a "Work").
+
+Certain owners wish to permanently relinquish those rights to a Work for
+the purpose of contributing to a commons of creative, cultural and
+scientific works ("Commons") that the public can reliably and without fear
+of later claims of infringement build upon, modify, incorporate in other
+works, reuse and redistribute as freely as possible in any form whatsoever
+and for any purposes, including without limitation commercial purposes.
+These owners may contribute to the Commons to promote the ideal of a free
+culture and the further production of creative, cultural and scientific
+works, or to gain reputation or greater distribution for their Work in
+part through the use and efforts of others.
+
+For these and/or other purposes and motivations, and without any
+expectation of additional consideration or compensation, the person
+associating CC0 with a Work (the "Affirmer"), to the extent that he or she
+is an owner of Copyright and Related Rights in the Work, voluntarily
+elects to apply CC0 to the Work and publicly distribute the Work under its
+terms, with knowledge of his or her Copyright and Related Rights in the
+Work and the meaning and intended legal effect of CC0 on those rights.
+
+1. Copyright and Related Rights. A Work made available under CC0 may be
+protected by copyright and related or neighboring rights ("Copyright and
+Related Rights"). Copyright and Related Rights include, but are not
+limited to, the following:
+
+  i. the right to reproduce, adapt, distribute, perform, display,
+     communicate, and translate a Work;
+ ii. moral rights retained by the original author(s) and/or performer(s);
+iii. publicity and privacy rights pertaining to a person's image or
+     likeness depicted in a Work;
+ iv. rights protecting against unfair competition in regards to a Work,
+     subject to the limitations in paragraph 4(a), below;
+  v. rights protecting the extraction, dissemination, use and reuse of data
+     in a Work;
+ vi. database rights (such as those arising under Directive 96/9/EC of the
+     European Parliament and of the Council of 11 March 1996 on the legal
+     protection of databases, and under any national implementation
+     thereof, including any amended or successor version of such
+     directive); and
+vii. other similar, equivalent or corresponding rights throughout the
+     world based on applicable law or treaty, and any national
+     implementations thereof.
+
+2. Waiver. To the greatest extent permitted by, but not in contravention
+of, applicable law, Affirmer hereby overtly, fully, permanently,
+irrevocably and unconditionally waives, abandons, and surrenders all of
+Affirmer's Copyright and Related Rights and associated claims and causes
+of action, whether now known or unknown (including existing as well as
+future claims and causes of action), in the Work (i) in all territories
+worldwide, (ii) for the maximum duration provided by applicable law or
+treaty (including future time extensions), (iii) in any current or future
+medium and for any number of copies, and (iv) for any purpose whatsoever,
+including without limitation commercial, advertising or promotional
+purposes (the "Waiver"). Affirmer makes the Waiver for the benefit of each
+member of the public at large and to the detriment of Affirmer's heirs and
+successors, fully intending that such Waiver shall not be subject to
+revocation, rescission, cancellation, termination, or any other legal or
+equitable action to disrupt the quiet enjoyment of the Work by the public
+as contemplated by Affirmer's express Statement of Purpose.
+
+3. Public License Fallback. Should any part of the Waiver for any reason
+be judged legally invalid or ineffective under applicable law, then the
+Waiver shall be preserved to the maximum extent permitted taking into
+account Affirmer's express Statement of Purpose. In addition, to the
+extent the Waiver is so judged Affirmer hereby grants to each affected
+person a royalty-free, non transferable, non sublicensable, non exclusive,
+irrevocable and unconditional license to exercise Affirmer's Copyright and
+Related Rights in the Work (i) in all territories worldwide, (ii) for the
+maximum duration provided by applicable law or treaty (including future
+time extensions), (iii) in any current or future medium and for any number
+of copies, and (iv) for any purpose whatsoever, including without
+limitation commercial, advertising or promotional purposes (the
+"License"). The License shall be deemed effective as of the date CC0 was
+applied by Affirmer to the Work. Should any part of the License for any
+reason be judged legally invalid or ineffective under applicable law, such
+partial invalidity or ineffectiveness shall not invalidate the remainder
+of the License, and in such case Affirmer hereby affirms that he or she
+will not (i) exercise any of his or her remaining Copyright and Related
+Rights in the Work or (ii) assert any associated claims and causes of
+action with respect to the Work, in either case contrary to Affirmer's
+express Statement of Purpose.
+
+4. Limitations and Disclaimers.
+
+ a. No trademark or patent rights held by Affirmer are waived, abandoned,
+    surrendered, licensed or otherwise affected by this document.
+ b. Affirmer offers the Work as-is and makes no representations or
+    warranties of any kind concerning the Work, express, implied,
+    statutory or otherwise, including without limitation warranties of
+    title, merchantability, fitness for a particular purpose, non
+    infringement, or the absence of latent or other defects, accuracy, or
+    the present or absence of errors, whether or not discoverable, all to
+    the greatest extent permissible under applicable law.
+ c. Affirmer disclaims responsibility for clearing rights of other persons
+    that may apply to the Work or any use thereof, including without
+    limitation any person's Copyright and Related Rights in the Work.
+    Further, Affirmer disclaims responsibility for obtaining any necessary
+    consents, permissions or other rights required for any use of the
+    Work.
+ d. Affirmer understands and acknowledges that Creative Commons is not a
+    party to this document and has no duty or obligation with respect to
+    this CC0 or use of the Work.
 ```
