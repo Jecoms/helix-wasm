@@ -163,8 +163,8 @@ it is upstream helix's fork of `lsp-types`, and it keeps that crate's license
 | `helix-tui` | 25.7.1 | MPL-2.0 | — | `helix/helix-tui` |
 | `helix-vcs` | 25.7.1 | MPL-2.0 | — | `helix/helix-vcs` |
 | `helix-view` | 25.7.1 | MPL-2.0 | — | `helix/helix-view` |
-| `helix-wasm` | 0.0.4 | MPL-2.0 | — | repository root |
-| `helix-web` | 0.0.4 | MPL-2.0 | — | `web` |
+| `helix-wasm` | 0.0.5 | MPL-2.0 | — | repository root |
+| `helix-web` | 0.0.5 | MPL-2.0 | — | `web` |
 | `home` | 0.5.9 | MPL-2.0 | — | `stubs/home` |
 | `icu_collections` | 2.3.0 | Unicode-3.0 | Copyright © 2020-2024 Unicode, Inc | [crates.io](https://crates.io/crates/icu_collections/2.3.0) |
 | `icu_locale_core` | 2.3.0 | Unicode-3.0 | Copyright © 2020-2024 Unicode, Inc | [crates.io](https://crates.io/crates/icu_locale_core/2.3.0) |

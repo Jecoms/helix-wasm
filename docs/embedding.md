@@ -8,8 +8,8 @@ instead of linking into the deployed demo, whose asset names are
 content-hashed and replaced on every push to `main`:
 
 ```sh
-curl -LO https://github.com/Jecoms/helix-wasm/releases/download/web-v0.0.4/helix-web-0.0.4.tar.gz
-tar xzf helix-web-0.0.4.tar.gz    # extracts helix-web-0.0.4/
+curl -LO https://github.com/Jecoms/helix-wasm/releases/download/web-v0.0.5/helix-web-0.0.5.tar.gz
+tar xzf helix-web-0.0.5.tar.gz    # extracts helix-web-0.0.5/
 ```
 
 Each release carries two tarballs that differ only in which tree-sitter
@@ -30,7 +30,7 @@ extracted tree says which tier it is). Consume it
 the way the demo's `web/www/package.json` does:
 
 ```json
-"dependencies": { "helix-web": "file:../helix-web-0.0.4" }
+"dependencies": { "helix-web": "file:../helix-web-0.0.5" }
 ```
 
 `web/www/main.js` is the reference host wiring to replicate: call `init()`

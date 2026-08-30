@@ -21,6 +21,8 @@ absolute — the copy in an embedder's extracted tree has no repo next to it.
 
 ## [Unreleased]
 
+## [0.0.5] — 2026-08-29
+
 ### Added
 
 - **Eight more grammars in the default set, and a catalog of forty-one to opt into**
@@ -311,7 +313,8 @@ which is the source of truth and goes further than this list:
      they are pending rather than broken. Publishing is a separate, deliberate
      step — see [Embedding the editor](docs/embedding.md) for the procedure. -->
 
-[Unreleased]: https://github.com/Jecoms/helix-wasm/compare/web-v0.0.4...main
+[Unreleased]: https://github.com/Jecoms/helix-wasm/compare/web-v0.0.5...main
+[0.0.5]: https://github.com/Jecoms/helix-wasm/releases/tag/web-v0.0.5
 [0.0.4]: https://github.com/Jecoms/helix-wasm/releases/tag/web-v0.0.4
 [0.0.3]: https://github.com/Jecoms/helix-wasm/releases/tag/web-v0.0.3
 [0.0.2]: https://github.com/Jecoms/helix-wasm/releases/tag/web-v0.0.2

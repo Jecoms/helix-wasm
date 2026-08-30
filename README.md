@@ -27,8 +27,8 @@ npm run dev      # serves the demo on a local vite dev server
 Or embed a released bundle in your own page:
 
 ```sh
-curl -LO https://github.com/Jecoms/helix-wasm/releases/download/web-v0.0.4/helix-web-0.0.4.tar.gz
-tar xzf helix-web-0.0.4.tar.gz    # a standard wasm-pack --target web package
+curl -LO https://github.com/Jecoms/helix-wasm/releases/download/web-v0.0.5/helix-web-0.0.5.tar.gz
+tar xzf helix-web-0.0.5.tar.gz    # a standard wasm-pack --target web package
 ```
 
 Call `init()`, then `start(writeBytes, cols, rows, config, languages)` with a
